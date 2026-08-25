@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 
@@ -23,7 +24,6 @@ import {
   CpuIcon,
   DatabaseIcon,
   NewspaperIcon,
-  RadarIcon,
 } from "lucide-react"
 
 export type NicheCount = { value: string; count: number }
@@ -88,10 +88,17 @@ export function AppSidebar({
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/noticias" />}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <RadarIcon className="size-4" />
-              </div>
+            <SidebarMenuButton size="lg" render={<Link href="/engine" />}>
+              {/* El logo ya trae su propio fondo redondeado: va suelto, no
+                  dentro de otro contenedor de color. */}
+              <Image
+                src="/hancel.png"
+                alt=""
+                width={32}
+                height={32}
+                priority
+                className="size-8 shrink-0 rounded-lg"
+              />
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">Engine Hancel</span>
                 <span className="truncate text-xs">Research Engine</span>
