@@ -89,20 +89,26 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/engine" />}>
-              {/* El logo ya trae su propio fondo redondeado: va suelto, no
-                  dentro de otro contenedor de color. */}
+              {/* El lockup completo con la sidebar abierta; al colapsarla a
+                  ancho de icono no cabe una marca apaisada, asi que se cambia
+                  por el isotipo. Ambas llevan alt vacio y el nombre accesible
+                  lo pone el span de abajo, para que no cambie con el estado. */}
+              <Image
+                src="/hancel-lockup.png"
+                alt=""
+                width={469}
+                height={114}
+                priority
+                className="h-7 w-auto group-data-[collapsible=icon]:hidden"
+              />
               <Image
                 src="/hancel.png"
                 alt=""
-                width={32}
-                height={32}
-                priority
-                className="size-8 shrink-0 rounded-lg"
+                width={180}
+                height={180}
+                className="hidden size-8 shrink-0 rounded-lg group-data-[collapsible=icon]:block"
               />
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">Engine Hancel</span>
-                <span className="truncate text-xs">Research Engine</span>
-              </div>
+              <span className="sr-only">Hancel</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
