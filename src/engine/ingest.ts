@@ -1,8 +1,9 @@
+import { fireAnalysisRoutine } from "./analysis-routine"
 import { DEDUPE_FETCH_LIMIT, type SearchSpec } from "./config"
 import { findDuplicateIds, type DedupeCandidate } from "./dedupe"
 import { EventRecorder, type EventSink } from "./events"
 import { dedupeByLink, toRows, type RawNewsInsert } from "./normalize"
-import { callRoutine, getActiveRoutines, type RoutineCallResult } from "./routines"
+import type { RoutineCallResult } from "./routines"
 import { searchNews } from "./serper"
 import { supabaseAdmin } from "./supabase-admin"
 import { getActiveSearches } from "./taxonomy"
@@ -179,38 +180,36 @@ export async function runIngestion(options: RunOptions = {}): Promise<IngestionS
     })
 
     // --- Analisis inmediato ---
-    // Las noticias ya estan en `pending_analysis`; se avisa a las rutinas para
-    // que arranquen sin esperar a nadie. Los ids borrados por duplicado se
-    // excluyen para no mandar a analizar algo que ya no existe.
+    // Las noticias ya estan en `pending_analysis`; se dispara la rutina para que
+    // arranque sin esperar a nadie. Los ids borrados por duplicado se excluyen
+    // del conteo para no anunciar trabajo que ya no existe.
     const removed = new Set(duplicateIds)
     const toAnalyze = insertedIds.filter((id) => !removed.has(id))
     const routines: RoutineCallResult[] = []
 
     if (options.skipRoutines) {
       recorder.emit("routine.skipped", "Analisis omitido por configuracion de la corrida")
+    } else if (toAnalyze.length === 0) {
+      // Sin noticias nuevas el disparo solo gastaria una ejecucion de la rutina
+      // para que no encuentre nada que analizar.
+      recorder.emit("routine.skipped", "Sin noticias nuevas: no se dispara el analisis")
     } else {
-      // Una rutina sin URL es un borrador a la espera de sus claves.
-      const analysisRoutines = (await getActiveRoutines("analysis")).filter(
-        (routine) => routine.webhook_url
+      const result = await fireAnalysisRoutine(
+        `Han llegado ${toAnalyze.length} noticias nuevas en la corrida ${runId}. ` +
+          `Analizalas siguiendo las instrucciones de la rutina.`,
+        options.signal
       )
-      if (analysisRoutines.length === 0) {
-        recorder.emit("routine.skipped", "No hay rutina de analisis activa configurada")
-      }
-      for (const routine of analysisRoutines) {
-        const result = await callRoutine(
-          routine,
-          { run_id: runId, count: toAnalyze.length, news_ids: toAnalyze },
-          options.signal
-        )
-        routines.push(result)
-        if (result.ok) {
-          recorder.emit("routine.called", `${routine.name} invocada`, {
-            count: toAnalyze.length,
-            status: result.status,
-          })
-        } else {
-          recorder.emit("routine.failed", `${routine.name} fallo`, { error: result.error })
-        }
+      routines.push(result)
+
+      if (result.ok) {
+        recorder.emit("routine.called", "Rutina de analisis disparada", {
+          count: toAnalyze.length,
+          status: result.status,
+        })
+      } else {
+        recorder.emit("routine.failed", "La rutina de analisis fallo", {
+          error: result.error,
+        })
       }
     }
 

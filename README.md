@@ -5,7 +5,7 @@ capital. Investiga multiples fuentes, guarda los hechos en Supabase y produce
 insumos para contenido original y oportuno.
 
 Proyecto Next.js 16 (App Router, Node) en la raiz del repositorio: el motor y su
-interfaz viven juntos. Base de datos: proyecto Supabase `xfsxcmhatdiaqrlhanwx`.
+interfaz viven juntos. Base de datos: proyecto Supabase `iddjepduokjysnibjjqy`.
 
 ## Estado de la migracion
 
@@ -34,6 +34,8 @@ SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx   # lectura de noticias
 SUPABASE_SERVICE_ROLE_KEY=eyJ...              # motor y configuracion
 SERPER_API_KEY=xxx                            # busqueda de noticias
 INGEST_SECRET=<openssl rand -hex 32>          # protege /api/ingest
+ANALYSIS_ROUTINE_URL=https://api.anthropic.com/v1/claude_code/routines/<id>/fire
+ANALYSIS_ROUTINE_TOKEN=sk-ant-oat01-xxx       # sin el prefijo "Bearer"
 ```
 
 **Ninguna lleva prefijo `NEXT_PUBLIC_`, a proposito.** `raw_news` y
@@ -105,7 +107,7 @@ npm run ingest -- --dry-run # busca y reporta, sin escribir nada
 4. Colapsa links repetidos e inserta con `ON CONFLICT DO NOTHING` sobre el
    UNIQUE de `link`.
 5. Deduplica por titulo entre **todo lo del dia** y borra lo repetido.
-6. **Llama a las rutinas de analisis activas** con los ids recien insertados.
+6. **Dispara la rutina de analisis** si entro alguna noticia nueva.
 7. Cierra la corrida con `raw_inserted`, `duplicates_removed` y `ended_at`.
 
 La deduplicacion compara conjuntos de palabras (Jaccard > 0.6) dentro de cada
@@ -129,27 +131,40 @@ segmentos activos dentro de categorias activas. Si no hay ninguno configurado,
 cae al respaldo de [`src/engine/config.ts`](src/engine/config.ts), que son las 16
 busquedas originales de n8n.
 
-### Rutinas
+### Rutina de analisis
 
-Una rutina es una rutina de Claude invocable por webhook, como una API. Se
-guardan nombre, tipo, URL y token en `/engine/routines`.
+Al final de cada ingesta que haya traido noticias nuevas se dispara la rutina de
+analisis de Claude Code, una sola vez por corrida. Se configura por entorno, no
+en la base:
 
-- **Analisis** — se invoca sola al terminar cada ingesta, con
-  `{ run_id, count, news_ids }`. Sin una rutina de analisis activa, las noticias
-  se quedan en `pending_analysis`.
-- **Redaccion** — reservado para la Etapa 3, todavia no se dispara solo.
-- **Otra** — solo a mano.
+```bash
+ANALYSIS_ROUTINE_URL=https://api.anthropic.com/v1/claude_code/routines/<trigger-id>/fire
+ANALYSIS_ROUTINE_TOKEN=sk-ant-oat01-xxx      # sin el prefijo "Bearer"
+```
 
-El token viaja como `Authorization: Bearer` y como `X-Routine-Token`. El webhook
-debe ser https. Cada rutina tiene un boton **Probar** que manda una carga de
-prueba sin lanzar una ingesta.
+Vive en el entorno **a proposito**: es la pieza que no puede perderse si hay que
+recrear la base. Ver [`src/engine/analysis-routine.ts`](src/engine/analysis-routine.ts).
 
-Una rutina puede guardarse **en borrador**, sin URL, mientras no se tengan sus
-claves; en ese estado no se puede activar. La rutina de analisis que ya existe en
-Claude viene creada asi: solo hay que pegarle la URL y el token.
+Es un gatillo y nada mas: no se le mandan ids. La rutina ya sabe que noticias le
+tocan y como analizarlas, definido en su propia interfaz; el `input` solo le
+avisa de cuantas han llegado.
 
-Una rutina caida **no** tumba la ingesta: las noticias ya estan guardadas y el
-fallo queda anotado en la rutina y en el resumen de la corrida.
+```http
+POST <ANALYSIS_ROUTINE_URL>
+Authorization: Bearer <ANALYSIS_ROUTINE_TOKEN>
+anthropic-version: 2023-06-01
+anthropic-beta: experimental-cc-routine-2026-04-01
+
+{"input": "Han llegado 12 noticias nuevas en la corrida <uuid>. Analizalas ..."}
+```
+
+No se dispara si la corrida no inserto nada, ni en el ensayo en seco. Corta a los
+30 segundos, igual que hacia el nodo HTTP de n8n, para que una rutina que no
+contesta no bloquee el cierre de la corrida. Y si falla **no** tumba la ingesta:
+las noticias ya estan guardadas y el error queda en el resumen de la corrida.
+
+> `engine_routines` y la pantalla `/engine/routines` siguen existiendo, pero ya
+> **no** intervienen en la ingesta.
 
 ### Diferencias intencionales respecto de n8n
 

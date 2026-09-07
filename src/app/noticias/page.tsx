@@ -1,5 +1,6 @@
 import { Suspense } from "react"
 
+import { AnalyzeAllButton } from "@/components/analyze-all-button"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { NewsFilters } from "@/components/news-filters"
 import { NewsList } from "@/components/news-list"
@@ -62,6 +63,10 @@ export default async function NoticiasPage({
       <Suspense fallback={<Skeleton className="h-9 w-full" />}>
         <NewsFilters niches={facets.niches} statuses={facets.statuses} />
       </Suspense>
+
+      {/* Fuera de NewsList a proposito: el disparo no depende de los filtros ni
+          de que la lista tenga resultados. */}
+      <AnalyzeAllButton />
 
       <NewsList items={news} />
     </DashboardShell>
