@@ -177,19 +177,36 @@ las noticias ya estan guardadas y el error queda en el resumen de la corrida.
 
 ### Programacion
 
-Los horarios se editan en `/engine/schedule`, no en el codigo.
+Los horarios se editan en `/engine/schedule`, no en el codigo. Se configuran las
+horas locales (0-23), la zona horaria y un interruptor general. Arranca con 11:00
+y 18:00 en `America/Bogota`, que es lo que tenia n8n.
 
-[`vercel.json`](vercel.json) dispara `/api/ingest` **cada hora** (`0 * * * *`) y
-el endpoint consulta `engine_settings` para decidir si a esa hora le toca correr.
-Asi cambiar los horarios es marcar casillas en la UI, no volver a desplegar.
+**El cron vive en Postgres, no en Vercel.** `pg_cron` dispara `public.fire_ingest()`
+a las horas exactas configuradas y `pg_net` hace el POST a `/api/ingest`. Un
+trigger sobre `engine_settings` reescribe el job cada vez que se guarda el
+horario, asi que la pantalla sigue siendo la unica fuente de verdad y la app no
+necesita saber que pg_cron existe. Ver [`supabase/scheduler.sql`](supabase/scheduler.sql).
 
-Se configuran las horas locales (0-23), la zona horaria y un interruptor general.
-Arranca con 11:00 y 18:00 en `America/Bogota`, que es lo que tenia n8n.
+Se monta una vez, con la URL del despliegue:
 
-En Vercel, define `CRON_SECRET` con el mismo valor que `INGEST_SECRET`: Vercel
-Cron manda `Authorization: Bearer $CRON_SECRET`.
+```sql
+select public.configure_ingest('https://<host>/api/ingest', '<INGEST_SECRET>');
+```
 
-Fuera de Vercel:
+El endpoint y el secreto quedan cifrados en Vault; el job los lee al disparar.
+Para ver el estado: `select jobname, schedule from cron.job;` y el historial en
+`cron.job_run_details`.
+
+> Antes esto lo hacia un cron de `vercel.json` que llamaba **cada hora** para que
+> el endpoint decidiera si le tocaba, descartando 23 de cada 24 llamadas. Ademas
+> el plan Hobby de Vercel solo admite crons diarios, con lo que el horario de la
+> UI no se habria respetado nunca.
+
+`pg_cron` trabaja en UTC y la traduccion se hace al guardar, no en cada disparo:
+en una zona con horario de verano habria que resincronizar en cada cambio.
+Colombia no lo tiene.
+
+Disparo manual:
 
 ```bash
 # respeta el horario configurado

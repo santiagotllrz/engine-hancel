@@ -5,6 +5,7 @@
 -- ejecutar sobre una base existente sin borrar datos ni duplicar objetos.
 --
 -- Uso: Supabase Dashboard -> SQL Editor -> pegar todo -> Run.
+-- Despues, scheduler.sql monta el cron del motor dentro de Postgres.
 --
 -- Orden: tablas -> indices -> RLS -> semillas. Las dependencias por clave
 -- foranea obligan a crear engine_categories antes que engine_segments y
