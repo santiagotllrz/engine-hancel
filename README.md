@@ -178,8 +178,12 @@ las noticias ya estan guardadas y el error queda en el resumen de la corrida.
 ### Programacion
 
 Los horarios se editan en `/engine/schedule`, no en el codigo. Se configuran las
-horas locales (0-23), la zona horaria y un interruptor general. Arranca con 11:00
-y 18:00 en `America/Bogota`, que es lo que tenia n8n.
+horas locales (0-23), el minuto comun a todas ellas, la zona horaria y un
+interruptor general. Arranca con 11:00 y 18:00 en `America/Bogota`, que es lo
+que tenia n8n.
+
+El minuto se aplica a todas las horas elegidas: con 30, las 05 y las 11 corren a
+las 05:30 y a las 11:30. No se pueden mezclar 05:30 con 11:00.
 
 **El cron vive en Postgres, no en Vercel.** `pg_cron` dispara `public.fire_ingest()`
 a las horas exactas configuradas y `pg_net` hace el POST a `/api/ingest`. Un

@@ -162,11 +162,14 @@ create index if not exists engine_routines_kind_idx on public.engine_routines (k
 create table if not exists public.engine_settings (
   id         boolean primary key default true,
   run_hours  integer[]   not null default '{11,18}',
+  -- Minuto comun a todas las horas: 11 y 18 con run_minute 30 son 11:30 y 18:30.
+  run_minute integer     not null default 0,
   timezone   text        not null default 'America/Bogota',
   enabled    boolean     not null default true,
   updated_at timestamptz not null default now(),
 
-  constraint engine_settings_singleton check (id)
+  constraint engine_settings_singleton   check (id),
+  constraint engine_settings_run_minute_check check (run_minute between 0 and 59)
 );
 
 -- ----------------------------------------------------------------------- RLS
@@ -194,8 +197,8 @@ alter table public.engine_settings   enable row level security;
 
 -- Obligatoria: updateSchedule hace UPDATE, no upsert, y sin esta fila el
 -- horario no se puede guardar.
-insert into public.engine_settings (id, run_hours, timezone, enabled)
-values (true, '{11,18}', 'America/Bogota', true)
+insert into public.engine_settings (id, run_hours, run_minute, timezone, enabled)
+values (true, '{11,18}', 0, 'America/Bogota', true)
 on conflict (id) do nothing;
 
 -- Opcional pero recomendable: las 16 busquedas portadas de n8n, las mismas que

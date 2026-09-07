@@ -80,10 +80,14 @@ $$;
 /**
  * Reescribe el job de pg_cron a partir de engine_settings.
  *
- * pg_cron corre en UTC, asi que las horas locales se traducen aqui: 11:00 y
- * 18:00 en America/Bogota salen como `0 16,23 * * *`. Colombia no tiene horario
- * de verano; en una zona que si lo tuviera habria que resincronizar en cada
- * cambio, porque la traduccion se calcula al guardar y no en cada disparo.
+ * pg_cron corre en UTC, asi que las horas locales se traducen aqui: 11:30 y
+ * 18:30 en America/Bogota salen como `30 16,23 * * *`. El desfase de una zona
+ * es constante, asi que el minuto UTC es el mismo para todas las horas y basta
+ * calcularlo una vez; se toma del calculo y no del valor local para que las
+ * zonas con offset de media hora (India, Nepal) salgan bien.
+ *
+ * La traduccion se hace al guardar, no en cada disparo: en una zona con horario
+ * de verano habria que resincronizar en cada cambio. Colombia no lo tiene.
  */
 create or replace function public.sync_ingest_schedule()
 returns text
@@ -94,6 +98,7 @@ as $$
 declare
   v_settings public.engine_settings%rowtype;
   v_hours    text;
+  v_minute   int;
   v_expr     text;
 begin
   select * into v_settings from public.engine_settings where id;
@@ -109,17 +114,23 @@ begin
     return 'programacion desactivada';
   end if;
 
-  select string_agg(distinct utc_hour::text, ',' order by utc_hour::text)
-  into v_hours
+  -- El distinct va en la subconsulta para poder ordenar por numero y no por
+  -- texto, que pondria "10" antes que "9".
+  select string_agg(utc_hour::text, ',' order by utc_hour), min(utc_minute)
+  into v_hours, v_minute
   from (
-    select extract(
-             hour from ((current_date + make_interval(hours => h)) at time zone v_settings.timezone)
-                        at time zone 'UTC'
-           )::int as utc_hour
-    from unnest(v_settings.run_hours) as h
+    select distinct
+      extract(hour   from momento_utc)::int as utc_hour,
+      extract(minute from momento_utc)::int as utc_minute
+    from (
+      select ((current_date
+               + make_interval(hours => h, mins => v_settings.run_minute))
+              at time zone v_settings.timezone) at time zone 'UTC' as momento_utc
+      from unnest(v_settings.run_hours) as h
+    ) as convertidas
   ) as horas;
 
-  v_expr := '0 ' || v_hours || ' * * *';
+  v_expr := v_minute || ' ' || v_hours || ' * * *';
   perform cron.schedule('engine_hancel_ingest', v_expr, 'select public.fire_ingest();');
 
   return v_expr;

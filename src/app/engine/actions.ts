@@ -377,6 +377,8 @@ export async function updateSchedule(form: FormData): Promise<ActionResult> {
     ),
   ].sort((a, b) => a - b)
 
+  const minute = Number(text(form, "run_minute"))
+
   try {
     // Falla pronto si la zona no existe, en vez de silenciarse en cada cron.
     new Intl.DateTimeFormat("en-GB", { timeZone: timezone })
@@ -388,11 +390,18 @@ export async function updateSchedule(form: FormData): Promise<ActionResult> {
     return { ok: false, error: "Elige al menos una hora, o desactiva la programacion." }
   }
 
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+    return { ok: false, error: "El minuto tiene que estar entre 0 y 59." }
+  }
+
   try {
+    // Guardar dispara el trigger que reprograma el job de pg_cron: el horario
+    // de esta pantalla es el cron de verdad, no un filtro.
     const { error } = await supabaseAdmin()
       .from("engine_settings")
       .update({
         run_hours: hours,
+        run_minute: minute,
         timezone,
         enabled,
         updated_at: new Date().toISOString(),

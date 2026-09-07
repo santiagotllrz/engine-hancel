@@ -31,6 +31,7 @@ export function ScheduleEditor({
   currentHour: number
 }) {
   const [hours, setHours] = React.useState<number[]>(settings.run_hours)
+  const [minute, setMinute] = React.useState(String(settings.run_minute))
   const [enabled, setEnabled] = React.useState(settings.enabled)
   const [timezone, setTimezone] = React.useState(settings.timezone)
   const [pending, startTransition] = React.useTransition()
@@ -48,6 +49,7 @@ export function ScheduleEditor({
   const save = () => {
     const form = new FormData()
     form.set("run_hours", hours.join(","))
+    form.set("run_minute", minute.trim() || "0")
     form.set("timezone", timezone)
     form.set("enabled", enabled ? "true" : "false")
 
@@ -58,6 +60,7 @@ export function ScheduleEditor({
   const dirty =
     enabled !== settings.enabled ||
     timezone !== settings.timezone ||
+    (minute.trim() || "0") !== String(settings.run_minute) ||
     hours.join(",") !== settings.run_hours.join(",")
 
   return (
@@ -67,8 +70,8 @@ export function ScheduleEditor({
           <div>
             <CardTitle className="text-base">Programacion automatica</CardTitle>
             <p className="text-muted-foreground mt-1 text-sm">
-              El scheduler llama cada hora y el motor decide si le toca. Cambiar esto no
-              requiere volver a desplegar.
+              pg_cron dispara el motor a estas horas exactas. Al guardar se reprograma solo,
+              sin volver a desplegar.
             </p>
           </div>
           <Switch
@@ -115,6 +118,28 @@ export function ScheduleEditor({
             <p className="text-muted-foreground text-xs">
               La barra verde marca la hora actual en {timezone}. Selecciona las horas locales
               en las que quieres traer noticias nuevas.
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="run_minute">Minuto</Label>
+            <Input
+              id="run_minute"
+              type="number"
+              min={0}
+              max={59}
+              inputMode="numeric"
+              className="w-24 font-mono"
+              value={minute}
+              disabled={!enabled}
+              onChange={(event) => {
+                setResult(null)
+                setMinute(event.target.value)
+              }}
+            />
+            <p className="text-muted-foreground text-xs">
+              Se aplica a todas las horas elegidas: con 30, las 05 y las 11 corren a las 05:30
+              y a las 11:30.
             </p>
           </div>
 
