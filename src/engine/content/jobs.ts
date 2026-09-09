@@ -1,0 +1,208 @@
+import type { RawNews } from "@/lib/types"
+
+import { supabaseAdmin } from "../supabase-admin"
+import { mergeVariables, parseVariables } from "./variables"
+import type {
+  AngleJobInput,
+  ContentAngle,
+  GenerationConfig,
+  JobAngle,
+  JobLinkedin,
+  LinkedinJobInput,
+  Variables,
+} from "./types"
+
+/**
+ * Encolado y drenaje de los buzones.
+ *
+ * El contrato con la rutina externa: la app escribe `input` y deja la fila en
+ * 'pending'; la rutina escribe `respuesta` y marca 'done' o 'failed'. La app
+ * nunca toca `status` despues de crearla — solo `consumed_at` — y de ahi que el
+ * trigger de aviso, que vigila `status`, no se despierte a si mismo en bucle.
+ */
+
+/** Tope por pasada, para que un tick no intente encolar el archivo entero. */
+export const MAX_DRENAJE_POR_TICK = 25
+
+/** Recorta el articulo: el buzon no es sitio para guardar megabytes de texto. */
+const MAX_CONTENIDO = 12_000
+
+export async function getGenerationConfig(): Promise<GenerationConfig> {
+  const { data, error } = await supabaseAdmin()
+    .from("generation_config")
+    .select("variables, score_threshold, generation_mode, updated_at")
+    .eq("id", true)
+    .maybeSingle()
+
+  if (error) throw new Error(`No se pudo leer la configuracion de generacion: ${error.message}`)
+
+  const row = (data ?? {}) as Partial<GenerationConfig>
+  return {
+    variables: parseVariables(row.variables),
+    score_threshold: typeof row.score_threshold === "number" ? row.score_threshold : null,
+    generation_mode: row.generation_mode === "auto" ? "auto" : "manual",
+    updated_at: row.updated_at ?? new Date(0).toISOString(),
+  }
+}
+
+/** El recorte de la noticia que viaja en los dos buzones. */
+function newsInput(news: RawNews): AngleJobInput["raw_news"] {
+  return {
+    id: news.id,
+    title: news.title,
+    link: news.link,
+    source: news.source,
+    snippet: news.snippet,
+    full_content: news.full_content ? news.full_content.slice(0, MAX_CONTENIDO) : null,
+    niche: news.niche,
+    tema: news.tema,
+    relevance_score: news.relevance_score,
+    keywords_matched: news.keywords_matched,
+    analysis_notes: news.analysis_notes,
+  }
+}
+
+export function buildAngleInput(news: RawNews, variables: Variables): AngleJobInput {
+  return { raw_news: newsInput(news), variables }
+}
+
+export function buildLinkedinInput(
+  angle: ContentAngle,
+  news: RawNews,
+  variables: Variables
+): LinkedinJobInput {
+  return {
+    angle: {
+      id: angle.id,
+      angle: angle.angle,
+      thesis: angle.thesis,
+      playbook_format: angle.playbook_format,
+    },
+    raw_news: newsInput(news),
+    variables,
+  }
+}
+
+/** Devuelve el id del job creado. */
+export async function enqueueAngleJob(
+  news: RawNews,
+  variables: Variables,
+  override?: Partial<Variables> | null
+): Promise<string> {
+  const { data, error } = await supabaseAdmin()
+    .from("jobs_angle")
+    .insert({
+      raw_news_id: news.id,
+      input: buildAngleInput(news, mergeVariables(variables, override)),
+    })
+    .select("id")
+    .single()
+
+  if (error) throw new Error(`No se pudo encolar el angulo: ${error.message}`)
+  return (data as { id: string }).id
+}
+
+export async function enqueueLinkedinJob(
+  angle: ContentAngle,
+  news: RawNews,
+  variables: Variables,
+  override?: Partial<Variables> | null
+): Promise<string> {
+  const { data, error } = await supabaseAdmin()
+    .from("jobs_linkedin")
+    .insert({
+      content_angle_id: angle.id,
+      input: buildLinkedinInput(angle, news, mergeVariables(variables, override)),
+    })
+    .select("id")
+    .single()
+
+  if (error) throw new Error(`No se pudo encolar el post: ${error.message}`)
+  return (data as { id: string }).id
+}
+
+/**
+ * Toma los buzones hechos y sin consumir, marcandolos en el mismo paso.
+ *
+ * El update condicionado a `consumed_at is null` es un compare-and-set: si dos
+ * ticks se solapan (el trigger y el cron de respaldo, por ejemplo), solo uno se
+ * lleva cada fila y el otro sigue sin duplicar nada.
+ */
+export async function claimAngleJobs(limite = MAX_DRENAJE_POR_TICK): Promise<JobAngle[]> {
+  const supabase = supabaseAdmin()
+
+  const { data: candidatos, error: errorLectura } = await supabase
+    .from("jobs_angle")
+    .select("id")
+    .is("consumed_at", null)
+    .in("status", ["done", "failed"])
+    .order("created_at")
+    .limit(limite)
+
+  if (errorLectura) throw new Error(`No se pudieron leer los angulos: ${errorLectura.message}`)
+  const ids = (candidatos ?? []).map((row) => (row as { id: string }).id)
+  if (ids.length === 0) return []
+
+  const { data, error } = await supabase
+    .from("jobs_angle")
+    .update({ consumed_at: new Date().toISOString() })
+    .in("id", ids)
+    .is("consumed_at", null)
+    .select("*")
+
+  if (error) throw new Error(`No se pudieron tomar los angulos: ${error.message}`)
+  return (data ?? []) as JobAngle[]
+}
+
+export async function claimLinkedinJobs(limite = MAX_DRENAJE_POR_TICK): Promise<JobLinkedin[]> {
+  const supabase = supabaseAdmin()
+
+  const { data: candidatos, error: errorLectura } = await supabase
+    .from("jobs_linkedin")
+    .select("id")
+    .is("consumed_at", null)
+    .in("status", ["done", "failed"])
+    .order("created_at")
+    .limit(limite)
+
+  if (errorLectura) throw new Error(`No se pudieron leer los posts: ${errorLectura.message}`)
+  const ids = (candidatos ?? []).map((row) => (row as { id: string }).id)
+  if (ids.length === 0) return []
+
+  const { data, error } = await supabase
+    .from("jobs_linkedin")
+    .update({ consumed_at: new Date().toISOString() })
+    .in("id", ids)
+    .is("consumed_at", null)
+    .select("*")
+
+  if (error) throw new Error(`No se pudieron tomar los posts: ${error.message}`)
+  return (data ?? []) as JobLinkedin[]
+}
+
+/**
+ * Marca un buzon como fallido por culpa de la respuesta, no de la rutina.
+ *
+ * La `respuesta` cruda se conserva: es la unica pista para arreglar el prompt.
+ */
+export async function markJobUnreadable(
+  tabla: "jobs_angle" | "jobs_linkedin",
+  jobId: string,
+  motivo: string
+): Promise<void> {
+  await supabaseAdmin()
+    .from(tabla)
+    .update({ status: "failed", error: motivo.slice(0, 1000) })
+    .eq("id", jobId)
+}
+
+/** Cuantos trabajos esperan a que la rutina los recoja. */
+export async function countPending(tabla: "jobs_angle" | "jobs_linkedin"): Promise<number> {
+  const { count, error } = await supabaseAdmin()
+    .from(tabla)
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending")
+
+  if (error) throw new Error(`No se pudo contar la cola: ${error.message}`)
+  return count ?? 0
+}

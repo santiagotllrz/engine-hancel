@@ -24,6 +24,7 @@ import {
   CpuIcon,
   DatabaseIcon,
   NewspaperIcon,
+  PenLineIcon,
 } from "lucide-react"
 
 export type NicheCount = { value: string; count: number }
@@ -63,6 +64,17 @@ export function AppSidebar({
       ],
     },
     {
+      title: "Contenido",
+      url: "/contenido",
+      icon: <PenLineIcon />,
+      isActive: pathname.startsWith("/contenido"),
+      items: [
+        { title: "Estudio", url: "/contenido", isActive: pathname === "/contenido" },
+        { title: "Variables", url: "/contenido/config", isActive: pathname === "/contenido/config" },
+        { title: "Cola", url: "/contenido/cola", isActive: pathname === "/contenido/cola" },
+      ],
+    },
+    {
       title: "Pipeline",
       url: "/pipeline",
       icon: <ActivityIcon />,
@@ -73,7 +85,7 @@ export function AppSidebar({
   const navSecondary = [
     {
       title: "Supabase",
-      url: "https://supabase.com/dashboard/project/xfsxcmhatdiaqrlhanwx",
+      url: "https://supabase.com/dashboard/project/iddjepduokjysnibjjqy",
       icon: <DatabaseIcon />,
     },
     {
@@ -122,7 +134,7 @@ export function AppSidebar({
         <NavUser
           user={{
             name: "Engine Hancel",
-            email: "xfsxcmhatdiaqrlhanwx",
+            email: "iddjepduokjysnibjjqy",
             avatar: "",
           }}
         />

@@ -234,3 +234,151 @@ from (values
 ) as s (niche, label, query, hl, gl, position)
 join public.engine_categories c on c.slug = s.niche
 on conflict (category_id, label) do nothing;
+
+-- ---------------------------------------------------------------- generacion
+--
+-- Etapa 2: de una noticia analizada a una pieza de LinkedIn.
+--
+-- Dos clases de tabla, separadas a proposito:
+--   jobs_*      buzones. El mecanismo de ejecucion de las rutinas de Claude.
+--   content_*   el resultado limpio que consume la interfaz.
+-- Si algun dia se cambia de rutinas a la API directa, solo cambian los buzones.
+
+-- Tabla de una sola fila, como engine_settings: el check sobre la PK booleana
+-- impide un segundo registro.
+--
+-- `score_threshold` nace NULL a proposito: el scoring lo define el usuario desde
+-- la interfaz, y hasta entonces el modo automatico no selecciona nada. Un valor
+-- inventado aqui encolaria noticias con un criterio que nadie eligio.
+create table if not exists public.generation_config (
+  id              boolean primary key default true,
+  -- Las ranuras de personalizacion que se inyectan en cada job. En jsonb y no
+  -- en columnas porque el juego de ranuras va a crecer; los valores admitidos
+  -- se validan en src/engine/content/variables.ts, que es el unico que escribe.
+  variables       jsonb       not null default
+    '{"tono":"profesional","audiencia":"","voz_marca":"","cta":"","evitar":"","longitud":"medio","idioma":"es"}'::jsonb,
+  score_threshold integer,
+  generation_mode text        not null default 'manual',
+  updated_at      timestamptz not null default now(),
+
+  constraint generation_config_singleton       check (id),
+  constraint generation_config_threshold_check check (score_threshold is null or score_threshold between 0 and 10),
+  constraint generation_config_mode_check      check (generation_mode in ('auto', 'manual'))
+);
+
+-- Buzon de la rutina de angulo.
+--
+-- La app escribe la fila en 'pending' y avisa por webhook; la rutina externa lee
+-- la cola, escribe `respuesta` y marca 'done' o 'failed'. El webhook solo
+-- despierta: los datos viajan en `input`, nunca en la peticion.
+--
+-- `consumed_at` lo escribe SOLO la app, al materializar la respuesta. Es columna
+-- aparte y no un cuarto estado por dos motivos: deja el contrato de la rutina en
+-- pending|done|failed exactamente como se especifico, y como el trigger de aviso
+-- vigila `status`, la escritura de la app no se despierta a si misma en bucle.
+create table if not exists public.jobs_angle (
+  id           uuid primary key default gen_random_uuid(),
+  raw_news_id  uuid        not null references public.raw_news (id) on delete cascade,
+  input        jsonb       not null,
+  status       text        not null default 'pending',
+  respuesta    jsonb,
+  error        text,
+  created_at   timestamptz not null default now(),
+  processed_at timestamptz,
+  consumed_at  timestamptz,
+
+  constraint jobs_angle_status_check check (status in ('pending', 'processing', 'done', 'failed'))
+);
+
+create index if not exists jobs_angle_status_idx      on public.jobs_angle (status, created_at);
+create index if not exists jobs_angle_raw_news_id_idx on public.jobs_angle (raw_news_id);
+-- Indice parcial sobre la consulta caliente: lo hecho y sin consumir.
+create index if not exists jobs_angle_por_drenar_idx  on public.jobs_angle (created_at)
+  where consumed_at is null and status in ('done', 'failed');
+
+-- Un angulo editorial propuesto por la rutina.
+--
+-- Cuantos angulos produce cada noticia lo decide la rutina, no este esquema: se
+-- materializa una fila por cada uno que venga en la respuesta y `position`
+-- conserva el orden en que los propuso.
+create table if not exists public.content_angles (
+  id              uuid primary key default gen_random_uuid(),
+  raw_news_id     uuid        not null references public.raw_news (id) on delete cascade,
+  -- De que buzon salio; para auditar una generacion rara.
+  job_angle_id    uuid        references public.jobs_angle (id) on delete set null,
+  angle           text        not null,
+  thesis          text,
+  playbook_format text,
+  status          text        not null default 'angled',
+  position        integer     not null default 0,
+  created_at      timestamptz not null default now(),
+
+  constraint content_angles_status_check
+    check (status in ('angled', 'pending_generation', 'generated', 'discarded'))
+);
+
+create index if not exists content_angles_raw_news_id_idx on public.content_angles (raw_news_id);
+create index if not exists content_angles_status_idx      on public.content_angles (status, created_at desc);
+
+-- Buzon de la rutina de LinkedIn. Mismo contrato que jobs_angle.
+create table if not exists public.jobs_linkedin (
+  id               uuid primary key default gen_random_uuid(),
+  content_angle_id uuid        not null references public.content_angles (id) on delete cascade,
+  input            jsonb       not null,
+  status           text        not null default 'pending',
+  respuesta        jsonb,
+  error            text,
+  created_at       timestamptz not null default now(),
+  processed_at     timestamptz,
+  consumed_at      timestamptz,
+
+  constraint jobs_linkedin_status_check check (status in ('pending', 'processing', 'done', 'failed'))
+);
+
+create index if not exists jobs_linkedin_status_idx     on public.jobs_linkedin (status, created_at);
+create index if not exists jobs_linkedin_angle_id_idx   on public.jobs_linkedin (content_angle_id);
+create index if not exists jobs_linkedin_por_drenar_idx on public.jobs_linkedin (created_at)
+  where consumed_at is null and status in ('done', 'failed');
+
+-- La pieza lista para revisar. `payload` guarda el post tal como lo devolvio la
+-- rutina; `variables_usadas` es la copia de las ranuras que produjeron ESTE
+-- texto, para poder explicar despues por que salio asi. La publicacion a
+-- LinkedIn no es parte de esta etapa.
+--
+-- `raw_news_id` va con on delete set null y no cascade: la pieza ya no depende
+-- de la noticia, y perderla en una limpieza del corpus seria destruir trabajo.
+create table if not exists public.content_pieces (
+  id               uuid primary key default gen_random_uuid(),
+  content_angle_id uuid        not null references public.content_angles (id) on delete cascade,
+  raw_news_id      uuid        references public.raw_news (id) on delete set null,
+  job_linkedin_id  uuid        references public.jobs_linkedin (id) on delete set null,
+  network          text        not null default 'linkedin',
+  payload          jsonb       not null,
+  status           text        not null default 'generated',
+  variables_usadas jsonb,
+  override_puntual jsonb,
+  created_at       timestamptz not null default now(),
+  generated_at     timestamptz,
+  approved_at      timestamptz,
+
+  constraint content_pieces_status_check  check (status in ('generated', 'approved', 'rejected')),
+  constraint content_pieces_network_check check (network in ('linkedin'))
+);
+
+create index if not exists content_pieces_angle_id_idx    on public.content_pieces (content_angle_id);
+create index if not exists content_pieces_raw_news_id_idx on public.content_pieces (raw_news_id);
+create index if not exists content_pieces_status_idx      on public.content_pieces (status, created_at desc);
+
+-- RLS: mismo regimen que el resto de tablas de configuracion y motor. Solo entra
+-- service_role, que es la credencial con la que se autentica tanto la app como
+-- la rutina externa cuando escribe en su buzon. Que la rutina toque solo
+-- respuesta/status/error/processed_at es una convencion del contrato, no algo
+-- que Postgres imponga.
+alter table public.generation_config enable row level security;
+alter table public.jobs_angle        enable row level security;
+alter table public.jobs_linkedin     enable row level security;
+alter table public.content_angles    enable row level security;
+alter table public.content_pieces    enable row level security;
+
+-- Obligatoria: el codigo lee y escribe con .eq("id", true), como engine_settings.
+insert into public.generation_config (id) values (true) on conflict (id) do nothing;

@@ -13,7 +13,7 @@ interfaz viven juntos. Base de datos: proyecto Supabase `iddjepduokjysnibjjqy`.
 | ------------------------------ | -------------------------------------------- |
 | 1 — Ingesta de noticias        | **Aqui, en codigo**                          |
 | 2 — Analisis y enriquecimiento | **Se dispara desde aqui** (rutina de Claude) |
-| 3 — Generacion de contenido    | Sin automatizar                              |
+| 3 — Generacion de contenido    | **Aqui, en codigo** (angulo + LinkedIn)      |
 
 Antes de activar la ingesta hay que **apagar el workflow de n8n**, o las dos
 correran en paralelo y duplicaran el consumo de Serper.
@@ -36,6 +36,10 @@ SERPER_API_KEY=xxx                            # busqueda de noticias
 INGEST_SECRET=<openssl rand -hex 32>          # protege /api/ingest
 ANALYSIS_ROUTINE_URL=https://api.anthropic.com/v1/claude_code/routines/<id>/fire
 ANALYSIS_ROUTINE_TOKEN=sk-ant-oat01-xxx       # sin el prefijo "Bearer"
+ANGLE_ROUTINE_URL=…/routines/<id>/fire        # etapa 2: angulo
+ANGLE_ROUTINE_TOKEN=sk-ant-oat01-xxx
+LINKEDIN_ROUTINE_URL=…/routines/<id>/fire     # etapa 2: post
+LINKEDIN_ROUTINE_TOKEN=sk-ant-oat01-xxx
 ```
 
 **Ninguna lleva prefijo `NEXT_PUBLIC_`, a proposito.** `raw_news` y
@@ -58,6 +62,9 @@ clave publicable no debe poder leerlos.
 | `/engine/routines`   | Rutinas de Claude (webhook + token)                            |
 | `/engine/graph`      | Grafo categoria → segmento → noticia                          |
 | `/noticias`          | Todas las noticias con todos sus campos y el articulo completo |
+| `/contenido`         | Estudio: candidatas, angulos y piezas generadas                 |
+| `/contenido/config`  | Variables de marca, umbral de score y modo                     |
+| `/contenido/cola`    | Los buzones en crudo, para diagnosticar                        |
 | `/pipeline`          | Historial de corridas                                          |
 | `/api/ingest`        | Dispara la Etapa 1 desde un scheduler (requiere secreto)       |
 | `/api/engine/stream` | Corrida con eventos en streaming (usa la consola en vivo)      |
@@ -221,6 +228,137 @@ curl -X POST "https://<host>/api/ingest?force=1" -H "x-ingest-secret: $INGEST_SE
 ```
 
 `/api/ingest` **falla cerrado**: sin `INGEST_SECRET` responde 401 siempre.
+
+## Etapa 2 — Generacion de contenido (LinkedIn)
+
+De una noticia analizada a un post listo para revisar. Dos rutinas encadenadas:
+
+```
+noticia analizada
+   ↓  la app encola en jobs_angle y avisa por webhook
+[Rutina de angulo]    decide angulo, tesis y formato
+   ↓  la app materializa content_angles y encola en jobs_linkedin
+[Rutina de LinkedIn]  escribe el post
+   ↓
+content_pieces        listo para revisar en /contenido
+```
+
+La publicacion a LinkedIn **no** es parte de esta etapa: el pipeline termina en
+`generated` y la revision ocurre dentro de Hancel.
+
+### El patron buzon
+
+Una rutina tiene un prompt fijo, asi que los datos variables no pueden viajar en
+el webhook. Viajan en una tabla:
+
+1. La app crea una fila con `input` y `status = 'pending'`.
+2. La app dispara el webhook. El aviso solo dice "despierta y revisa la cola";
+   no lleva el trabajo ni trae el resultado.
+3. La rutina procesa **todas** las filas `pending` que encuentre, escribe
+   `respuesta` y marca `done` o `failed`.
+4. La app materializa la respuesta en las tablas limpias.
+
+Las tablas `content_*` **las escribe siempre la app**, nunca la rutina: asi hay
+un solo escritor por tabla y una respuesta con forma inesperada se marca
+`failed` con el motivo en lugar de meter filas basura.
+
+### Como se entera la app
+
+No hay Supabase Realtime, y no lo habra mientras `raw_news` tenga RLS
+deshabilitado: haria falta una clave `NEXT_PUBLIC_` en el navegador, y esa clave
+da escritura sobre todo el corpus.
+
+En su lugar, la misma maquinaria que ya dispara el cron. Triggers sobre los dos
+buzones y sobre `raw_news`, que llaman por `pg_net` a `/api/content/tick`:
+
+```
+rutina marca 'done'  →  trigger  →  pg_net POST /api/content/tick  →  runContentTick()
+```
+
+`runContentTick()` es una pasada idempotente: toma lo que este hecho y sin
+consumir, lo materializa, encadena lo que toque y sale. Recibir el aviso dos
+veces es inofensivo — las filas se reclaman con un compare-and-set sobre
+`consumed_at`, asi que dos pasadas solapadas no duplican nada. Un `pg_cron` cada
+cinco minutos hace de red de seguridad por si `pg_net` o el despliegue fallan.
+
+Se monta una vez, con la URL del despliegue:
+
+```sql
+select public.configure_content_tick('https://<host>/api/content/tick');
+```
+
+### El contrato con las rutinas
+
+Claude Code **no** crea ni edita las rutinas: sus prompts viven en Claude. Lo
+unico que ambos lados tienen que respetar es la forma de `input` y `respuesta`.
+Esto es lo que hay que pegar en los prompts.
+
+**Rutina de angulo** — lee `jobs_angle` donde `status = 'pending'`:
+
+```jsonc
+// input (lo escribe la app)
+{ "raw_news": { "id", "title", "link", "source", "snippet", "full_content",
+                "niche", "tema", "relevance_score", "keywords_matched",
+                "analysis_notes" },
+  "variables": { "tono", "audiencia", "voz_marca", "cta", "evitar", "longitud", "idioma" } }
+
+// respuesta (la escribe la rutina) — cuantos angulos, lo decide la rutina
+{ "angles": [ { "angle": "…", "thesis": "…", "playbook_format": "…" } ] }
+```
+
+**Rutina de LinkedIn** — lee `jobs_linkedin` donde `status = 'pending'`:
+
+```jsonc
+// input
+{ "angle": { "id", "angle", "thesis", "playbook_format" },
+  "raw_news": { … igual que arriba … },
+  "variables": { … } }
+
+// respuesta
+{ "post": { "hook": "…", "body": "…", "hashtags": ["…"], "cta": "…" }, "notas": "…" }
+```
+
+Al terminar cada fila, la rutina escribe `respuesta`, pone `status = 'done'` (o
+`'failed'` con el motivo en `error`) y `processed_at`. **No debe tocar
+`consumed_at`**: esa columna es de la app y es lo que evita que su propia
+escritura vuelva a despertar el tick en bucle.
+
+El lector es tolerante con la forma (acepta `angulos`/`tesis`, un array pelado o
+un objeto suelto) y explicito al fallar: si no reconoce nada, marca el job
+`failed` con el mensaje de lo que esperaba y **conserva la respuesta cruda**, que
+se ve en `/contenido/cola`.
+
+### Las variables
+
+La capa de personalizacion **no es texto libre** que se le pase al modelo como
+instruccion: son selectores y campos acotados que rellenan ranuras que el prompt
+base dejo abiertas. Esa es la defensa contra que se rompa el criterio editorial.
+
+Se editan en `/contenido/config`, se guardan una vez en `generation_config` y se
+inyectan en cada job. Hay ademas override puntual por generacion, que se aplica
+encima sin modificar la configuracion guardada.
+
+### Seleccion de noticias
+
+- **Manual** (por defecto): tu eliges que noticias convertir.
+- **Automatico**: una noticia que supere el umbral arranca el pipeline sola.
+
+El **umbral nace sin definir** a proposito: el scoring lo decide el usuario desde
+la interfaz, y sin el, el modo automatico no selecciona nada. El modo automatico
+toma como mucho `MAX_AUTO_POR_TICK` noticias por pasada — un limite tecnico para
+que una peticion no intente encolar cientos de trabajos, no un criterio
+editorial; lo que no entra ahora entra en la siguiente pasada.
+
+**Al margen de todo esto**, enviar cualquier noticia al pipeline a mano esta
+disponible siempre, desde `/noticias` y desde las candidatas, sin importar el
+modo ni el umbral.
+
+### Diagnostico
+
+`/contenido/cola` muestra los dos buzones en crudo: estado, `input`, `respuesta`
+y el error si lo hubo, con un boton para reintentar un trabajo fallido y otro
+para forzar una pasada. No hay reintento automatico a proposito: un prompt que
+falla reintentado en bucle quema cuota sin converger.
 
 ## ⚠ El dashboard no tiene autenticacion
 

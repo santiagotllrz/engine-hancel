@@ -8,6 +8,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
+import { SendToPipelineButton } from "@/components/contenido/send-to-pipeline-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -206,7 +207,11 @@ export function NewsList({ items }: { items: RawNews[] }) {
                       )}
                     </div>
 
-                    <div>
+                    {/* El envio al pipeline vive aqui y no solo en las
+                        candidatas: es la unica lista que muestra todas las
+                        noticias, y la accion tiene que estar disponible sea
+                        cual sea el modo y supere o no el umbral. */}
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
@@ -215,6 +220,7 @@ export function NewsList({ items }: { items: RawNews[] }) {
                         <ExternalLinkIcon />
                         Abrir original
                       </Button>
+                      <SendToPipelineButton rawNewsId={item.id} />
                     </div>
                   </div>
                 </AccordionContent>

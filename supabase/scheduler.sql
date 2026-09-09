@@ -171,3 +171,129 @@ grant execute on function public.engine_settings_sync_cron()  to service_role;
 
 -- Deja el job alineado con lo que haya en engine_settings ahora mismo.
 select public.sync_ingest_schedule();
+
+-- ------------------------------------------------- avisos de la etapa 2
+--
+-- El patron buzon aplicado a la propia aplicacion: los triggers no transportan
+-- trabajo, solo dicen "despierta y revisa la cola". Todos los despertadores
+-- (los dos buzones, el paso de una noticia a 'analyzed', el cron de respaldo y
+-- los botones de la interfaz) llaman al mismo sitio, asi que recibir un aviso
+-- de mas es gratis en vez de peligroso.
+--
+-- Reutiliza el secreto `ingest_secret` del Vault: /api/content/tick y
+-- /api/ingest son la misma maquinaria disparada por el mismo Postgres, y un
+-- segundo secreto solo añadiria superficie de rotacion.
+--
+--   select public.configure_content_tick('https://<host>/api/content/tick');
+
+create or replace function public.configure_content_tick(url text)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  delete from vault.secrets where name = 'content_tick_url';
+  perform vault.create_secret(url, 'content_tick_url', 'Endpoint /api/content/tick de engine-hancel');
+  return url;
+end;
+$$;
+
+create or replace function public.fire_content_tick()
+returns bigint
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_url        text;
+  v_secret     text;
+  v_request_id bigint;
+begin
+  select decrypted_secret into v_url    from vault.decrypted_secrets where name = 'content_tick_url';
+  select decrypted_secret into v_secret from vault.decrypted_secrets where name = 'ingest_secret';
+
+  if v_url is null or v_secret is null then
+    raise warning 'engine-hancel: falta configurar content_tick_url (usa configure_content_tick)';
+    return null;
+  end if;
+
+  select net.http_post(
+    url := v_url,
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || v_secret
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 60000
+  ) into v_request_id;
+
+  return v_request_id;
+end;
+$$;
+
+-- Un aviso por transaccion. La rutina puede cerrar veinte buzones en el mismo
+-- UPDATE y el tick drena la cola entera, asi que el segundo aviso solo gastaria
+-- una invocacion identica. El flag es local a la transaccion y desaparece al
+-- terminar; si la rutina escribe fila a fila en transacciones separadas, la
+-- segunda defensa es que el tick es idempotente y barato en vacio.
+create or replace function public.content_tick_on_row()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if coalesce(current_setting('engine_hancel.tick_avisado', true), '') = 'si' then
+    return null;
+  end if;
+  perform set_config('engine_hancel.tick_avisado', 'si', true);
+  perform public.fire_content_tick();
+  return null;
+end;
+$$;
+
+-- El WHEN hace dos trabajos: filtra el evento que importa y corta el bucle. La
+-- app solo escribe `consumed_at`, nunca `status`, asi que su propia escritura no
+-- vuelve a despertar el tick.
+drop trigger if exists jobs_angle_tick_trg on public.jobs_angle;
+create trigger jobs_angle_tick_trg
+after update of status on public.jobs_angle
+for each row
+when (old.status is distinct from new.status and new.status in ('done', 'failed'))
+execute function public.content_tick_on_row();
+
+drop trigger if exists jobs_linkedin_tick_trg on public.jobs_linkedin;
+create trigger jobs_linkedin_tick_trg
+after update of status on public.jobs_linkedin
+for each row
+when (old.status is distinct from new.status and new.status in ('done', 'failed'))
+execute function public.content_tick_on_row();
+
+-- El modo automatico: la rutina de analisis marca 'analyzed' y aqui arranca la
+-- etapa 2. No se filtra por umbral ni por modo en el WHEN (una clausula WHEN no
+-- admite subconsultas): eso lo decide el tick leyendo generation_config, que es
+-- ademas donde debe vivir esa regla.
+drop trigger if exists raw_news_tick_trg on public.raw_news;
+create trigger raw_news_tick_trg
+after update of status on public.raw_news
+for each row
+when (old.status is distinct from new.status and new.status = 'analyzed')
+execute function public.content_tick_on_row();
+
+revoke all on function public.configure_content_tick(text) from public, anon, authenticated;
+revoke all on function public.fire_content_tick()          from public, anon, authenticated;
+revoke all on function public.content_tick_on_row()        from public, anon, authenticated;
+
+grant execute on function public.configure_content_tick(text) to service_role;
+grant execute on function public.fire_content_tick()          to service_role;
+grant execute on function public.content_tick_on_row()        to service_role;
+
+-- Red de seguridad, no camino principal: cubre un pg_net caido, un despliegue en
+-- curso o un 5xx por cold start. El tick es barato cuando no hay nada que hacer.
+do $$
+begin
+  perform cron.unschedule(jobid) from cron.job where jobname = 'engine_hancel_content_tick';
+  perform cron.schedule('engine_hancel_content_tick', '*/5 * * * *', 'select public.fire_content_tick();');
+end
+$$;

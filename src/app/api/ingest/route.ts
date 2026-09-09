@@ -2,31 +2,10 @@ import { NextResponse } from "next/server"
 
 import { runIngestion } from "@/engine/ingest"
 import { decide, getSettings } from "@/engine/schedule"
+import { authorizeEngineRequest } from "@/lib/api-auth"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
-
-/**
- * Autorizacion del endpoint.
- *
- * Falla cerrado: sin `INGEST_SECRET` configurado nadie puede dispararlo. Un
- * endpoint que gasta cuota de Serper y escribe en la base no puede quedar
- * abierto por olvidar una variable de entorno.
- *
- * Acepta `Authorization: Bearer <secreto>` (que es como lo manda Vercel Cron)
- * y `x-ingest-secret`, para cualquier otro scheduler.
- */
-function authorize(request: Request): string | null {
-  const expected = process.env.INGEST_SECRET
-  if (!expected) return "INGEST_SECRET no esta configurado en el servidor."
-
-  const header = request.headers.get("authorization")
-  const bearer = header?.startsWith("Bearer ") ? header.slice(7) : null
-  const provided = bearer ?? request.headers.get("x-ingest-secret")
-
-  if (provided !== expected) return "Secreto invalido."
-  return null
-}
 
 /**
  * El scheduler externo llama cada hora y aqui se decide si toca correr.
@@ -35,7 +14,7 @@ function authorize(request: Request): string | null {
  * `?force=1` salta la comprobacion, para disparos manuales.
  */
 async function handle(request: Request) {
-  const denied = authorize(request)
+  const denied = authorizeEngineRequest(request)
   if (denied) {
     return NextResponse.json({ error: denied }, { status: 401 })
   }
