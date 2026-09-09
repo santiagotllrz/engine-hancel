@@ -10,18 +10,31 @@ function toDate(value: string | null): Date | null {
 }
 
 /**
- * Formatea en UTC y con locale fijo a proposito: el servidor y el navegador
- * deben producir la misma cadena o React reporta un error de hidratacion.
+ * Zona en la que el dashboard muestra las fechas.
+ *
+ * Es solo presentacion: en la base todo sigue guardado en UTC, que es lo que
+ * devuelve Postgres y con lo que trabaja el motor.
+ *
+ * Antes se pintaba en UTC y habia que restar cinco horas a mano para cuadrar
+ * una corrida con el horario de `/engine/schedule`, que se configura en hora
+ * local. Ahora la interfaz habla de un solo huso.
+ */
+export const DISPLAY_TIMEZONE = "America/Bogota"
+
+/**
+ * Zona y locale fijos a proposito, en vez de los del navegador: el servidor y
+ * el cliente deben producir la misma cadena o React reporta un error de
+ * hidratacion.
  */
 const dateTime = new Intl.DateTimeFormat("es-ES", {
-  timeZone: "UTC",
+  timeZone: DISPLAY_TIMEZONE,
   dateStyle: "medium",
   timeStyle: "short",
 })
 
 export function formatDateTime(value: string | null): string {
   const date = toDate(value)
-  return date ? `${dateTime.format(date)} UTC` : "—"
+  return date ? dateTime.format(date) : "—"
 }
 
 export function formatNumber(value: number): string {
