@@ -1,4 +1,5 @@
 import { ContentStudio } from "@/components/contenido/content-studio"
+import { RoutinesWarning } from "@/components/contenido/routines-warning"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -7,6 +8,7 @@ import {
   getContentCounts,
   getGenerationConfig,
   getPieces,
+  getRoutinesStatus,
 } from "@/lib/content-data"
 import { formatNumber } from "@/lib/format"
 
@@ -41,6 +43,8 @@ export default async function ContenidoPage() {
 
   return (
     <DashboardShell title="Contenido">
+      <RoutinesWarning status={getRoutinesStatus()} />
+
       <div className="grid auto-rows-min gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Candidatas" value={formatNumber(counts.candidatas)} />
         <StatCard label="Angulos" value={formatNumber(counts.angulos)} />

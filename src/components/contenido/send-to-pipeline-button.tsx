@@ -43,11 +43,14 @@ export function SendToPipelineButton({
         {pending ? "Enviando…" : result?.ok ? "En cola" : "Generar contenido"}
       </Button>
 
-      {result && !result.ok ? (
-        <span role="status" aria-live="polite" className="text-destructive truncate text-xs">
-          {result.error}
-        </span>
-      ) : null}
+      <span role="status" aria-live="polite" className="min-w-0 text-xs">
+        {result && !result.ok ? (
+          <span className="text-destructive">{result.error}</span>
+        ) : result?.ok && result.warning ? (
+          // Encolado si, procesado no: mejor decirlo que dejarlo esperando.
+          <span className="text-amber-700 dark:text-amber-400">{result.warning}</span>
+        ) : null}
+      </span>
     </div>
   )
 }

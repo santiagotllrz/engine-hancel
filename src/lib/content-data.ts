@@ -1,6 +1,7 @@
 import "server-only"
 
 import { getGenerationConfig } from "@/engine/content/jobs"
+import { angleRoutineConfig, linkedinRoutineConfig } from "@/engine/content/routines"
 import type {
   ContentAngle,
   ContentPiece,
@@ -34,6 +35,25 @@ export type AngleView = ContentAngle & {
 export type PieceView = ContentPiece & {
   angle: ContentAngle | null
   news: RawNews | null
+}
+
+/**
+ * Que rutinas estan montadas.
+ *
+ * Solo dice si hay configuracion, nunca los valores: el token no puede salir
+ * del servidor. Sirve para que la interfaz avise en vez de dejar trabajos
+ * encolados que nadie va a recoger.
+ */
+export type RoutinesStatus = {
+  angle: boolean
+  linkedin: boolean
+}
+
+export function getRoutinesStatus(): RoutinesStatus {
+  return {
+    angle: angleRoutineConfig() !== null,
+    linkedin: linkedinRoutineConfig() !== null,
+  }
 }
 
 export type ContentCounts = {

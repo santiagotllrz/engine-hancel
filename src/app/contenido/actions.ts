@@ -7,6 +7,7 @@ import {
   enqueueLinkedinJob,
   getGenerationConfig,
 } from "@/engine/content/jobs"
+import { angleRoutineConfig, linkedinRoutineConfig } from "@/engine/content/routines"
 import { runContentTick } from "@/engine/content/tick"
 import type { ContentAngle, Variables } from "@/engine/content/types"
 import { parseVariables, validateVariables } from "@/engine/content/variables"
@@ -20,7 +21,14 @@ import type { RawNews } from "@/lib/types"
  * navegador manda la intencion, nunca la credencial.
  */
 
-export type ActionResult = { ok: true } | { ok: false; error: string }
+/**
+ * `warning` es para lo que salio bien pero no va a llegar a ninguna parte: el
+ * trabajo quedo encolado y la rutina que deberia recogerlo no esta montada.
+ * Decir que fue un error seria mentir; callarlo dejaria al usuario esperando.
+ */
+export type ActionResult =
+  | { ok: true; warning?: string }
+  | { ok: false; error: string }
 
 function fail(error: unknown, fallback: string): ActionResult {
   const message = error instanceof Error ? error.message : String(error)
@@ -59,6 +67,23 @@ function overrideFromForm(form: FormData): Partial<Variables> | null {
   return Object.keys(override).length > 0 ? override : null
 }
 
+/** El aviso de que nadie va a recoger lo que se acaba de encolar. */
+function avisoSiFaltaRutina(cual: "angle" | "linkedin"): string | undefined {
+  if (cual === "angle" && angleRoutineConfig() === null) {
+    return (
+      "Encolado, pero la rutina de angulo no esta configurada " +
+      "(ANGLE_ROUTINE_URL / ANGLE_ROUTINE_TOKEN): se quedara pendiente."
+    )
+  }
+  if (cual === "linkedin" && linkedinRoutineConfig() === null) {
+    return (
+      "Encolado, pero la rutina de LinkedIn no esta configurada " +
+      "(LINKEDIN_ROUTINE_URL / LINKEDIN_ROUTINE_TOKEN): se quedara pendiente."
+    )
+  }
+  return undefined
+}
+
 async function loadNews(id: string): Promise<RawNews> {
   const { data, error } = await supabaseAdmin().from("raw_news").select("*").eq("id", id).single()
   if (error) throw new Error(`No se encontro la noticia: ${error.message}`)
@@ -83,7 +108,7 @@ export async function sendToPipeline(rawNewsId: string): Promise<ActionResult> {
     // lo que ya estuviera hecho y avisa a las dos rutinas de una vez.
     await runContentTick({ trigger: "manual" })
     refresh()
-    return { ok: true }
+    return { ok: true, warning: avisoSiFaltaRutina("angle") }
   } catch (error) {
     return fail(error, "No se pudo enviar la noticia al pipeline.")
   }
@@ -103,7 +128,7 @@ export async function sendToPipelineWithOverride(form: FormData): Promise<Action
     await enqueueAngleJob(news, config.variables, override)
     await runContentTick({ trigger: "manual" })
     refresh()
-    return { ok: true }
+    return { ok: true, warning: avisoSiFaltaRutina("angle") }
   } catch (error) {
     return fail(error, "No se pudo enviar la noticia al pipeline.")
   }
@@ -142,7 +167,7 @@ export async function generateFromAngle(
 
     await runContentTick({ trigger: "manual" })
     refresh()
-    return { ok: true }
+    return { ok: true, warning: avisoSiFaltaRutina("linkedin") }
   } catch (error) {
     return fail(error, "No se pudo generar el post.")
   }
