@@ -31,8 +31,9 @@ export type NicheCount = { value: string; count: number }
 
 export function AppSidebar({
   niches,
+  email,
   ...props
-}: { niches: NicheCount[] } & React.ComponentProps<typeof Sidebar>) {
+}: { niches: NicheCount[]; email: string } & React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const currentNiche = searchParams.get("niche")
@@ -131,13 +132,7 @@ export function AppSidebar({
         <NavSecondary items={navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser
-          user={{
-            name: "Engine Hancel",
-            email: "iddjepduokjysnibjjqy",
-            avatar: "",
-          }}
-        />
+        <NavUser email={email} />
       </SidebarFooter>
     </Sidebar>
   )

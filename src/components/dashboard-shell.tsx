@@ -1,5 +1,6 @@
 import * as React from "react"
 import Link from "next/link"
+import { redirect } from "next/navigation"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import {
@@ -17,6 +18,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { getNicheCounts } from "@/lib/news"
+import { usuarioActual } from "@/lib/supabase/auth"
 
 /**
  * Marco comun del dashboard: sidebar (plantilla sidebar-08) + cabecera con
@@ -30,11 +32,14 @@ export async function DashboardShell({
   title: string
   children: React.ReactNode
 }) {
-  const niches = await getNicheCounts()
+  // El proxy ya desvio a quien no tenia sesion; esto es la segunda comprobacion,
+  // la que de verdad decide, porque corre donde se renderizan los datos.
+  const [niches, usuario] = await Promise.all([getNicheCounts(), usuarioActual()])
+  if (!usuario) redirect("/login")
 
   return (
     <SidebarProvider>
-      <AppSidebar niches={niches} />
+      <AppSidebar niches={niches} email={usuario.email ?? ""} />
       <SidebarInset>
         <header className="bg-background/85 sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4 backdrop-blur md:px-6">
           <div className="flex items-center gap-2">
