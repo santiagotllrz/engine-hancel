@@ -416,6 +416,18 @@ Instagram no admite carruseles de mas de 10, asi que lo que sobre se recorta. Si
 llegan menos de 2 slides utiles, el trabajo se marca `failed` con el motivo, como
 con las otras rutinas.
 
+#### La lamina de cierre
+
+Un interruptor en `/contenido/config` añade una lamina final a todos los
+carruseles, con su titulo y su texto, sobre una foto muy velada.
+
+Va aparte del guion que escribe la rutina a proposito: es una constante de la
+marca, no contenido de la noticia, y no tiene sentido pedirsela al modelo cada
+vez. Si el guion ya llega al tope de Instagram, se recorta uno para hacerle
+sitio en vez de pasarse de diez.
+
+Nace apagada.
+
 #### El motor de render
 
 Se dibuja con **Satori**, via `next/og`: renderiza un arbol de React a PNG sin
@@ -545,6 +557,17 @@ hashtags, en ese orden) y el `author` es el URN de la persona. LinkedIn responde
 `201` y devuelve el id del post **en la cabecera `x-restli-id`**, no en el
 cuerpo; ese URN se guarda en `content_pieces.linkedin_urn` y con el se arma el
 enlace al post.
+
+Los posts llevan **siempre una imagen**: el titular sobre una foto de banco
+velada, en 1200x627, que es la proporcion que LinkedIn muestra sin recortar. La
+foto se busca con los mismos criterios que el carrusel — el tema concreto de la
+noticia, nunca su nicho.
+
+LinkedIn no acepta una URL para la imagen: hay que registrar la subida
+(`/rest/images?action=initializeUpload`), mandar los bytes a la direccion que
+devuelve y usar el URN resultante en `content.media`. Si cualquiera de esos pasos
+falla, el post sale igual solo con texto: perder la pieza por la ilustracion
+seria absurdo.
 
 Publicar no lanza nunca: el fallo se guarda en `content_pieces.publish_error` y
 se ve bajo la pieza. La guarda contra publicar dos veces es `published_at`.

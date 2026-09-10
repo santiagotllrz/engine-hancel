@@ -1,6 +1,12 @@
 import type { ContentPiece } from "../content/types"
 import { supabaseAdmin } from "../supabase-admin"
-import { buildCommentary, publishText, type PublishResult } from "./linkedin"
+import { nichosConocidos } from "../render/carousel"
+import { terminosDeBusqueda } from "../render/keywords"
+import { BancoDeFotos, descargarFotoPexels, pexelsConfigurado } from "../render/pexels"
+import { renderTarjetaLinkedin } from "../render/render"
+import { estiloDesdeConfig } from "../render/theme"
+import type { RawNews } from "@/lib/types"
+import { buildCommentary, publishText, subirImagen, type PublishResult } from "./linkedin"
 
 /**
  * Publica una pieza y anota el resultado en su fila.
@@ -36,7 +42,9 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
     return { ok: false, error: "La pieza no tiene texto que publicar." }
   }
 
-  const result = await publishText(commentary)
+  // La ilustracion es opcional: si algo falla se publica igual, solo con texto.
+  const imagen = await tarjetaDelPost(piece, commentary)
+  const result = await publishText(commentary, imagen)
 
   if (result.ok) {
     await supabase
@@ -80,4 +88,62 @@ export async function pendingToPublish(
 
   if (error) throw new Error(`No se pudieron leer las piezas por publicar: ${error.message}`)
   return (data ?? []) as ContentPiece[]
+}
+
+/**
+ * La imagen que acompaña al post.
+ *
+ * Misma regla que en el carrusel: la foto sale del banco buscando el tema
+ * concreto de la noticia, no su nicho, porque ilustrar "IA" con fotos de "IA"
+ * devuelve siempre el mismo imaginario vacio. Encima va el titular sobre un velo
+ * oscuro, que es lo que la hace legible en el feed.
+ *
+ * Devuelve `null` sin ruido ante cualquier problema: un post con texto y sin
+ * imagen sigue sirviendo, y perderlo por la ilustracion seria absurdo.
+ */
+async function tarjetaDelPost(
+  piece: ContentPiece,
+  commentary: string
+): Promise<{ urn: string; altText: string } | null> {
+  try {
+    const supabase = supabaseAdmin()
+
+    const { data: cfg } = await supabase
+      .from("generation_config")
+      .select("carousel")
+      .eq("id", true)
+      .maybeSingle()
+
+    const estilo = estiloDesdeConfig((cfg as { carousel?: unknown } | null)?.carousel)
+    if (!estilo.usarFotos || !pexelsConfigurado()) return null
+
+    const news = piece.raw_news_id
+      ? ((
+          await supabase.from("raw_news").select("*").eq("id", piece.raw_news_id).maybeSingle()
+        ).data as RawNews | null)
+      : null
+
+    const banco = new BancoDeFotos(terminosDeBusqueda(news, await nichosConocidos()))
+    const elegida = await banco.siguiente()
+    const foto = elegida ? await descargarFotoPexels(elegida) : null
+
+    // El titular es el hook si lo hay; si no, la primera frase del cuerpo, que
+    // es donde la gramatica de LinkedIn pone el gancho.
+    const titular =
+      piece.payload?.hook?.trim() ||
+      commentary
+        .split("\n")
+        .find((linea) => linea.trim().length > 0)
+        ?.trim() ||
+      ""
+
+    if (!titular) return null
+
+    const png = await renderTarjetaLinkedin(titular, foto, estilo)
+    const urn = await subirImagen(png)
+
+    return urn ? { urn, altText: titular } : null
+  } catch {
+    return null
+  }
 }

@@ -20,6 +20,7 @@ const AUTH_URL = "https://www.linkedin.com/oauth/v2/authorization"
 const TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 const USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
 const POSTS_URL = "https://api.linkedin.com/rest/posts"
+const IMAGES_URL = "https://api.linkedin.com/rest/images"
 
 /**
  * `openid profile` es lo que permite leer /v2/userinfo para sacar el `sub`, que
@@ -213,12 +214,71 @@ export function buildCommentary(payload: PiecePayload): string {
 }
 
 /**
+ * Sube una imagen y devuelve su URN.
+ *
+ * LinkedIn no acepta una URL: hay que registrar la subida, mandar los bytes a la
+ * direccion que devuelve y usar el URN resultante en el post. Tres pasos, y el
+ * segundo no va contra api.linkedin.com sino contra un dominio de subida.
+ *
+ * El texto alternativo no va aqui sino en el post: la subida solo registra los
+ * bytes.
+ *
+ * Devuelve `null` si algo falla: un post con texto y sin imagen sigue siendo un
+ * post, y no merece la pena perderlo por la ilustracion.
+ */
+export async function subirImagen(png: Buffer): Promise<string | null> {
+  const account = await getLinkedinAccount()
+  if (!account) return null
+
+  try {
+    const inicio = await fetch(`${IMAGES_URL}?action=initializeUpload`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${account.access_token}`,
+        "X-Restli-Protocol-Version": "2.0.0",
+        "LinkedIn-Version": LINKEDIN_VERSION,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ initializeUploadRequest: { owner: account.person_urn } }),
+      signal: AbortSignal.timeout(20_000),
+    })
+
+    if (!inicio.ok) return null
+
+    const registro = (await inicio.json()) as {
+      value?: { uploadUrl?: string; image?: string }
+    }
+    const uploadUrl = registro.value?.uploadUrl
+    const urn = registro.value?.image
+    if (!uploadUrl || !urn) return null
+
+    const subida = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${account.access_token}`,
+        "Content-Type": "image/png",
+      },
+      body: new Uint8Array(png),
+      signal: AbortSignal.timeout(45_000),
+    })
+
+    if (!subida.ok) return null
+    return urn
+  } catch {
+    return null
+  }
+}
+
+/**
  * Publica un texto en el feed del miembro.
  *
  * No lanza: el fallo viaja en el resultado y se guarda en la pieza, para que un
  * error de LinkedIn no tumbe una pasada del pipeline que ya hizo su trabajo.
  */
-export async function publishText(commentary: string): Promise<PublishResult> {
+export async function publishText(
+  commentary: string,
+  imagen?: { urn: string; altText: string } | null
+): Promise<PublishResult> {
   const account = await getLinkedinAccount()
   if (!account) {
     return { ok: false, error: "No hay ninguna cuenta de LinkedIn conectada." }
@@ -248,6 +308,9 @@ export async function publishText(commentary: string): Promise<PublishResult> {
           targetEntities: [],
           thirdPartyDistributionChannels: [],
         },
+        ...(imagen
+          ? { content: { media: { altText: imagen.altText.slice(0, 120), id: imagen.urn } } }
+          : {}),
         lifecycleState: "PUBLISHED",
         isReshareDisabledByAuthor: false,
       }),

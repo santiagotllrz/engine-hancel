@@ -30,6 +30,9 @@ export function CarouselStyleEditor({
   const [marca, setMarca] = React.useState(estilo.marca)
   const [paginacion, setPaginacion] = React.useState(estilo.mostrarPaginacion)
   const [usarFotos, setUsarFotos] = React.useState(estilo.usarFotos)
+  const [cierreActivo, setCierreActivo] = React.useState(estilo.cierre.activo)
+  const [cierreTitulo, setCierreTitulo] = React.useState(estilo.cierre.titulo)
+  const [cierreTexto, setCierreTexto] = React.useState(estilo.cierre.texto)
   const [pending, startTransition] = React.useTransition()
   const [result, setResult] = React.useState<ActionResult | null>(null)
 
@@ -38,7 +41,10 @@ export function CarouselStyleEditor({
     fuente !== estilo.fuente ||
     marca !== estilo.marca ||
     paginacion !== estilo.mostrarPaginacion ||
-    usarFotos !== estilo.usarFotos
+    usarFotos !== estilo.usarFotos ||
+    cierreActivo !== estilo.cierre.activo ||
+    cierreTitulo !== estilo.cierre.titulo ||
+    cierreTexto !== estilo.cierre.texto
 
   const save = () => {
     const form = new FormData()
@@ -47,6 +53,9 @@ export function CarouselStyleEditor({
     form.set("marca", marca)
     form.set("mostrarPaginacion", paginacion ? "true" : "false")
     form.set("usarFotos", usarFotos ? "true" : "false")
+    form.set("cierreActivo", cierreActivo ? "true" : "false")
+    form.set("cierreTitulo", cierreTitulo)
+    form.set("cierreTexto", cierreTexto)
 
     setResult(null)
     startTransition(async () => setResult(await updateCarouselStyle(form)))
@@ -179,6 +188,50 @@ export function CarouselStyleEditor({
             }}
             aria-label="Usar fotos de banco"
           />
+        </div>
+
+        <div className="space-y-3 border-t pt-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <Label htmlFor="cierreActivo">Lamina de cierre</Label>
+              <p className="text-muted-foreground mt-1 text-xs">
+                Se añade al final de cada carrusel, con foto de fondo. Es una constante de la
+                marca, asi que no se le pide a la rutina.
+              </p>
+            </div>
+            <Switch
+              id="cierreActivo"
+              checked={cierreActivo}
+              onCheckedChange={(v) => {
+                setResult(null)
+                setCierreActivo(Boolean(v))
+              }}
+              aria-label="Añadir lamina de cierre"
+            />
+          </div>
+
+          {cierreActivo ? (
+            <div className="grid gap-3">
+              <Input
+                maxLength={40}
+                placeholder="Siguenos"
+                value={cierreTitulo}
+                onChange={(e) => {
+                  setResult(null)
+                  setCierreTitulo(e.target.value)
+                }}
+              />
+              <Input
+                maxLength={140}
+                placeholder="Analisis de lo que pasa en tecnologia, sin ruido."
+                value={cierreTexto}
+                onChange={(e) => {
+                  setResult(null)
+                  setCierreTexto(e.target.value)
+                }}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

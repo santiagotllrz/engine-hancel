@@ -443,6 +443,11 @@ export async function updateCarouselStyle(form: FormData): Promise<ActionResult>
           marca,
           mostrarPaginacion: form.get("mostrarPaginacion") === "true",
           usarFotos: form.get("usarFotos") === "true",
+          cierre: {
+            activo: form.get("cierreActivo") === "true",
+            titulo: text(form, "cierreTitulo").slice(0, 40),
+            texto: text(form, "cierreTexto").slice(0, 140),
+          },
         },
         updated_at: new Date().toISOString(),
       })

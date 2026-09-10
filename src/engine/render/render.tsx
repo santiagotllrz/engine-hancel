@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og"
 
 import { cargarFuente } from "./fonts"
-import { Composicion, type Slide } from "./templates"
+import { Composicion, TarjetaLinkedin, type Slide } from "./templates"
 import { ESTILO_POR_DEFECTO, LIENZO, type Estilo, type Variante } from "./theme"
 
 /**
@@ -75,6 +75,36 @@ export async function renderSlide(
       foto={foto ?? null}
     />,
     { width: LIENZO, height: LIENZO, fonts }
+  )
+
+  return Buffer.from(await respuesta.arrayBuffer())
+}
+
+/**
+ * La imagen que acompaña a un post de LinkedIn.
+ *
+ * 1200x627 es la proporcion que LinkedIn muestra en el feed sin recortar; con
+ * una cuadrada se come los bordes.
+ */
+export const TARJETA_ANCHO = 1200
+export const TARJETA_ALTO = 627
+
+export async function renderTarjetaLinkedin(
+  titular: string,
+  foto: string | null,
+  estilo: Estilo = ESTILO_POR_DEFECTO
+): Promise<Buffer> {
+  const fonts = await cargarFuente(estilo.fuente)
+
+  const respuesta = new ImageResponse(
+    <TarjetaLinkedin
+      titular={titular}
+      estilo={estilo}
+      foto={foto}
+      ancho={TARJETA_ANCHO}
+      alto={TARJETA_ALTO}
+    />,
+    { width: TARJETA_ANCHO, height: TARJETA_ALTO, fonts }
   )
 
   return Buffer.from(await respuesta.arrayBuffer())

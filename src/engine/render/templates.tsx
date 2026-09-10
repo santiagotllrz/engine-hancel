@@ -523,11 +523,204 @@ function Lamina({ slide, total, estilo }: LaminaProps) {
   )
 }
 
+/**
+ * Cierre: la invitacion a seguir la cuenta.
+ *
+ * Centrada y sin paginacion, para que se lea como el final y no como una lamina
+ * mas. La foto va muy velada: aqui la imagen es fondo, no contenido.
+ */
+export function Cierre({ estilo, foto }: { estilo: Estilo; foto: string | null }) {
+  const { paleta, marca, cierre } = estilo
+
+  return (
+    <div style={{ display: "flex", width: LIENZO, height: LIENZO, position: "relative" }}>
+      {foto ? (
+        <Foto src={foto} position="absolute" top={0} left={0} width={LIENZO} height={LIENZO} />
+      ) : null}
+
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: LIENZO,
+          height: LIENZO,
+          // Mas opaco que en las otras laminas: el texto va centrado y sin
+          // bloque de color detras, asi que necesita fondo tranquilo.
+          background: foto ? "rgba(6, 9, 13, 0.78)" : paleta.fondo,
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: LIENZO,
+          height: LIENZO,
+          padding: MARGEN,
+          fontFamily: estilo.fuente,
+          color: paleta.texto,
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            width: 72,
+            height: 72,
+            borderRadius: 72,
+            background: paleta.acento,
+            marginBottom: 48,
+          }}
+        />
+
+        <div
+          style={{
+            display: "flex",
+            fontSize: 96,
+            fontWeight: 700,
+            lineHeight: 1.05,
+            letterSpacing: -2,
+            marginBottom: 28,
+          }}
+        >
+          {cierre.titulo}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            fontSize: 40,
+            lineHeight: 1.38,
+            color: paleta.textoSuave,
+            maxWidth: 760,
+          }}
+        >
+          {cierre.texto}
+        </div>
+
+        {marca ? (
+          <div
+            style={{
+              display: "flex",
+              marginTop: 64,
+              fontSize: 30,
+              fontWeight: 600,
+              letterSpacing: 6,
+              textTransform: "uppercase",
+              color: paleta.acento,
+            }}
+          >
+            {marca}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * La imagen que acompaña a un post de LinkedIn.
+ *
+ * Formato apaisado, que es el que LinkedIn muestra sin recortar en el feed, y el
+ * mismo lenguaje que el carrusel: foto velada y titular encima.
+ */
+export function TarjetaLinkedin({
+  titular,
+  estilo,
+  foto,
+  ancho,
+  alto,
+}: {
+  titular: string
+  estilo: Estilo
+  foto: string | null
+  ancho: number
+  alto: number
+}) {
+  const { paleta, marca } = estilo
+  const tamano = titular.length <= 70 ? 66 : titular.length <= 130 ? 54 : 44
+
+  return (
+    <div style={{ display: "flex", width: ancho, height: alto, position: "relative" }}>
+      {foto ? (
+        <Foto src={foto} position="absolute" top={0} left={0} width={ancho} height={alto} />
+      ) : null}
+
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: ancho,
+          height: alto,
+          background: foto ? "rgba(6, 9, 13, 0.72)" : paleta.fondo,
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: ancho,
+          height: alto,
+          padding: 72,
+          fontFamily: estilo.fuente,
+          color: paleta.texto,
+        }}
+      >
+        <div style={{ display: "flex", width: 84, height: 8, borderRadius: 8, background: paleta.acento }} />
+
+        <div
+          style={{
+            display: "flex",
+            fontSize: tamano,
+            fontWeight: 700,
+            lineHeight: 1.1,
+            letterSpacing: -1.2,
+            maxWidth: ancho - 144,
+          }}
+        >
+          {titular}
+        </div>
+
+        {marca ? (
+          <div
+            style={{
+              display: "flex",
+              fontSize: 26,
+              fontWeight: 600,
+              letterSpacing: 5,
+              textTransform: "uppercase",
+              color: paleta.textoSuave,
+            }}
+          >
+            {marca}
+          </div>
+        ) : (
+          <div style={{ display: "flex", height: 8 }} />
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** Elige la composicion. Si pide foto y no hay, cae a una que no la necesita. */
 export function Composicion(props: LaminaProps) {
   const { variante, foto } = props
 
   switch (variante) {
+    case "cierre":
+      return <Cierre estilo={props.estilo} foto={foto} />
     case "portada":
     case "foto_fondo":
       return <SobreFoto {...props} />

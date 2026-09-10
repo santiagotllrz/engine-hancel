@@ -81,7 +81,17 @@ export async function generarCarrusel(
 ): Promise<CarouselPayload> {
   const { caption, hashtags, slides } = parseInstagramResponse(respuesta)
 
+  // El cierre es una lamina de marca, no del guion: se añade aqui y no se le
+  // pide a la rutina. Si el guion ya llega al tope de Instagram, se recorta uno
+  // para hacerle sitio en vez de pasarse.
+  const conCierre = estilo.cierre.activo
+  if (conCierre && slides.length >= MAX_SLIDES) slides.length = MAX_SLIDES - 1
+
   const variantes = repartirVariantes(slides, estilo.usarFotos && pexelsConfigurado())
+  if (conCierre) {
+    slides.push({ n: slides.length + 1, type: "text", title: estilo.cierre.titulo, body: estilo.cierre.texto })
+    variantes.push("cierre")
+  }
   const conFoto = necesitanFoto(variantes)
 
   // La portada usa la foto de la noticia; las interiores, el banco.
@@ -97,7 +107,11 @@ export async function generarCarrusel(
 
     if (indice === 0) {
       foto = fotoNoticia
-    } else if (conFoto[indice] && estilo.usarFotos && pexelsConfigurado()) {
+    } else if (
+      (conFoto[indice] || variantes[indice] === "cierre") &&
+      estilo.usarFotos &&
+      pexelsConfigurado()
+    ) {
       // `siguiente()` no repite dentro del mismo post: lleva la cuenta de lo ya
       // servido y va agotando terminos antes que reutilizar una foto.
       const elegida = await banco.siguiente()

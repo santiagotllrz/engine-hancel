@@ -105,12 +105,32 @@ export const MARGEN = 96
  */
 export type Variante =
   | "portada"
+  | "cierre"
   | "texto"
   | "foto_fondo"
   | "foto_lateral"
   | "foto_recuadro"
   | "cita"
   | "dato"
+
+/**
+ * La lamina de cierre.
+ *
+ * Se añade al final de todos los carruseles cuando esta encendida. Va aparte del
+ * guion que escribe la rutina a proposito: es una constante de la marca, no
+ * contenido de la noticia, y no tiene sentido pedirsela al modelo cada vez.
+ */
+export type Cierre = {
+  activo: boolean
+  titulo: string
+  texto: string
+}
+
+export const CIERRE_POR_DEFECTO: Cierre = {
+  activo: false,
+  titulo: "Siguenos",
+  texto: "Analisis de lo que pasa en tecnologia, sin ruido.",
+}
 
 /** Lo que el usuario puede cambiar desde la interfaz. */
 export type Estilo = {
@@ -122,6 +142,7 @@ export type Estilo = {
   mostrarPaginacion: boolean
   /** Meter fotos de banco en las laminas interiores. */
   usarFotos: boolean
+  cierre: Cierre
 }
 
 export const ESTILO_POR_DEFECTO: Estilo = {
@@ -131,6 +152,7 @@ export const ESTILO_POR_DEFECTO: Estilo = {
   marca: "",
   mostrarPaginacion: true,
   usarFotos: true,
+  cierre: CIERRE_POR_DEFECTO,
 }
 
 /** Arma el estilo a partir de lo guardado en `generation_config.carousel`. */
@@ -150,5 +172,21 @@ export function estiloDesdeConfig(valor: unknown): Estilo {
     marca: typeof raw.marca === "string" ? raw.marca.trim().slice(0, 40) : "",
     mostrarPaginacion: raw.mostrarPaginacion !== false,
     usarFotos: raw.usarFotos !== false,
+    cierre: cierreDesdeConfig(raw.cierre),
+  }
+}
+
+function cierreDesdeConfig(valor: unknown): Cierre {
+  const raw = (valor ?? {}) as Record<string, unknown>
+  const texto = (campo: unknown, porDefecto: string, tope: number) =>
+    typeof campo === "string" && campo.trim().length > 0
+      ? campo.trim().slice(0, tope)
+      : porDefecto
+
+  return {
+    // Apagado salvo que se diga lo contrario: añade una lamina a cada carrusel.
+    activo: raw.activo === true,
+    titulo: texto(raw.titulo, CIERRE_POR_DEFECTO.titulo, 40),
+    texto: texto(raw.texto, CIERRE_POR_DEFECTO.texto, 140),
   }
 }
