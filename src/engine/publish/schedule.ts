@@ -22,8 +22,6 @@ export type PublishSchedule = {
   run_hours: number[]
   run_minute: number
   batch_size: number
-  /** Canal de Buffer en el que se publica. Solo lo usa Instagram por ahora. */
-  channel_id: string | null
   last_batch_at: string | null
   updated_at: string
 }

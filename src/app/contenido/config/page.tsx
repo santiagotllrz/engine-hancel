@@ -1,4 +1,3 @@
-import { BufferChannelPicker } from "@/components/contenido/buffer-channel-picker"
 import { CarouselStyleEditor } from "@/components/contenido/carousel-style-editor"
 import { GenerationConfigEditor } from "@/components/contenido/generation-config-editor"
 import { LinkedinConnection } from "@/components/contenido/linkedin-connection"
@@ -7,7 +6,6 @@ import { DashboardShell } from "@/components/dashboard-shell"
 import { pexelsConfigurado } from "@/engine/render/pexels"
 import { estiloDesdeConfig } from "@/engine/render/theme"
 import { getLinkedinStatus } from "@/engine/publish/linkedin"
-import { bufferConfigurado, listarCanales, type BufferChannel } from "@/engine/publish/buffer"
 import { getPublishSchedules, proximasTandas } from "@/engine/publish/schedule"
 import { pendingToPublish } from "@/engine/publish/publish-piece"
 import { getSettings, hourIn } from "@/engine/schedule"
@@ -38,18 +36,6 @@ export default async function ContenidoConfigPage({
     getSettings(),
   ])
 
-  // Listar canales llama a Buffer: si falla, se dice en la tarjeta en vez de
-  // tumbar la pagina entera de configuracion.
-  let canales: BufferChannel[] = []
-  let errorCanales: string | null = null
-  if (bufferConfigurado()) {
-    try {
-      canales = await listarCanales()
-    } catch (error) {
-      errorCanales = error instanceof Error ? error.message : String(error)
-    }
-  }
-
   const ahora = new Date()
   const proximas: Record<string, string[]> = {}
   const disponibles: Record<string, number> = {}
@@ -78,13 +64,6 @@ export default async function ContenidoConfigPage({
           proximas={proximas}
           disponibles={disponibles}
           linkedinConectado={linkedin.connected && !linkedin.expired}
-        />
-
-        <BufferChannelPicker
-          canales={canales}
-          elegido={schedules.find((s) => s.network === "instagram")?.channel_id ?? null}
-          configurado={bufferConfigurado()}
-          error={errorCanales}
         />
 
         <CarouselStyleEditor

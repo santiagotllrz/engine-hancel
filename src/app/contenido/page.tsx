@@ -12,7 +12,6 @@ import {
 } from "@/lib/content-data"
 import { bufferConfigurado } from "@/engine/publish/buffer"
 import { getLinkedinStatus } from "@/engine/publish/linkedin"
-import { getPublishSchedules } from "@/engine/publish/schedule"
 import { formatNumber } from "@/lib/format"
 
 // Cambia con cada pasada del pipeline: nada que prerenderizar.
@@ -45,9 +44,6 @@ export default async function ContenidoPage() {
     getLinkedinStatus(),
   ])
 
-  const horarios = await getPublishSchedules()
-  const canalInstagram =
-    horarios.find((h) => h.network === "instagram")?.channel_id ?? null
 
   return (
     <DashboardShell title="Contenido">
@@ -66,7 +62,9 @@ export default async function ContenidoPage() {
         pieces={pieces}
         hasThreshold={config.score_threshold !== null}
         linkedinConnected={linkedin.connected && !linkedin.expired}
-        instagramListo={bufferConfigurado() && canalInstagram !== null}
+        // Con la clave basta: el canal se resuelve al publicar, porque la cuenta
+        // ya esta conectada en Buffer y no hay que volver a elegirla aqui.
+        instagramListo={bufferConfigurado()}
       />
     </DashboardShell>
   )

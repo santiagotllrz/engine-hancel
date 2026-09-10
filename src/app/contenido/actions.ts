@@ -377,22 +377,6 @@ export async function runTickNow(): Promise<ActionResult> {
 
 // ------------------------------------------------------------- configuracion
 
-/** En que canal de Buffer se publica Instagram. */
-export async function updateBufferChannel(channelId: string): Promise<ActionResult> {
-  try {
-    const { error } = await supabaseAdmin()
-      .from("publish_schedule")
-      .update({ channel_id: channelId || null, updated_at: new Date().toISOString() })
-      .eq("network", "instagram")
-
-    if (error) throw new Error(error.message)
-    refresh()
-    return { ok: true }
-  } catch (error) {
-    return fail(error, "No se pudo guardar el canal.")
-  }
-}
-
 /** Cuando y cuanto se publica en una red. */
 export async function updatePublishSchedule(form: FormData): Promise<ActionResult> {
   const network = text(form, "network")

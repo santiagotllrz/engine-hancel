@@ -6,7 +6,7 @@ import { BancoDeFotos, descargarFotoPexels, pexelsConfigurado } from "../render/
 import { renderTarjetaLinkedin } from "../render/render"
 import { estiloDesdeConfig } from "../render/theme"
 import type { RawNews } from "@/lib/types"
-import { publicarEnBuffer } from "./buffer"
+import { publicarEnBuffer, resolverCanalInstagram } from "./buffer"
 import { buildCommentary, publishText, subirImagen, type PublishResult } from "./linkedin"
 
 /**
@@ -98,17 +98,13 @@ async function publicarCarrusel(piece: ContentPiece): Promise<PublishResult> {
     return { ok: false, error: "El carrusel no tiene imagenes." }
   }
 
-  const { data } = await supabaseAdmin()
-    .from("publish_schedule")
-    .select("channel_id")
-    .eq("network", "instagram")
-    .maybeSingle()
-
-  const channelId = (data as { channel_id: string | null } | null)?.channel_id
+  const channelId = await resolverCanalInstagram()
   if (!channelId) {
     return {
       ok: false,
-      error: "No hay canal de Instagram elegido en Buffer. Eligelo en /contenido/config.",
+      error:
+        "No hay canal de Instagram: define BUFFER_CHANNEL_ID en el entorno " +
+        "o comprueba que BUFFER_API_KEY es valida.",
     }
   }
 

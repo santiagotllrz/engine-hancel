@@ -492,11 +492,20 @@ relacion resuelta y expone una sola llamada.
 
 ```
 BUFFER_API_KEY=xxx
+BUFFER_CHANNEL_ID=xxx
 ```
 
-El canal se elige en `/contenido/config`, y hay que elegirlo: una misma cuenta
-puede tener **varios canales con el mismo nombre**, y publicar en el que no toca
-no tiene deshacer.
+El canal va en el entorno y no en la interfaz: la cuenta ya esta conectada en
+Buffer, y elegirla tambien aqui seria configurar dos veces lo mismo. El id es el
+que aparece en la URL del canal:
+
+```
+https://publish.buffer.com/channels/<BUFFER_CHANNEL_ID>/schedule
+```
+
+Sin la variable se cae al primer canal de Instagram que devuelva Buffer, lo cual
+sirve mientras solo haya uno. **Con varias cuentas conectadas hay que fijarla** o
+se publicaria en la que no toca.
 
 #### Lo que hubo que averiguar
 

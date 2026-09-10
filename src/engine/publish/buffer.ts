@@ -142,3 +142,28 @@ export async function publicarEnBuffer(opciones: {
     return { ok: false, error: message }
   }
 }
+
+/**
+ * El canal en el que se publica Instagram.
+ *
+ * Va en el entorno y no en la interfaz: la cuenta ya esta conectada en Buffer y
+ * elegirla otra vez aqui seria configurar dos veces lo mismo. Es el id que
+ * aparece en la URL del canal en Buffer:
+ *
+ *   https://publish.buffer.com/channels/<BUFFER_CHANNEL_ID>/schedule
+ *
+ * Sin la variable se cae al primer canal de Instagram que haya, que sirve
+ * mientras solo haya uno; con varias cuentas conectadas hay que fijarla o se
+ * publicaria en la que no toca.
+ */
+export async function resolverCanalInstagram(): Promise<string | null> {
+  const fijado = process.env.BUFFER_CHANNEL_ID
+  if (fijado) return fijado
+
+  try {
+    const canales = await listarCanales()
+    return canales.find((c) => c.service === "instagram")?.id ?? null
+  } catch {
+    return null
+  }
+}

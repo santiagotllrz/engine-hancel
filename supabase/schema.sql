@@ -522,9 +522,3 @@ on conflict (network) do nothing;
 alter table public.generation_config
   add column if not exists carousel jsonb not null default
     '{"paleta":"noche","fuente":"HeroFont","marca":"","mostrarPaginacion":true,"usarFotos":true}'::jsonb;
-
--- En que canal de Buffer publica cada red.
---
--- Hace falta porque una misma cuenta puede tener varios canales conectados con
--- el mismo nombre, y adivinar cual es seria una loteria.
-alter table public.publish_schedule add column if not exists channel_id text;
