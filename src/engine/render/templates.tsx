@@ -545,9 +545,9 @@ export function Cierre({ estilo, foto }: { estilo: Estilo; foto: string | null }
           left: 0,
           width: LIENZO,
           height: LIENZO,
-          // Mas opaco que en las otras laminas: el texto va centrado y sin
-          // bloque de color detras, asi que necesita fondo tranquilo.
-          background: foto ? "rgba(6, 9, 13, 0.78)" : paleta.fondo,
+          // El velo de la paleta, reforzado: aqui el texto va centrado y sin
+          // bloque detras, asi que necesita el fondo mas tranquilo que el resto.
+          background: foto ? paleta.veloFuerte : paleta.fondo,
         }}
       />
 
@@ -659,7 +659,7 @@ export function TarjetaLinkedin({
           left: 0,
           width: ancho,
           height: alto,
-          background: foto ? "rgba(6, 9, 13, 0.72)" : paleta.fondo,
+          background: foto ? paleta.veloFuerte : paleta.fondo,
         }}
       />
 

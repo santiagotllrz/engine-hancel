@@ -442,6 +442,13 @@ para eso; conviene recordarlo antes de tocarlas.
 
 #### Ajustar el diseño
 
+Las paletas son **estrictamente blanco y negro** —`negro`, `blanco` y `carbon`—
+sin acento de color: en un feed saturado una serie monocroma se reconoce de un
+vistazo, y el contraste puro deja el peso en la tipografia y en la foto. El
+acento sigue existiendo (la barra de la cita, el numero grande, el punto de la
+marca) pero es el propio blanco o negro, asi que marca por contraste y no por
+tono.
+
 Todo lo que un diseñador querria cambiar vive en
 [`theme.ts`](src/engine/render/theme.ts): paleta, escala tipografica y margenes.
 Las plantillas no llevan colores ni tamaños propios.

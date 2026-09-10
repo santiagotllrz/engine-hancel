@@ -17,48 +17,56 @@ export type Paleta = {
   acento: string
   /** Velo sobre la foto: sin el, el texto encima no se lee. */
   velo: string
+  /** Para el cierre y la tarjeta, donde el texto va suelto y pide mas calma. */
+  veloFuerte: string
 }
 
 export const PALETA: Paleta = {
-  fondo: "#0B0F14",
-  fondoAlterno: "#111820",
-  texto: "#F5F7FA",
-  textoSuave: "#9AA7B4",
-  acento: "#4ADE80",
-  velo: "rgba(6, 9, 13, 0.62)",
+  fondo: "#0A0A0A",
+  fondoAlterno: "#141414",
+  texto: "#FFFFFF",
+  textoSuave: "#A1A1A1",
+  acento: "#FFFFFF",
+  velo: "rgba(0, 0, 0, 0.66)",
+  veloFuerte: "rgba(0, 0, 0, 0.8)",
 }
 
-/** Paletas listas para elegir desde la interfaz. */
+/**
+ * Paletas listas para elegir. Todas en blanco y negro.
+ *
+ * Sin color a proposito: en un feed saturado, una serie estrictamente monocroma
+ * se reconoce de un vistazo, y el contraste puro deja el peso en la tipografia y
+ * en la foto en vez de repartirlo con un acento de color.
+ *
+ * El acento no desaparece —hace falta para la barra de la cita, el numero grande
+ * o el punto de la marca— pero es el propio blanco o negro, asi que marca por
+ * contraste y no por tono.
+ */
 export const PALETAS: Record<string, Paleta> = {
-  noche: PALETA,
-  papel: {
-    fondo: "#F7F5F0",
-    fondoAlterno: "#EFEBE3",
-    texto: "#14110D",
-    textoSuave: "#6B6357",
-    acento: "#C2410C",
-    velo: "rgba(20, 17, 13, 0.45)",
+  negro: PALETA,
+  blanco: {
+    fondo: "#FFFFFF",
+    fondoAlterno: "#F2F2F2",
+    texto: "#0A0A0A",
+    textoSuave: "#616161",
+    acento: "#0A0A0A",
+    // Sobre fondo claro el velo tambien aclara: si no, el texto negro no se lee.
+    velo: "rgba(255, 255, 255, 0.78)",
+    veloFuerte: "rgba(255, 255, 255, 0.88)",
   },
-  tinta: {
-    fondo: "#101418",
-    fondoAlterno: "#1B2027",
-    texto: "#F2F4F7",
-    textoSuave: "#98A2B3",
-    acento: "#7C9CF5",
-    velo: "rgba(10, 13, 16, 0.6)",
-  },
-  bosque: {
-    fondo: "#08120D",
-    fondoAlterno: "#0F1D16",
-    texto: "#F0F5F2",
-    textoSuave: "#8FA69A",
-    acento: "#34D399",
-    velo: "rgba(4, 12, 8, 0.6)",
+  carbon: {
+    fondo: "#1C1C1C",
+    fondoAlterno: "#262626",
+    texto: "#FAFAFA",
+    textoSuave: "#9E9E9E",
+    acento: "#FAFAFA",
+    velo: "rgba(12, 12, 12, 0.62)",
+    veloFuerte: "rgba(8, 8, 8, 0.78)",
   },
 }
 
 export type NombrePaleta = keyof typeof PALETAS
-export const PALETA_POR_DEFECTO = "noche"
+export const PALETA_POR_DEFECTO = "negro"
 
 /**
  * Las familias disponibles. El render acepta cualquiera que este en `fonts/`
