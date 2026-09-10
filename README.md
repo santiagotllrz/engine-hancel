@@ -410,7 +410,12 @@ content_pieces             network 'instagram', payload con las URLs en orden
 ```
 
 El array va en orden y **ese es el orden del carrusel**. El primer slide es
-`photo_hook` y usa `raw_news.image_url` de fondo; el resto son `text`.
+`photo_hook` y el resto son `text`.
+
+Todas las fotos salen del banco, la portada incluida: la imagen que trae Serper
+es una miniatura de unos 300px que al escalarla a 1080 se ve blanda, y ademas es
+la misma que sale en cualquier agregador. Van desaturadas para no romper la
+serie monocroma.
 
 Instagram no admite carruseles de mas de 10, asi que lo que sobre se recorta. Si
 llegan menos de 2 slides utiles, el trabajo se marca `failed` con el motivo, como
@@ -479,9 +484,16 @@ carrusel, y la pieza queda marcada con `portadaSinFoto` para poder revisarlo. La
 descarga nunca lanza: una portada sin foto sigue siendo una portada, pero un
 carrusel a medias no es nada.
 
-Aviso practico: las fotos que trae Serper suelen ser **miniaturas de gstatic**
-(unos 300px), asi que al escalarlas a 1080 se ven blandas. Para portadas nitidas
-habria que resolver la imagen original del articulo, que es trabajo aparte.
+#### Tamaños de letra fijos
+
+Un titulo mide lo mismo en todas las laminas, y lo mismo una descripcion. Antes
+la letra encogia segun el largo del texto, y eso hacia que cada lamina tuviera su
+propia escala y el carrusel se leyera desparejo.
+
+El precio de esa consistencia es que un texto muy largo hay que recortarlo, con
+puntos suspensivos y por palabra: Satori no ajusta el texto al hueco, lo desborda
+y lo corta contra el borde. Los topes estan en `TOPES`, en `theme.ts`, y cambian
+segun el hueco de cada composicion.
 
 ### Publicar el carrusel: Instagram via Buffer
 

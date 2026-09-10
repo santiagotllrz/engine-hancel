@@ -4,7 +4,6 @@ import { supabaseAdmin } from "../supabase-admin"
 import { terminosDeBusqueda } from "./keywords"
 import { BancoDeFotos, descargarFotoPexels, pexelsConfigurado } from "./pexels"
 import {
-  descargarFoto,
   MAX_SLIDES,
   MIN_SLIDES,
   necesitanFoto,
@@ -94,21 +93,21 @@ export async function generarCarrusel(
   }
   const conFoto = necesitanFoto(variantes)
 
-  // La portada usa la foto de la noticia; las interiores, el banco.
-  const fotoNoticia = await descargarFoto(news?.image_url)
-
   const terminos = terminosDeBusqueda(news, nichos)
   const banco = new BancoDeFotos(terminos)
   const creditos: { autor: string; url: string }[] = []
 
+  // La portada tambien tira del banco. Antes usaba la imagen de la noticia, pero
+  // Serper devuelve miniaturas de unos 300px que al escalarlas a 1080 se ven
+  // blandas, y encima repetian la foto que ya sale en cualquier agregador.
   const imagenes: Buffer[] = []
+  let sinFotoPortada = false
+
   for (const [indice, slide] of slides.entries()) {
     let foto: string | null = null
 
-    if (indice === 0) {
-      foto = fotoNoticia
-    } else if (
-      (conFoto[indice] || variantes[indice] === "cierre") &&
+    if (
+      (indice === 0 || conFoto[indice] || variantes[indice] === "cierre") &&
       estilo.usarFotos &&
       pexelsConfigurado()
     ) {
@@ -121,6 +120,9 @@ export async function generarCarrusel(
           creditos.push({ autor: elegida.autor, url: elegida.autorUrl })
         }
       }
+      if (indice === 0 && !foto) sinFotoPortada = true
+    } else if (indice === 0) {
+      sinFotoPortada = true
     }
 
     imagenes.push(
@@ -135,7 +137,7 @@ export async function generarCarrusel(
     hashtags,
     images,
     slideCount: slides.length,
-    portadaSinFoto: fotoNoticia === null,
+    portadaSinFoto: sinFotoPortada,
     terminosFoto: terminos.slice(0, 6),
     creditos,
   }

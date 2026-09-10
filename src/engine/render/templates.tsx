@@ -1,4 +1,4 @@
-import { ESCALA, LIENZO, MARGEN, type Estilo, type Variante } from "./theme"
+import { ESCALA, LIENZO, MARGEN, TOPES, type Estilo, type Variante } from "./theme"
 
 /**
  * Las laminas del carrusel.
@@ -38,25 +38,31 @@ export type LaminaProps = {
 }
 
 /**
- * Encoge la tipografia cuando el texto es largo.
+ * Recorta por palabra y cierra con puntos suspensivos.
  *
- * Satori no ajusta el texto al hueco: si no cabe, lo desborda y lo recorta. Con
- * esto un titulo corto se ve enorme y uno largo sigue cabiendo.
+ * Los tamaños de letra son fijos para que el carrusel se lea parejo, asi que lo
+ * que no cabe hay que quitarlo: Satori no ajusta el texto al hueco, lo desborda
+ * y lo corta contra el borde a media palabra.
  */
-function tamanoSegunLargo(texto: string, grande: number, pequeno: number): number {
-  const largo = texto.length
-  if (largo <= 60) return grande
-  if (largo <= 110) return Math.round((grande + pequeno) / 2)
-  if (largo <= 180) return pequeno
-  return Math.round(pequeno * 0.82)
+function recortar(texto: string, tope: number): string {
+  if (texto.length <= tope) return texto
+
+  const cortado = texto.slice(0, tope)
+  const ultimoEspacio = cortado.lastIndexOf(" ")
+  const limpio = (ultimoEspacio > tope * 0.6 ? cortado.slice(0, ultimoEspacio) : cortado).trimEnd()
+
+  return `${limpio.replace(/[.,;:]$/, "")}…`
 }
 
 function Foto({ src, ...estilo }: { src: string } & React.CSSProperties) {
   // Satori dibuja un subconjunto de HTML y no conoce next/image; ademas esto no
   // acaba en un navegador sino en un PNG, asi que ni la optimizacion ni el alt
   // tienen a quien servir.
+  // Desaturada: las fotos del banco vienen a color y una dominante azul o
+  // naranja rompe la serie monocroma. En blanco y negro la foto aporta textura
+  // sin discutirle el protagonismo al texto.
   // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
-  return <img src={src} style={{ objectFit: "cover", ...estilo }} />
+  return <img src={src} style={{ objectFit: "cover", filter: "grayscale(1)", ...estilo }} />
 }
 
 /** Cabecera y pie comunes: es lo que hace que las laminas sean una serie. */
@@ -182,14 +188,14 @@ function SobreFoto({ slide, total, estilo, foto }: LaminaProps) {
             <div
               style={{
                 display: "flex",
-                fontSize: tamanoSegunLargo(texto, ESCALA.hookCorto, ESCALA.hook),
+                fontSize: ESCALA.hook,
                 fontWeight: 700,
                 lineHeight: 1.08,
                 letterSpacing: -1.5,
                 maxWidth: LIENZO - MARGEN * 2,
               }}
             >
-              {texto}
+              {recortar(texto, TOPES.hook)}
             </div>
           ) : (
             <div
@@ -199,25 +205,25 @@ function SobreFoto({ slide, total, estilo, foto }: LaminaProps) {
                 <div
                   style={{
                     display: "flex",
-                    fontSize: tamanoSegunLargo(titulo, ESCALA.titulo, 52),
+                    fontSize: ESCALA.titulo,
                     fontWeight: 700,
                     lineHeight: 1.12,
                     letterSpacing: -1,
                     marginBottom: cuerpo ? 28 : 0,
                   }}
                 >
-                  {titulo}
+                  {recortar(titulo, TOPES.titulo)}
                 </div>
               ) : null}
               {cuerpo ? (
                 <div
                   style={{
                     display: "flex",
-                    fontSize: tamanoSegunLargo(cuerpo, ESCALA.cuerpo, 36),
+                    fontSize: ESCALA.cuerpo,
                     lineHeight: 1.4,
                   }}
                 >
-                  {cuerpo}
+                  {recortar(cuerpo, TOPES.cuerpoAmplio)}
                 </div>
               ) : null}
             </div>
@@ -267,26 +273,26 @@ function FotoLateral({ slide, total, estilo, foto }: LaminaProps) {
             <div
               style={{
                 display: "flex",
-                fontSize: tamanoSegunLargo(titulo, 58, 46),
+                fontSize: ESCALA.titulo,
                 fontWeight: 700,
                 lineHeight: 1.1,
                 letterSpacing: -1,
                 marginBottom: cuerpo ? 24 : 0,
               }}
             >
-              {titulo}
+              {recortar(titulo, TOPES.titulo)}
             </div>
           ) : null}
           {cuerpo ? (
             <div
               style={{
                 display: "flex",
-                fontSize: tamanoSegunLargo(cuerpo, 40, 32),
+                fontSize: ESCALA.cuerpo,
                 lineHeight: 1.4,
                 color: paleta.textoSuave,
               }}
             >
-              {cuerpo}
+              {recortar(cuerpo, TOPES.cuerpoAjustado)}
             </div>
           ) : null}
         </div>
@@ -338,7 +344,7 @@ function FotoRecuadro({ slide, total, estilo, foto }: LaminaProps) {
           <div
             style={{
               display: "flex",
-              fontSize: tamanoSegunLargo(titulo, 56, 44),
+              fontSize: ESCALA.titulo,
               fontWeight: 700,
               lineHeight: 1.1,
               letterSpacing: -1,
@@ -346,7 +352,7 @@ function FotoRecuadro({ slide, total, estilo, foto }: LaminaProps) {
               marginBottom: cuerpo ? 20 : 0,
             }}
           >
-            {titulo}
+            {recortar(titulo, TOPES.titulo)}
           </div>
         ) : null}
 
@@ -354,12 +360,12 @@ function FotoRecuadro({ slide, total, estilo, foto }: LaminaProps) {
           <div
             style={{
               display: "flex",
-              fontSize: tamanoSegunLargo(cuerpo, 38, 30),
+              fontSize: ESCALA.cuerpo,
               lineHeight: 1.42,
               color: paleta.textoSuave,
             }}
           >
-            {cuerpo}
+            {recortar(cuerpo, TOPES.cuerpoAjustado)}
           </div>
         ) : null}
       </div>
@@ -394,26 +400,26 @@ function Cita({ slide, total, estilo }: LaminaProps) {
         <div
           style={{
             display: "flex",
-            fontSize: tamanoSegunLargo(frase, ESCALA.cita, 46),
+            fontSize: ESCALA.cita,
             fontWeight: 600,
             lineHeight: 1.24,
             letterSpacing: -0.8,
           }}
         >
-          {frase}
+          {recortar(frase, TOPES.cita)}
         </div>
         {cuerpo && titulo ? (
           <div
             style={{
               display: "flex",
-              fontSize: 30,
+              fontSize: ESCALA.etiqueta,
               marginTop: 32,
               color: paleta.textoSuave,
               letterSpacing: 2,
               textTransform: "uppercase",
             }}
           >
-            {titulo}
+            {recortar(titulo, TOPES.titulo)}
           </div>
         ) : null}
       </div>
@@ -453,26 +459,26 @@ function Dato({ slide, total, estilo }: LaminaProps) {
             <div
               style={{
                 display: "flex",
-                fontSize: tamanoSegunLargo(titulo, 58, 46),
+                fontSize: ESCALA.titulo,
                 fontWeight: 700,
                 lineHeight: 1.1,
                 letterSpacing: -1,
                 marginBottom: cuerpo ? 22 : 0,
               }}
             >
-              {titulo}
+              {recortar(titulo, TOPES.titulo)}
             </div>
           ) : null}
           {cuerpo ? (
             <div
               style={{
                 display: "flex",
-                fontSize: tamanoSegunLargo(cuerpo, 38, 31),
+                fontSize: ESCALA.cuerpo,
                 lineHeight: 1.42,
                 color: paleta.textoSuave,
               }}
             >
-              {cuerpo}
+              {recortar(cuerpo, TOPES.cuerpoAjustado)}
             </div>
           ) : null}
         </div>
@@ -495,14 +501,14 @@ function Lamina({ slide, total, estilo }: LaminaProps) {
           <div
             style={{
               display: "flex",
-              fontSize: tamanoSegunLargo(titulo, ESCALA.titulo, 52),
+              fontSize: ESCALA.titulo,
               fontWeight: 700,
               lineHeight: 1.12,
               letterSpacing: -1,
               marginBottom: cuerpo ? 32 : 0,
             }}
           >
-            {titulo}
+            {recortar(titulo, TOPES.titulo)}
           </div>
         ) : null}
 
@@ -510,12 +516,12 @@ function Lamina({ slide, total, estilo }: LaminaProps) {
           <div
             style={{
               display: "flex",
-              fontSize: tamanoSegunLargo(cuerpo, ESCALA.cuerpo, 36),
+              fontSize: ESCALA.cuerpo,
               lineHeight: 1.42,
               color: titulo ? paleta.textoSuave : paleta.texto,
             }}
           >
-            {cuerpo}
+            {recortar(cuerpo, TOPES.cuerpoAmplio)}
           </div>
         ) : null}
       </div>

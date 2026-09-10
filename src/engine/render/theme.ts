@@ -94,13 +94,37 @@ export const FUENTE_POR_DEFECTO: NombreFuente = "HeroFont"
  * dentro del feed.
  */
 export const ESCALA = {
-  hook: 84,
-  hookCorto: 104,
-  titulo: 68,
-  cuerpo: 44,
-  cita: 66,
+  /** Portada. */
+  hook: 88,
+  /** Titulo de lamina. */
+  titulo: 64,
+  /** Descripcion: el cuerpo de texto de cualquier lamina. */
+  cuerpo: 46,
+  /** Frase suelta de las laminas de cita. */
+  cita: 60,
+  /** Etiqueta en versalitas bajo una cita. */
+  etiqueta: 30,
   pie: 28,
   numero: 26,
+}
+
+/**
+ * Cuanto texto cabe en cada hueco antes de desbordar.
+ *
+ * Los tamaños son fijos —un titulo se ve igual en todas las laminas, y lo mismo
+ * una descripcion— porque encogerlos segun el largo hacia que cada lamina
+ * tuviera su propia escala y el carrusel se leyera desparejo. El precio de la
+ * consistencia es que un texto muy largo hay que recortarlo, y es mejor
+ * recortarlo con puntos suspensivos que dejar que Satori lo corte a media
+ * palabra contra el borde.
+ */
+export const TOPES = {
+  hook: 130,
+  titulo: 70,
+  /** El hueco de la descripcion cambia segun la composicion. */
+  cuerpoAmplio: 320,
+  cuerpoAjustado: 210,
+  cita: 200,
 }
 
 export const MARGEN = 96
