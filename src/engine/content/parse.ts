@@ -76,27 +76,45 @@ function hashtags(value: unknown): string[] {
     .map((item) => (item.startsWith("#") ? item : `#${item}`))
 }
 
-/** El post. `body` es lo unico imprescindible: sin texto no hay pieza. */
+/**
+ * El post. `body` es lo unico imprescindible: sin texto no hay pieza.
+ *
+ * Se aceptan las dos formas que se han visto en la practica: `post` como objeto
+ * con el cuerpo dentro, y `post` como el cuerpo directamente, con el resto de
+ * campos colgando de la raiz.
+ */
 export function parseLinkedinResponse(respuesta: unknown): PiecePayload {
   const raiz = (respuesta ?? {}) as Record<string, unknown>
   const post = (
     raiz.post && typeof raiz.post === "object" ? raiz.post : raiz
   ) as Record<string, unknown>
 
-  const body = texto(post.body) ?? texto(post.cuerpo) ?? texto(post.texto) ?? texto(post.content)
+  const body =
+    texto(post.body) ??
+    texto(post.cuerpo) ??
+    texto(post.texto) ??
+    texto(post.content) ??
+    // `post` como string: el cuerpo entero, sin envoltorio.
+    texto(raiz.post)
 
   if (!body) {
     throw new Error(
       "La rutina de LinkedIn no devolvio el cuerpo del post. Se esperaba " +
-        '{"post":{"hook":"...","body":"...","hashtags":["..."],"cta":"..."}}.'
+        '{"post":{"hook":"...","body":"...","hashtags":["..."],"cta":"..."}} ' +
+        'o {"hook":"...","post":"<el texto>"}.'
     )
   }
 
+  // Algunas respuestas repiten el hook como primera linea del cuerpo. Pintar los
+  // dos dejaria el post empezando dos veces igual, asi que se guarda solo una.
+  const hookBruto = texto(post.hook) ?? texto(post.gancho) ?? texto(raiz.hook)
+  const hook = hookBruto && body.startsWith(hookBruto) ? null : hookBruto
+
   return {
-    hook: texto(post.hook) ?? texto(post.gancho),
+    hook,
     body,
-    hashtags: hashtags(post.hashtags),
-    cta: texto(post.cta),
+    hashtags: hashtags(post.hashtags ?? raiz.hashtags),
+    cta: texto(post.cta) ?? texto(raiz.cta),
     notas: texto(raiz.notas) ?? texto(raiz.notes),
   }
 }
