@@ -10,6 +10,7 @@ import type { RoutineCallResult } from "../routines"
 
 export const ANGLE_ROUTINE_NAME = "Rutina de angulo"
 export const LINKEDIN_ROUTINE_NAME = "Rutina de LinkedIn"
+export const INSTAGRAM_ROUTINE_NAME = "Rutina de Instagram"
 
 export const ANGLE_SLOT: RoutineSlot = {
   name: ANGLE_ROUTINE_NAME,
@@ -23,12 +24,22 @@ export const LINKEDIN_SLOT: RoutineSlot = {
   tokenVar: "LINKEDIN_ROUTINE_TOKEN",
 }
 
+export const INSTAGRAM_SLOT: RoutineSlot = {
+  name: INSTAGRAM_ROUTINE_NAME,
+  urlVar: "INSTAGRAM_ROUTINE_URL",
+  tokenVar: "INSTAGRAM_ROUTINE_TOKEN",
+}
+
 export function angleRoutineConfig() {
   return routineConfig(ANGLE_SLOT)
 }
 
 export function linkedinRoutineConfig() {
   return routineConfig(LINKEDIN_SLOT)
+}
+
+export function instagramRoutineConfig() {
+  return routineConfig(INSTAGRAM_SLOT)
 }
 
 /**
@@ -57,6 +68,18 @@ export async function fireLinkedinRoutine(
   return fireRoutine(
     LINKEDIN_SLOT,
     `Hay ${pendientes} trabajos pendientes en la tabla jobs_linkedin. ` +
+      `Procesalos siguiendo las instrucciones de la rutina.`,
+    signal
+  )
+}
+
+export async function fireInstagramRoutine(
+  pendientes: number,
+  signal?: AbortSignal
+): Promise<RoutineCallResult> {
+  return fireRoutine(
+    INSTAGRAM_SLOT,
+    `Hay ${pendientes} trabajos pendientes en la tabla jobs_instagram. ` +
       `Procesalos siguiendo las instrucciones de la rutina.`,
     signal
   )

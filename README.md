@@ -44,6 +44,8 @@ ANGLE_ROUTINE_URL=…/routines/<id>/fire        # etapa 2: angulo
 ANGLE_ROUTINE_TOKEN=sk-ant-oat01-xxx
 LINKEDIN_ROUTINE_URL=…/routines/<id>/fire     # etapa 2: post
 LINKEDIN_ROUTINE_TOKEN=sk-ant-oat01-xxx
+INSTAGRAM_ROUTINE_URL=…/routines/<id>/fire    # etapa 2: carrusel
+INSTAGRAM_ROUTINE_TOKEN=sk-ant-oat01-xxx
 ```
 
 **Ninguna lleva prefijo `NEXT_PUBLIC_`, a proposito.** `raw_news` y
@@ -70,6 +72,7 @@ clave publicable no debe poder leerlos.
 | `/contenido/config`  | Variables de marca, umbral de score y modo                     |
 | `/contenido/cola`    | Los buzones en crudo, para diagnosticar                        |
 | `/api/auth/linkedin/*` | OAuth de LinkedIn: conectar la cuenta que publica            |
+| `/api/render/preview` | Previsualiza una lamina del carrusel para ajustar el diseño   |
 | `/pipeline`          | Historial de corridas                                          |
 | `/api/ingest`        | Dispara la Etapa 1 desde un scheduler (requiere secreto)       |
 | `/api/engine/stream` | Corrida con eventos en streaming (usa la consola en vivo)      |
@@ -364,6 +367,88 @@ modo ni el umbral.
 y el error si lo hubo, con un boton para reintentar un trabajo fallido y otro
 para forzar una pasada. No hay reintento automatico a proposito: un prompt que
 falla reintentado en bucle quema cuota sin converger.
+
+### Carrusel de Instagram
+
+La rutina de Instagram devuelve el guion; la app lo convierte en imagenes reales
+y las deja en URLs publicas. **Publicar en Instagram no es parte de esto** — el
+modulo termina con las imagenes subidas y la pieza lista para revisar.
+
+```
+jobs_instagram.respuesta   guion: caption, hashtags y slides en orden
+        ↓  el tick lo drena, igual que las otras redes
+render (Satori)            un PNG de 1080x1080 por slide
+        ↓
+Supabase Storage           bucket publico `carousels`
+        ↓
+content_pieces             network 'instagram', payload con las URLs en orden
+```
+
+#### El contrato
+
+```jsonc
+{ "raw_news_id": "...", "slide_count": 5,
+  "caption": "...", "hashtags": ["...", "..."],
+  "slides": [
+    { "n": 1, "type": "photo_hook", "hook": "..." },
+    { "n": 2, "type": "text", "title": "...", "body": "..." }
+  ] }
+```
+
+El array va en orden y **ese es el orden del carrusel**. El primer slide es
+`photo_hook` y usa `raw_news.image_url` de fondo; el resto son `text`.
+
+Instagram no admite carruseles de mas de 10, asi que lo que sobre se recorta. Si
+llegan menos de 2 slides utiles, el trabajo se marca `failed` con el motivo, como
+con las otras rutinas.
+
+#### El motor de render
+
+Se dibuja con **Satori**, via `next/og`: renderiza un arbol de React a PNG sin
+navegador. Se eligio sobre Puppeteer porque en serverless un Chromium son
+cientos de megas y varios segundos de arranque por invocacion; esto tarda un
+segundo por imagen y ya viene con Next.
+
+El precio es que Satori entiende **un subconjunto de CSS**: hay flexbox pero no
+grid, y todo div con varios hijos necesita `display: flex` explicito. Las
+plantillas de [`templates.tsx`](src/engine/render/templates.tsx) estan escritas
+para eso; conviene recordarlo antes de tocarlas.
+
+#### Ajustar el diseño
+
+Todo lo que un diseñador querria cambiar vive en
+[`theme.ts`](src/engine/render/theme.ts): paleta, escala tipografica y margenes.
+Las plantillas no llevan colores ni tamaños propios.
+
+Para verlo sin generar un carrusel entero hay una ruta de previsualizacion:
+
+```
+/api/render/preview?tipo=portada&hook=...&foto=https://...
+/api/render/preview?tipo=texto&title=...&body=...&n=2&total=5
+```
+
+#### Fuentes
+
+Viven en [`src/engine/render/fonts/`](src/engine/render/fonts) y se declaran en
+`theme.ts`. Ahora mismo solo **HeroFont** (light, regular, semibold, bold), pero
+añadir otra familia es dejar sus cuatro pesos ahi y sumarla a `FUENTES`.
+
+Satori admite **TTF, OTF y WOFF**; WOFF2 no, que es la trampa clasica. Y como las
+fuentes se leen del disco por ruta y nadie las importa, hay que declararlas en
+`outputFileTracingIncludes` de `next.config.ts` o el trazado de Vercel no las
+empaqueta: el render funcionaria en local y fallaria en produccion.
+
+#### Cuando la foto falla
+
+Si `raw_news.image_url` no existe, no responde, no es un mapa de bits o pesa
+demasiado, la portada se dibuja **sobre fondo liso** en vez de romper el
+carrusel, y la pieza queda marcada con `portadaSinFoto` para poder revisarlo. La
+descarga nunca lanza: una portada sin foto sigue siendo una portada, pero un
+carrusel a medias no es nada.
+
+Aviso practico: las fotos que trae Serper suelen ser **miniaturas de gstatic**
+(unos 300px), asi que al escalarlas a 1080 se ven blandas. Para portadas nitidas
+habria que resolver la imagen original del articulo, que es trabajo aparte.
 
 ## Etapa 3 — Publicar en LinkedIn
 

@@ -1,10 +1,12 @@
 import type { RawNews } from "@/lib/types"
 
 import { publishPiece, pendingToPublish } from "../publish/publish-piece"
+import { generarCarrusel, noticiaDelAngulo } from "../render/carousel"
 import type { RoutineCallResult } from "../routines"
 import { supabaseAdmin } from "../supabase-admin"
 import {
   claimAngleJobs,
+  claimInstagramJobs,
   claimLinkedinJobs,
   countPending,
   enqueueAngleJob,
@@ -15,7 +17,7 @@ import {
 } from "./jobs"
 import { ContentLog } from "./log"
 import { parseAngleResponse, parseLinkedinResponse } from "./parse"
-import { fireAngleRoutine, fireLinkedinRoutine } from "./routines"
+import { fireAngleRoutine, fireInstagramRoutine, fireLinkedinRoutine } from "./routines"
 import type { ContentAngle, JobAngle, JobLinkedin, Variables } from "./types"
 
 /**
@@ -57,6 +59,8 @@ export type TickSummary = {
   linkedinQueued: number
   linkedinJobsConsumed: number
   piecesCreated: number
+  instagramJobsConsumed: number
+  carouselsCreated: number
   piecesPublished: number
   failedJobs: number
   routines: RoutineCallResult[]
@@ -85,6 +89,8 @@ export async function runContentTick(
   let linkedinQueued = 0
   let linkedinJobsConsumed = 0
   let piecesCreated = 0
+  let instagramJobsConsumed = 0
+  let carouselsCreated = 0
   let piecesPublished = 0
   let failedJobs = 0
 
@@ -240,6 +246,65 @@ export async function runContentTick(
     })
   }
 
+  // -------------------------------------------------------- carruseles hechos
+  //
+  // Instagram tiene un paso mas que LinkedIn: ademas de leer la respuesta hay
+  // que dibujar las imagenes y subirlas. Ese trabajo puede fallar por motivos
+  // ajenos al texto —una foto caida, el storage— y por eso va en su propio
+  // try/catch: un carrusel roto no puede llevarse por delante la pasada.
+  const instagramJobs = await claimInstagramJobs()
+  instagramJobsConsumed = instagramJobs.length
+
+  for (const job of instagramJobs) {
+    if (job.status === "failed") {
+      failedJobs++
+      log.emit("content.instagram.failed", "La rutina marco el carrusel como fallido", {
+        jobId: job.id,
+        error: job.error,
+      })
+      continue
+    }
+
+    try {
+      const news = await noticiaDelAngulo(job.content_angle_id)
+      const carrusel = await generarCarrusel(job.id, job.respuesta, news)
+
+      const { error } = await supabase.from("content_pieces").insert({
+        content_angle_id: job.content_angle_id,
+        raw_news_id: news?.id ?? null,
+        job_instagram_id: job.id,
+        network: "instagram",
+        payload: carrusel,
+        status: "generated",
+        variables_usadas: (job.input?.variables ?? null) as Variables | null,
+        generated_at: new Date().toISOString(),
+      })
+
+      if (error) throw new Error(error.message)
+
+      carouselsCreated++
+      await supabase
+        .from("content_angles")
+        .update({ status: "generated" })
+        .eq("id", job.content_angle_id)
+
+      log.emit("content.carousel.created", `Carrusel de ${carrusel.slideCount} imagenes`, {
+        jobId: job.id,
+        slides: carrusel.slideCount,
+        portadaSinFoto: carrusel.portadaSinFoto,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      failedJobs++
+      errors.push(message)
+      await markJobUnreadable("jobs_instagram", job.id, message)
+      log.emit("content.instagram.failed", "No se pudo generar el carrusel", {
+        jobId: job.id,
+        error: message,
+      })
+    }
+  }
+
   // ------------------------------------------------------- seleccion automatica
   //
   // Sin umbral definido no se selecciona nada: el scoring lo decide el usuario
@@ -322,6 +387,7 @@ export async function runContentTick(
   for (const [tabla, disparar] of [
     ["jobs_angle", fireAngleRoutine],
     ["jobs_linkedin", fireLinkedinRoutine],
+    ["jobs_instagram", fireInstagramRoutine],
   ] as const) {
     try {
       const pendientes = await countPending(tabla)
@@ -343,6 +409,7 @@ export async function runContentTick(
   log.emit("content.tick.completed", "Revision terminada", {
     anglesCreated,
     piecesCreated,
+    carouselsCreated,
     anglesQueued,
     linkedinQueued,
     durationMs,
@@ -359,6 +426,8 @@ export async function runContentTick(
     linkedinQueued,
     linkedinJobsConsumed,
     piecesCreated,
+    instagramJobsConsumed,
+    carouselsCreated,
     piecesPublished,
     failedJobs,
     routines,

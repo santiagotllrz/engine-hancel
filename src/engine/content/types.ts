@@ -37,6 +37,19 @@ export type JobLinkedin = {
   consumed_at: string | null
 }
 
+/** Fila de `public.jobs_instagram`. Mismo contrato que los otros buzones. */
+export type JobInstagram = {
+  id: string
+  content_angle_id: string
+  input: LinkedinJobInput
+  status: JobStatus
+  respuesta: unknown
+  error: string | null
+  created_at: string
+  processed_at: string | null
+  consumed_at: string | null
+}
+
 export type AngleStatus = "angled" | "pending_generation" | "generated" | "discarded"
 
 /** Fila de `public.content_angles`. */

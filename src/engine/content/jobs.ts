@@ -7,6 +7,7 @@ import type {
   ContentAngle,
   GenerationConfig,
   JobAngle,
+  JobInstagram,
   JobLinkedin,
   LinkedinJobInput,
   Variables,
@@ -181,13 +182,59 @@ export async function claimLinkedinJobs(limite = MAX_DRENAJE_POR_TICK): Promise<
   return (data ?? []) as JobLinkedin[]
 }
 
+export async function claimInstagramJobs(limite = MAX_DRENAJE_POR_TICK): Promise<JobInstagram[]> {
+  const supabase = supabaseAdmin()
+
+  const { data: candidatos, error: errorLectura } = await supabase
+    .from("jobs_instagram")
+    .select("id")
+    .is("consumed_at", null)
+    .in("status", ["done", "failed"])
+    .order("created_at")
+    .limit(limite)
+
+  if (errorLectura) throw new Error(`No se pudieron leer los carruseles: ${errorLectura.message}`)
+  const ids = (candidatos ?? []).map((row) => (row as { id: string }).id)
+  if (ids.length === 0) return []
+
+  const { data, error } = await supabase
+    .from("jobs_instagram")
+    .update({ consumed_at: new Date().toISOString() })
+    .in("id", ids)
+    .is("consumed_at", null)
+    .select("*")
+
+  if (error) throw new Error(`No se pudieron tomar los carruseles: ${error.message}`)
+  return (data ?? []) as JobInstagram[]
+}
+
+/** Encola un carrusel de Instagram para un angulo ya decidido. */
+export async function enqueueInstagramJob(
+  angle: ContentAngle,
+  news: RawNews,
+  variables: Variables,
+  override?: Partial<Variables> | null
+): Promise<string> {
+  const { data, error } = await supabaseAdmin()
+    .from("jobs_instagram")
+    .insert({
+      content_angle_id: angle.id,
+      input: buildLinkedinInput(angle, news, mergeVariables(variables, override)),
+    })
+    .select("id")
+    .single()
+
+  if (error) throw new Error(`No se pudo encolar el carrusel: ${error.message}`)
+  return (data as { id: string }).id
+}
+
 /**
  * Marca un buzon como fallido por culpa de la respuesta, no de la rutina.
  *
  * La `respuesta` cruda se conserva: es la unica pista para arreglar el prompt.
  */
 export async function markJobUnreadable(
-  tabla: "jobs_angle" | "jobs_linkedin",
+  tabla: "jobs_angle" | "jobs_linkedin" | "jobs_instagram",
   jobId: string,
   motivo: string
 ): Promise<void> {
@@ -198,7 +245,9 @@ export async function markJobUnreadable(
 }
 
 /** Cuantos trabajos esperan a que la rutina los recoja. */
-export async function countPending(tabla: "jobs_angle" | "jobs_linkedin"): Promise<number> {
+export async function countPending(
+  tabla: "jobs_angle" | "jobs_linkedin" | "jobs_instagram"
+): Promise<number> {
   const { count, error } = await supabaseAdmin()
     .from(tabla)
     .select("id", { count: "exact", head: true })

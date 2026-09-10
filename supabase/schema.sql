@@ -433,3 +433,52 @@ alter table public.content_pieces
 -- Lo que mira el modo automatico: generado o aprobado, y aun sin publicar.
 create index if not exists content_pieces_publicables_idx on public.content_pieces (created_at)
   where status in ('generated', 'approved') and published_at is null;
+
+-- --------------------------------------------------------------- instagram
+--
+-- Buzon de la rutina de Instagram. Mismo contrato que los otros dos: la app
+-- encola, la rutina escribe `respuesta` y marca 'done'; la app materializa.
+--
+-- Aqui la app hace ademas un paso que las otras redes no tienen: dibujar las
+-- imagenes del carrusel y subirlas al storage.
+create table if not exists public.jobs_instagram (
+  id               uuid primary key default gen_random_uuid(),
+  content_angle_id uuid        not null references public.content_angles (id) on delete cascade,
+  input            jsonb       not null,
+  status           text        not null default 'pending',
+  respuesta        jsonb,
+  error            text,
+  created_at       timestamptz not null default now(),
+  processed_at     timestamptz,
+  consumed_at      timestamptz,
+
+  constraint jobs_instagram_status_check check (status in ('pending', 'processing', 'done', 'failed'))
+);
+
+create index if not exists jobs_instagram_status_idx     on public.jobs_instagram (status, created_at);
+create index if not exists jobs_instagram_angle_id_idx   on public.jobs_instagram (content_angle_id);
+create index if not exists jobs_instagram_por_drenar_idx on public.jobs_instagram (created_at)
+  where consumed_at is null and status in ('done', 'failed');
+
+alter table public.jobs_instagram enable row level security;
+
+-- La pieza deja de ser solo de LinkedIn. Cada red guarda su propia forma en
+-- `payload`: LinkedIn un texto, Instagram un caption con la lista ordenada de
+-- imagenes.
+alter table public.content_pieces drop constraint if exists content_pieces_network_check;
+alter table public.content_pieces
+  add constraint content_pieces_network_check check (network in ('linkedin', 'instagram'));
+
+-- De que buzon salio, para auditar una generacion rara. Cada red tiene el suyo
+-- y solo uno de los dos esta relleno.
+alter table public.content_pieces
+  add column if not exists job_instagram_id uuid references public.jobs_instagram (id) on delete set null;
+
+-- Bucket publico para las imagenes del carrusel.
+--
+-- Publico a proposito: al publicar, Instagram descarga cada imagen desde sus
+-- propios servidores, asi que una URL firmada y efimera no le sirve. Lo que se
+-- sube es contenido pensado para publicarse, no datos privados.
+insert into storage.buckets (id, name, public)
+values ('carousels', 'carousels', true)
+on conflict (id) do update set public = true;

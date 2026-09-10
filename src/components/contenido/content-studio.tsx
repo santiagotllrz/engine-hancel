@@ -199,10 +199,25 @@ function PieceCard({
   const [editando, setEditando] = React.useState(false)
   const [copiado, setCopiado] = React.useState(false)
 
+  // Cada red guarda su propia forma en `payload`: LinkedIn un texto, Instagram
+  // un caption con la lista ordenada de imagenes.
+  const esCarrusel = piece.network === "instagram"
+  const carrusel = esCarrusel
+    ? (piece.payload as unknown as {
+        caption?: string
+        hashtags?: string[]
+        images?: string[]
+        slideCount?: number
+        portadaSinFoto?: boolean
+      })
+    : null
+
   const payload = piece.payload ?? { hook: null, body: "", hashtags: [], cta: null, notas: null }
-  const textoCompleto = [payload.hook, payload.body, (payload.hashtags ?? []).join(" ")]
-    .filter(Boolean)
-    .join("\n\n")
+  const textoCompleto = esCarrusel
+    ? [carrusel?.caption, (carrusel?.hashtags ?? []).join(" ")].filter(Boolean).join("\n\n")
+    : [payload.hook, payload.body, (payload.hashtags ?? []).join(" ")]
+        .filter(Boolean)
+        .join("\n\n")
 
   return (
     <Card>
@@ -217,6 +232,9 @@ function PieceCard({
                   : piece.status === "rejected"
                     ? "Rechazada"
                     : "Por revisar"}
+            </Badge>
+            <Badge variant="outline" className="capitalize">
+              {piece.network}
             </Badge>
             {piece.linkedin_urn ? (
               <a
@@ -267,6 +285,43 @@ function PieceCard({
               </Button>
             </div>
           </form>
+        ) : esCarrusel ? (
+          <div className="flex flex-col gap-3">
+            {/* Las imagenes en fila y con scroll: es el orden del carrusel y se
+                lee igual que se vera en Instagram. */}
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {(carrusel?.images ?? []).map((src, i) => (
+                <a
+                  key={src}
+                  href={src}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="relative shrink-0"
+                  title={`Lamina ${i + 1}`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={src}
+                    alt={`Lamina ${i + 1} del carrusel`}
+                    className="size-32 rounded-md border object-cover"
+                    loading="lazy"
+                  />
+                  <span className="bg-background/85 absolute bottom-1 left-1 rounded px-1 text-[10px] font-medium">
+                    {i + 1}
+                  </span>
+                </a>
+              ))}
+            </div>
+            {carrusel?.portadaSinFoto ? (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                La portada salio sin foto: la imagen de la noticia no se pudo usar.
+              </p>
+            ) : null}
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{carrusel?.caption}</p>
+            {(carrusel?.hashtags ?? []).length > 0 ? (
+              <p className="text-muted-foreground text-xs">{carrusel?.hashtags?.join(" ")}</p>
+            ) : null}
+          </div>
         ) : (
           <div className="flex flex-col gap-2">
             {payload.hook ? <p className="text-sm font-medium">{payload.hook}</p> : null}
@@ -287,9 +342,11 @@ function PieceCard({
               <CheckIcon />
               Aprobar
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setEditando(true)}>
-              Editar
-            </Button>
+            {!esCarrusel ? (
+              <Button size="sm" variant="outline" onClick={() => setEditando(true)}>
+                Editar
+              </Button>
+            ) : null}
             <Button
               size="sm"
               variant="outline"
@@ -305,9 +362,15 @@ function PieceCard({
             <Button
               size="sm"
               variant="secondary"
-              disabled={pending || !linkedinConnected || piece.published_at !== null}
+              disabled={
+                pending || esCarrusel || !linkedinConnected || piece.published_at !== null
+              }
               title={
-                !linkedinConnected ? "Conecta una cuenta de LinkedIn en Variables" : undefined
+                esCarrusel
+                  ? "Publicar en Instagram todavia no esta construido"
+                  : !linkedinConnected
+                    ? "Conecta una cuenta de LinkedIn en Variables"
+                    : undefined
               }
               onClick={() => run(() => publishPieceNow(piece.id))}
             >
