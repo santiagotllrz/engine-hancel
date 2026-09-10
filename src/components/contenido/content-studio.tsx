@@ -67,12 +67,15 @@ export function ContentStudio({
   pieces,
   hasThreshold,
   linkedinConnected,
+  instagramListo,
 }: {
   candidates: RawNews[]
   angles: AngleView[]
   pieces: PieceView[]
   hasThreshold: boolean
   linkedinConnected: boolean
+  /** Buffer configurado y con canal elegido. */
+  instagramListo: boolean
 }) {
   return (
     <div className="flex flex-col gap-8">
@@ -131,7 +134,12 @@ export function ContentStudio({
         ) : (
           <div className="flex flex-col gap-3">
             {pieces.map((piece) => (
-              <PieceCard key={piece.id} piece={piece} linkedinConnected={linkedinConnected} />
+              <PieceCard
+                key={piece.id}
+                piece={piece}
+                linkedinConnected={linkedinConnected}
+                instagramListo={instagramListo}
+              />
             ))}
           </div>
         )}
@@ -217,9 +225,11 @@ function AngleCard({ angle }: { angle: AngleView }) {
 function PieceCard({
   piece,
   linkedinConnected,
+  instagramListo,
 }: {
   piece: PieceView
   linkedinConnected: boolean
+  instagramListo: boolean
 }) {
   const { pending, error, run } = useAction()
   const [editando, setEditando] = React.useState(false)
@@ -399,11 +409,15 @@ function PieceCard({
               size="sm"
               variant="secondary"
               disabled={
-                pending || esCarrusel || !linkedinConnected || piece.published_at !== null
+                pending ||
+                piece.published_at !== null ||
+                (esCarrusel ? !instagramListo : !linkedinConnected)
               }
               title={
                 esCarrusel
-                  ? "Publicar en Instagram todavia no esta construido"
+                  ? instagramListo
+                    ? "Publica el carrusel en Instagram via Buffer"
+                    : "Elige el canal de Buffer en Variables"
                   : !linkedinConnected
                     ? "Conecta una cuenta de LinkedIn en Variables"
                     : undefined

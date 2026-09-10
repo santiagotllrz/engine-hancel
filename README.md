@@ -14,7 +14,7 @@ interfaz viven juntos. Base de datos: proyecto Supabase `iddjepduokjysnibjjqy`.
 | 1 — Ingesta de noticias        | **Aqui, en codigo**                          |
 | 2 — Analisis y enriquecimiento | **Se dispara desde aqui** (rutina de Claude) |
 | 3 — Generacion de contenido    | **Aqui, en codigo** (angulo + LinkedIn)      |
-| 4 — Publicacion en LinkedIn    | **Aqui, en codigo** (OAuth + Posts API)      |
+| 4 — Publicacion                | **Aqui, en codigo** (LinkedIn + Buffer)      |
 
 Antes de activar la ingesta hay que **apagar el workflow de n8n**, o las dos
 correran en paralelo y duplicaran el consumo de Serper.
@@ -483,6 +483,39 @@ Aviso practico: las fotos que trae Serper suelen ser **miniaturas de gstatic**
 (unos 300px), asi que al escalarlas a 1080 se ven blandas. Para portadas nitidas
 habria que resolver la imagen original del articulo, que es trabajo aparte.
 
+### Publicar el carrusel: Instagram via Buffer
+
+Los carruseles se publican a traves de **Buffer**, no contra la Graph API de
+Meta. Esta exige cuenta business vinculada a una pagina de Facebook, revision de
+la app y un token de larga duracion que hay que renovar; Buffer ya tiene esa
+relacion resuelta y expone una sola llamada.
+
+```
+BUFFER_API_KEY=xxx
+```
+
+El canal se elige en `/contenido/config`, y hay que elegirlo: una misma cuenta
+puede tener **varios canales con el mismo nombre**, y publicar en el que no toca
+no tiene deshacer.
+
+#### Lo que hubo que averiguar
+
+La REST v1 de Buffer esta retirada para estos tokens —responde *"Public API
+tokens are not accepted for REST API access"*— asi que se usa su **GraphQL** en
+`https://api.buffer.com` con `Authorization: Bearer`.
+
+Dos cosas que la documentacion no dice y salieron probando contra la API:
+
+- **El carrusel no se declara.** Instagram rechaza `type: "carousel"`
+  explicitamente (*"Valid types are post, story, or reel"*): se manda como
+  `post` con varios `assets`, y el carrusel se infiere.
+- **Buffer descarga las imagenes para validarlas**, asi que necesita URLs
+  publicas —las del bucket `carousels` sirven tal cual— y rechaza las que pasan
+  de 5.000 px de ancho. Los 1080x1080 del carrusel entran sin problema.
+
+Los errores llegan dentro de la respuesta con su propio `__typename`, no como
+codigo HTTP: un fallo devuelve 200 igual, y hay que mirar el cuerpo.
+
 ## Etapa 3 — Publicar en LinkedIn
 
 La pieza generada se publica en el feed de una cuenta conectada por OAuth. Dos
@@ -553,8 +586,8 @@ compara por hora local porque el disparo nunca cae en el mismo segundo.
 La tanda se cierra aunque alguna pieza falle: reintentarla entera cinco minutos
 despues republicaria las que si salieron.
 
-> **Instagram guarda el horario pero no publica todavia**: falta construir el
-> publicador. La interfaz lo dice en la propia seccion.
+Las dos redes publican de verdad: LinkedIn contra su propia API e Instagram a
+traves de Buffer.
 
 ### Como se publica
 

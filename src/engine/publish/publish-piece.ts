@@ -6,6 +6,7 @@ import { BancoDeFotos, descargarFotoPexels, pexelsConfigurado } from "../render/
 import { renderTarjetaLinkedin } from "../render/render"
 import { estiloDesdeConfig } from "../render/theme"
 import type { RawNews } from "@/lib/types"
+import { publicarEnBuffer } from "./buffer"
 import { buildCommentary, publishText, subirImagen, type PublishResult } from "./linkedin"
 
 /**
@@ -37,14 +38,12 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
     return { ok: false, error: "La pieza esta rechazada; no se publica." }
   }
 
-  const commentary = buildCommentary(piece.payload)
-  if (!commentary.trim()) {
-    return { ok: false, error: "La pieza no tiene texto que publicar." }
-  }
-
-  // La ilustracion es opcional: si algo falla se publica igual, solo con texto.
-  const imagen = await tarjetaDelPost(piece, commentary)
-  const result = await publishText(commentary, imagen)
+  // Cada red se publica por su via: LinkedIn contra su propia API, Instagram a
+  // traves de Buffer, que ya tiene resuelta la relacion con Meta.
+  const result =
+    piece.network === "instagram"
+      ? await publicarCarrusel(piece)
+      : await publicarEnLinkedin(piece)
 
   if (result.ok) {
     await supabase
@@ -52,6 +51,8 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
       .update({
         status: "published",
         published_at: new Date().toISOString(),
+        // La columna guarda el identificador del post publicado, sea de la red
+        // que sea: el URN de LinkedIn o el id que devuelve Buffer.
         linkedin_urn: result.urn,
         publish_error: null,
       })
@@ -65,6 +66,61 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
   }
 
   return result
+}
+
+/** LinkedIn: texto mas la tarjeta con el titular. */
+async function publicarEnLinkedin(piece: ContentPiece): Promise<PublishResult> {
+  const commentary = buildCommentary(piece.payload)
+  if (!commentary.trim()) {
+    return { ok: false, error: "La pieza no tiene texto que publicar." }
+  }
+
+  // La ilustracion es opcional: si algo falla se publica igual, solo con texto.
+  const imagen = await tarjetaDelPost(piece, commentary)
+  return publishText(commentary, imagen)
+}
+
+/**
+ * Instagram: el carrusel entero a Buffer.
+ *
+ * Las imagenes ya viven en URLs publicas del storage, que es justo lo que Buffer
+ * necesita — las descarga el para validarlas y publicarlas.
+ */
+async function publicarCarrusel(piece: ContentPiece): Promise<PublishResult> {
+  const payload = piece.payload as unknown as {
+    caption?: string
+    hashtags?: string[]
+    images?: string[]
+  }
+
+  const imagenes = payload?.images ?? []
+  if (imagenes.length === 0) {
+    return { ok: false, error: "El carrusel no tiene imagenes." }
+  }
+
+  const { data } = await supabaseAdmin()
+    .from("publish_schedule")
+    .select("channel_id")
+    .eq("network", "instagram")
+    .maybeSingle()
+
+  const channelId = (data as { channel_id: string | null } | null)?.channel_id
+  if (!channelId) {
+    return {
+      ok: false,
+      error: "No hay canal de Instagram elegido en Buffer. Eligelo en /contenido/config.",
+    }
+  }
+
+  const texto = [payload.caption, (payload.hashtags ?? []).join(" ")]
+    .filter((parte) => parte && parte.trim().length > 0)
+    .join("\n\n")
+
+  const resultado = await publicarEnBuffer({ channelId, texto, imagenes })
+
+  return resultado.ok
+    ? { ok: true, urn: resultado.postId }
+    : { ok: false, error: resultado.error }
 }
 
 /**

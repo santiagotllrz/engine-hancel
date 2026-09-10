@@ -368,15 +368,11 @@ export async function runContentTick(
   // nadie delante: el cron y los triggers pasan por esta misma pasada, y es
   // quien decide si a esta red le toca ahora.
   //
-  // Instagram todavia no tiene publicador, asi que su programacion se guarda y
-  // se respeta, pero no llega a publicar nada.
   try {
     const { getSettings } = await import("../schedule")
     const ajustes = await getSettings()
 
     for (const programa of await getPublishSchedules()) {
-      if (programa.network !== "linkedin") continue
-
       const decision = decidirTanda(programa, ajustes.timezone, new Date())
       if (!decision.publicar) continue
 
@@ -387,7 +383,7 @@ export async function runContentTick(
         const result = await publishPiece(pieza.id)
         if (result.ok) {
           piecesPublished++
-          log.emit("content.piece.published", "Pieza publicada en LinkedIn", {
+          log.emit("content.piece.published", `Pieza publicada en ${programa.network}`, {
             pieceId: pieza.id,
             urn: result.urn,
             tanda: decision.motivo,

@@ -10,7 +10,9 @@ import {
   getPieces,
   getRoutinesStatus,
 } from "@/lib/content-data"
+import { bufferConfigurado } from "@/engine/publish/buffer"
 import { getLinkedinStatus } from "@/engine/publish/linkedin"
+import { getPublishSchedules } from "@/engine/publish/schedule"
 import { formatNumber } from "@/lib/format"
 
 // Cambia con cada pasada del pipeline: nada que prerenderizar.
@@ -43,6 +45,10 @@ export default async function ContenidoPage() {
     getLinkedinStatus(),
   ])
 
+  const horarios = await getPublishSchedules()
+  const canalInstagram =
+    horarios.find((h) => h.network === "instagram")?.channel_id ?? null
+
   return (
     <DashboardShell title="Contenido">
       <RoutinesWarning status={getRoutinesStatus()} />
@@ -60,6 +66,7 @@ export default async function ContenidoPage() {
         pieces={pieces}
         hasThreshold={config.score_threshold !== null}
         linkedinConnected={linkedin.connected && !linkedin.expired}
+        instagramListo={bufferConfigurado() && canalInstagram !== null}
       />
     </DashboardShell>
   )
