@@ -1,6 +1,9 @@
+import { CarouselStyleEditor } from "@/components/contenido/carousel-style-editor"
 import { GenerationConfigEditor } from "@/components/contenido/generation-config-editor"
 import { LinkedinConnection } from "@/components/contenido/linkedin-connection"
 import { DashboardShell } from "@/components/dashboard-shell"
+import { pexelsConfigurado } from "@/engine/render/pexels"
+import { estiloDesdeConfig } from "@/engine/render/theme"
 import { getLinkedinStatus } from "@/engine/publish/linkedin"
 import { getGenerationConfig, getScoreDistribution } from "@/lib/content-data"
 
@@ -42,6 +45,16 @@ export default async function ContenidoConfigPage({
         distribution={distribution}
         linkedinConnected={linkedin.connected && !linkedin.expired}
       />
+
+      <div className="flex max-w-3xl flex-col gap-4">
+        <CarouselStyleEditor
+          estilo={estiloDesdeConfig(config.carousel)}
+          paletaActual={
+            ((config.carousel ?? {}) as { paleta?: string }).paleta ?? "noche"
+          }
+          pexelsConfigurado={pexelsConfigurado()}
+        />
+      </div>
     </DashboardShell>
   )
 }

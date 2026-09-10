@@ -1,7 +1,8 @@
 import type { RawNews } from "@/lib/types"
 
 import { publishPiece, pendingToPublish } from "../publish/publish-piece"
-import { generarCarrusel, noticiaDelAngulo } from "../render/carousel"
+import { generarCarrusel, nichosConocidos, noticiaDelAngulo } from "../render/carousel"
+import { estiloDesdeConfig } from "../render/theme"
 import type { RoutineCallResult } from "../routines"
 import { supabaseAdmin } from "../supabase-admin"
 import {
@@ -267,7 +268,14 @@ export async function runContentTick(
 
     try {
       const news = await noticiaDelAngulo(job.content_angle_id)
-      const carrusel = await generarCarrusel(job.id, job.respuesta, news)
+      const [nichos] = await Promise.all([nichosConocidos()])
+      const carrusel = await generarCarrusel(
+        job.id,
+        job.respuesta,
+        news,
+        estiloDesdeConfig(config.carousel),
+        nichos
+      )
 
       const { error } = await supabase.from("content_pieces").insert({
         content_angle_id: job.content_angle_id,

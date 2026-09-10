@@ -25,6 +25,7 @@ import {
   CopyIcon,
   ExternalLinkIcon,
   FileTextIcon,
+  DownloadIcon,
   ImagesIcon,
   SendIcon,
   XIcon,
@@ -370,6 +371,16 @@ function PieceCard({
             {!esCarrusel ? (
               <Button size="sm" variant="outline" onClick={() => setEditando(true)}>
                 Editar
+              </Button>
+            ) : null}
+            {esCarrusel ? (
+              <Button
+                size="sm"
+                variant="outline"
+                render={<a href={`/api/content/carousel?piece=${piece.id}`} download />}
+              >
+                <DownloadIcon />
+                Descargar
               </Button>
             ) : null}
             <Button

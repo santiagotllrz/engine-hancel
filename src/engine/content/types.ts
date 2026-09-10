@@ -112,6 +112,8 @@ export type GenerationConfig = {
   generation_mode: "auto" | "manual"
   /** Publicar en LinkedIn sin revision previa. Nace apagado. */
   autopublish: boolean
+  /** Aspecto del carrusel: paleta, fuente, marca. Lo interpreta `render/theme.ts`. */
+  carousel: unknown
   updated_at: string
 }
 

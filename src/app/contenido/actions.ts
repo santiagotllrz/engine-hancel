@@ -18,6 +18,7 @@ import type { ContentAngle, Variables } from "@/engine/content/types"
 import { parseVariables, validateVariables } from "@/engine/content/variables"
 import { disconnectLinkedin } from "@/engine/publish/linkedin"
 import { publishPiece } from "@/engine/publish/publish-piece"
+import { FUENTES, PALETAS } from "@/engine/render/theme"
 import { supabaseAdmin } from "@/engine/supabase-admin"
 import type { RawNews } from "@/lib/types"
 
@@ -375,6 +376,39 @@ export async function runTickNow(): Promise<ActionResult> {
 }
 
 // ------------------------------------------------------------- configuracion
+
+/** El aspecto de las imagenes del carrusel. Cambia como se ve, no que dice. */
+export async function updateCarouselStyle(form: FormData): Promise<ActionResult> {
+  const paleta = text(form, "paleta")
+  const fuente = text(form, "fuente")
+
+  if (!(paleta in PALETAS)) return { ok: false, error: "Esa paleta no existe." }
+  if (!(fuente in FUENTES)) return { ok: false, error: "Esa tipografia no existe." }
+
+  const marca = text(form, "marca").slice(0, 40)
+
+  try {
+    const { error } = await supabaseAdmin()
+      .from("generation_config")
+      .update({
+        carousel: {
+          paleta,
+          fuente,
+          marca,
+          mostrarPaginacion: form.get("mostrarPaginacion") === "true",
+          usarFotos: form.get("usarFotos") === "true",
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", true)
+
+    if (error) throw new Error(error.message)
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return fail(error, "No se pudo guardar el aspecto.")
+  }
+}
 
 export async function updateGenerationConfig(form: FormData): Promise<ActionResult> {
   const variables = {

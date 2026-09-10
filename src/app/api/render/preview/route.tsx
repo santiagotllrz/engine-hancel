@@ -1,4 +1,5 @@
 import { descargarFoto, renderSlide } from "@/engine/render/render"
+import type { Variante } from "@/engine/render/theme"
 import type { Slide } from "@/engine/render/templates"
 
 export const dynamic = "force-dynamic"
@@ -37,10 +38,11 @@ export async function GET(request: Request) {
             "Investigadores externos detectaron el patron antes que la propia empresa. Eso no habla de los agentes: habla de quien los vigila.",
         }
 
-  const foto =
-    slide.type === "photo_hook" ? await descargarFoto(url.searchParams.get("foto")) : null
+  const variante = (url.searchParams.get("variante") ??
+    (tipo === "portada" ? "portada" : "texto")) as Variante
 
-  const png = await renderSlide({ slide, foto }, total)
+  const foto = await descargarFoto(url.searchParams.get("foto"))
+  const png = await renderSlide({ slide, variante, foto }, total)
 
   return new Response(new Uint8Array(png), {
     headers: {

@@ -31,7 +31,7 @@ const MAX_CONTENIDO = 12_000
 export async function getGenerationConfig(): Promise<GenerationConfig> {
   const { data, error } = await supabaseAdmin()
     .from("generation_config")
-    .select("variables, score_threshold, generation_mode, autopublish, updated_at")
+    .select("variables, score_threshold, generation_mode, autopublish, carousel, updated_at")
     .eq("id", true)
     .maybeSingle()
 
@@ -43,6 +43,7 @@ export async function getGenerationConfig(): Promise<GenerationConfig> {
     score_threshold: typeof row.score_threshold === "number" ? row.score_threshold : null,
     generation_mode: row.generation_mode === "auto" ? "auto" : "manual",
     autopublish: row.autopublish === true,
+    carousel: row.carousel ?? {},
     updated_at: row.updated_at ?? new Date(0).toISOString(),
   }
 }

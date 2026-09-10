@@ -1,8 +1,8 @@
 import { ImageResponse } from "next/og"
 
 import { cargarFuente } from "./fonts"
-import { Lamina, Portada, type Slide } from "./templates"
-import { ESTILO_POR_DEFECTO, LIENZO, type Estilo } from "./theme"
+import { Composicion, type Slide } from "./templates"
+import { ESTILO_POR_DEFECTO, LIENZO, type Estilo, type Variante } from "./theme"
 
 /**
  * Convierte un slide en un PNG cuadrado de 1080x1080.
@@ -20,14 +20,14 @@ import { ESTILO_POR_DEFECTO, LIENZO, type Estilo } from "./theme"
 export const MAX_SLIDES = 10
 export const MIN_SLIDES = 2
 
-/** Tope de la foto de portada: descargarla entera si es enorme no aporta. */
+/** Tope de la foto: descargarla entera si es enorme no aporta. */
 const MAX_FOTO_BYTES = 8 * 1024 * 1024
 
 /**
- * Baja la foto de la noticia y la deja como data URI.
+ * Baja una foto y la deja como data URI.
  *
  * Devuelve `null` ante cualquier problema —404, tipo raro, timeout, demasiado
- * grande— y nunca lanza: una portada sin foto sigue siendo una portada, pero un
+ * grande— y nunca lanza: una lamina sin foto sigue siendo una lamina, pero un
  * carrusel a medias no es nada.
  */
 export async function descargarFoto(url: string | null | undefined): Promise<string | null> {
@@ -35,7 +35,7 @@ export async function descargarFoto(url: string | null | undefined): Promise<str
 
   try {
     const response = await fetch(url, {
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(15_000),
       headers: { "User-Agent": "Mozilla/5.0 (compatible; HancelBot/1.0)" },
     })
     if (!response.ok) return null
@@ -47,8 +47,7 @@ export async function descargarFoto(url: string | null | undefined): Promise<str
     const buffer = await response.arrayBuffer()
     if (buffer.byteLength === 0 || buffer.byteLength > MAX_FOTO_BYTES) return null
 
-    const base64 = Buffer.from(buffer).toString("base64")
-    return `data:${tipo.split(";")[0]};base64,${base64}`
+    return `data:${tipo.split(";")[0]};base64,${Buffer.from(buffer).toString("base64")}`
   } catch {
     return null
   }
@@ -56,31 +55,81 @@ export async function descargarFoto(url: string | null | undefined): Promise<str
 
 export type SlideRender = {
   slide: Slide
-  /** Solo la portada la usa; el resto la ignora. */
+  variante: Variante
   foto?: string | null
 }
 
 export async function renderSlide(
-  { slide, foto }: SlideRender,
+  { slide, variante, foto }: SlideRender,
   total: number,
   estilo: Estilo = ESTILO_POR_DEFECTO
 ): Promise<Buffer> {
   const fonts = await cargarFuente(estilo.fuente)
 
-  const elemento =
-    slide.type === "photo_hook" ? (
-      <Portada slide={slide} total={total} estilo={estilo} foto={foto ?? null} />
-    ) : (
-      <Lamina slide={slide} total={total} estilo={estilo} />
-    )
-
-  const respuesta = new ImageResponse(elemento, {
-    width: LIENZO,
-    height: LIENZO,
-    fonts,
-  })
+  const respuesta = new ImageResponse(
+    <Composicion
+      slide={slide}
+      total={total}
+      estilo={estilo}
+      variante={variante}
+      foto={foto ?? null}
+    />,
+    { width: LIENZO, height: LIENZO, fonts }
+  )
 
   return Buffer.from(await respuesta.arrayBuffer())
+}
+
+/**
+ * Reparte las composiciones a lo largo del carrusel.
+ *
+ * No es aleatorio puro: se busca ritmo. La portada siempre lleva foto, la ultima
+ * cierra en cita —que es donde suele estar el remate— y en medio se alternan
+ * laminas con foto y sin ella para que el pulgar note el cambio. Dos laminas
+ * seguidas con foto de fondo se leen como una sola.
+ *
+ * El reparto depende solo del indice y del total, asi que regenerar un carrusel
+ * da el mismo resultado: nada de sorpresas al reintentar.
+ */
+export function repartirVariantes(slides: Slide[], usarFotos: boolean): Variante[] {
+  const total = slides.length
+
+  return slides.map((slide, indice) => {
+    if (indice === 0) return "portada"
+
+    const esUltima = indice === total - 1
+    const cuerpo = slide.type === "text" ? (slide.body ?? "") : ""
+    const titulo = slide.type === "text" ? (slide.title ?? "") : ""
+
+    // Una frase corta y rotunda pide cita; un parrafo largo, aire.
+    const esRemate = esUltima && cuerpo.length < 180
+    if (esRemate) return "cita"
+
+    if (!usarFotos) {
+      return indice % 2 === 0 ? "dato" : "texto"
+    }
+
+    // Un texto muy largo no cabe encima de una foto sin volverse ilegible.
+    const textoLargo = cuerpo.length + titulo.length > 260
+
+    switch (indice % 4) {
+      case 1:
+        return textoLargo ? "foto_lateral" : "foto_fondo"
+      case 2:
+        return "dato"
+      case 3:
+        return "foto_recuadro"
+      default:
+        return textoLargo ? "texto" : "foto_lateral"
+    }
+  })
+}
+
+/** Cuantas laminas de este reparto necesitan foto de banco. */
+export function necesitanFoto(variantes: Variante[]): boolean[] {
+  return variantes.map(
+    (v) => v === "foto_fondo" || v === "foto_lateral" || v === "foto_recuadro"
+  )
 }
 
 /**
