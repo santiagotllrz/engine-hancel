@@ -12,6 +12,7 @@ import {
   claimLinkedinJobs,
   countPending,
   enqueueAngleJob,
+  enqueueInstagramJob,
   enqueueLinkedinJob,
   getGenerationConfig,
   markJobUnreadable,
@@ -155,26 +156,37 @@ export async function runContentTick(
       rawNewsId: job.raw_news_id,
     })
 
-    // En automatico se genera el post del primero que propuso la rutina; en
-    // manual esperan a que el usuario elija cual convertir.
+    // En automatico se genera para las dos redes a partir del primer angulo que
+    // propuso la rutina; en manual esperan a que el usuario elija cual convertir
+    // y para donde. Las dos comparten angulo a proposito: es lo que hace que el
+    // post y el carrusel cuenten lo mismo.
     if (config.generation_mode === "auto" && creados.length > 0) {
       const primero = creados.reduce((a, b) => (a.position <= b.position ? a : b))
       const news = (await loadNews([job.raw_news_id])).get(job.raw_news_id)
       if (news) {
         try {
           await enqueueLinkedinJob(primero, news, config.variables)
-          await supabase
-            .from("content_angles")
-            .update({ status: "pending_generation" })
-            .eq("id", primero.id)
           linkedinQueued++
           log.emit("content.linkedin.queued", "Post encolado en automatico", {
             angleId: primero.id,
           })
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          errors.push(message)
+          errors.push(error instanceof Error ? error.message : String(error))
         }
+
+        try {
+          await enqueueInstagramJob(primero, news, config.variables)
+          log.emit("content.instagram.queued", "Carrusel encolado en automatico", {
+            angleId: primero.id,
+          })
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : String(error))
+        }
+
+        await supabase
+          .from("content_angles")
+          .update({ status: "pending_generation" })
+          .eq("id", primero.id)
       }
     }
   }
