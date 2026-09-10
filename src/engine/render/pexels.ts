@@ -15,8 +15,23 @@ const SEARCH_URL = "https://api.pexels.com/v1/search"
  */
 export const CANDIDATAS = 10
 
-/** Debajo de esto, el filtro de cuadradas esta estrangulando la busqueda. */
+/** Debajo de esto, el filtro de orientacion esta estrangulando la busqueda. */
 const MINIMO_ACEPTABLE = 4
+
+/**
+ * La forma que se le pide al banco.
+ *
+ * `vertical` para las laminas, que van en 4:5, y `apaisada` para la tarjeta de
+ * LinkedIn. Pedir la orientacion correcta importa mas de lo que parece: una foto
+ * apaisada recortada a 4:5 pierde los lados, que es justo donde suele estar el
+ * sujeto.
+ */
+export type Orientacion = "vertical" | "apaisada"
+
+const ORIENTACION_PEXELS: Record<Orientacion, string> = {
+  vertical: "portrait",
+  apaisada: "landscape",
+}
 
 export type Foto = {
   id: number
@@ -41,7 +56,7 @@ type RespuestaPexels = {
   }[]
 }
 
-async function pedir(query: string, cuadradas: boolean): Promise<Foto[]> {
+async function pedir(query: string, orientacion: Orientacion | null): Promise<Foto[]> {
   const key = process.env.PEXELS_API_KEY
   if (!key) return []
 
@@ -52,7 +67,7 @@ async function pedir(query: string, cuadradas: boolean): Promise<Foto[]> {
   // `size=large` se queda fuera a proposito: recorta los resultados a una
   // fraccion (2 frente a 4195 en las pruebas) y las fotos de Pexels ya vienen
   // muy por encima de los 1080 que hacen falta.
-  if (cuadradas) params.set("orientation", "square")
+  if (orientacion) params.set("orientation", ORIENTACION_PEXELS[orientacion])
 
   try {
     const response = await fetch(`${SEARCH_URL}?${params.toString()}`, {
@@ -79,18 +94,21 @@ async function pedir(query: string, cuadradas: boolean): Promise<Foto[]> {
 /**
  * Busca fotos para un termino.
  *
- * Primero cuadradas, que es el formato del carrusel; si salen muy pocas se
- * repite sin ese filtro, porque las plantillas recortan igualmente y es mejor
- * una foto buena recortada que ninguna.
+ * Primero con la orientacion que pide el formato; si salen muy pocas se repite
+ * sin ese filtro, porque las plantillas recortan igualmente y es mejor una foto
+ * buena recortada que ninguna.
  */
-export async function buscarFotos(query: string): Promise<Foto[]> {
-  const cuadradas = await pedir(query, true)
-  if (cuadradas.length >= MINIMO_ACEPTABLE) return cuadradas
+export async function buscarFotos(
+  query: string,
+  orientacion: Orientacion = "vertical"
+): Promise<Foto[]> {
+  const encajadas = await pedir(query, orientacion)
+  if (encajadas.length >= MINIMO_ACEPTABLE) return encajadas
 
-  const cualquiera = await pedir(query, false)
-  // Las cuadradas primero: encajan mejor aunque haya pocas.
-  const vistas = new Set(cuadradas.map((f) => f.id))
-  return [...cuadradas, ...cualquiera.filter((f) => !vistas.has(f.id))]
+  const cualquiera = await pedir(query, null)
+  // Las de la orientacion buena primero: encajan mejor aunque haya pocas.
+  const vistas = new Set(encajadas.map((f) => f.id))
+  return [...encajadas, ...cualquiera.filter((f) => !vistas.has(f.id))]
 }
 
 /**
@@ -103,9 +121,11 @@ export class BancoDeFotos {
   private usadas = new Set<number>()
   private pozo: Foto[] = []
   private terminosPendientes: string[]
+  private orientacion: Orientacion
 
-  constructor(terminos: string[]) {
+  constructor(terminos: string[], orientacion: Orientacion = "vertical") {
     this.terminosPendientes = [...terminos]
+    this.orientacion = orientacion
   }
 
   /** `null` cuando no queda ninguna foto nueva que ofrecer. */
@@ -123,7 +143,7 @@ export class BancoDeFotos {
 
       const termino = this.terminosPendientes.shift()
       if (!termino) return null
-      this.pozo = await buscarFotos(termino)
+      this.pozo = await buscarFotos(termino, this.orientacion)
     }
   }
 }

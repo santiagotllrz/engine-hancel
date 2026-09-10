@@ -4,6 +4,7 @@ import { supabaseAdmin } from "../supabase-admin"
 import { terminosDeBusqueda } from "./keywords"
 import { BancoDeFotos, descargarFotoPexels, pexelsConfigurado } from "./pexels"
 import {
+  descargarFoto,
   MAX_SLIDES,
   MIN_SLIDES,
   necesitanFoto,
@@ -68,7 +69,7 @@ export function parseInstagramResponse(respuesta: unknown): {
  * Dibuja y sube el carrusel entero.
  *
  * Las imagenes se generan en serie y no en paralelo: son hasta diez PNG de
- * 1080x1080 y hacerlas a la vez dispara la memoria de la funcion sin ganar gran
+ * 1080x1350 y hacerlas a la vez dispara la memoria de la funcion sin ganar gran
  * cosa, porque el cuello es el propio render.
  */
 export async function generarCarrusel(
@@ -97,36 +98,53 @@ export async function generarCarrusel(
   const banco = new BancoDeFotos(terminos)
   const creditos: { autor: string; url: string }[] = []
 
-  // La portada tambien tira del banco. Antes usaba la imagen de la noticia, pero
-  // Serper devuelve miniaturas de unos 300px que al escalarlas a 1080 se ven
-  // blandas, y encima repetian la foto que ya sale en cualquier agregador.
+  /** Una foto nueva del banco, o `null` si ya no queda ninguna sin usar. */
+  const delBanco = async (): Promise<string | null> => {
+    if (!estilo.usarFotos || !pexelsConfigurado()) return null
+
+    // `siguiente()` no repite dentro del mismo post: lleva la cuenta de lo ya
+    // servido y va agotando terminos antes que reutilizar una foto.
+    const elegida = await banco.siguiente()
+    if (!elegida) return null
+
+    const descargada = await descargarFotoPexels(elegida)
+    if (descargada && elegida.autor) {
+      creditos.push({ autor: elegida.autor, url: elegida.autorUrl })
+    }
+    return descargada
+  }
+
+  // La portada se resuelve antes que nada y con red de seguridad, porque es la
+  // unica lamina que no puede salir sin foto: es lo que frena el pulgar en el
+  // feed, y una portada de solo texto sobre negro es un post que nadie abre.
+  //
+  // Primero el banco, que da fotos grandes y distintas en cada post. Si no
+  // devuelve nada —sin clave de Pexels, red caida, terminos agotados— se recurre
+  // a la imagen de la noticia: es una miniatura de unos 300px y se ve mas
+  // blanda, pero una portada blanda es mejor que una portada vacia.
+  const fotoPortada = (await delBanco()) ?? (await descargarFoto(news?.image_url))
+  const sinFotoPortada = fotoPortada === null
+
+  // El antetitulo situa el post antes de que nadie lea el titular. Sale del tema
+  // del segmento, que es lo mas concreto que la noticia trae siempre.
+  const etiqueta = (news?.tema ?? news?.niche ?? "").trim() || null
+
   const imagenes: Buffer[] = []
-  let sinFotoPortada = false
 
   for (const [indice, slide] of slides.entries()) {
-    let foto: string | null = null
-
-    if (
-      (indice === 0 || conFoto[indice] || variantes[indice] === "cierre") &&
-      estilo.usarFotos &&
-      pexelsConfigurado()
-    ) {
-      // `siguiente()` no repite dentro del mismo post: lleva la cuenta de lo ya
-      // servido y va agotando terminos antes que reutilizar una foto.
-      const elegida = await banco.siguiente()
-      if (elegida) {
-        foto = await descargarFotoPexels(elegida)
-        if (foto && elegida.autor) {
-          creditos.push({ autor: elegida.autor, url: elegida.autorUrl })
-        }
-      }
-      if (indice === 0 && !foto) sinFotoPortada = true
-    } else if (indice === 0) {
-      sinFotoPortada = true
-    }
+    const foto =
+      indice === 0
+        ? fotoPortada
+        : conFoto[indice] || variantes[indice] === "cierre"
+          ? await delBanco()
+          : null
 
     imagenes.push(
-      await renderSlide({ slide, variante: variantes[indice], foto }, slides.length, estilo)
+      await renderSlide(
+        { slide, variante: variantes[indice], foto, etiqueta },
+        slides.length,
+        estilo
+      )
     )
   }
 

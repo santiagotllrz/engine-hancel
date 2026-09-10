@@ -7,7 +7,15 @@
  * llega como `Estilo`.
  */
 
-export const LIENZO = 1080
+/**
+ * El lienzo del carrusel: 4:5 vertical, no cuadrado.
+ *
+ * Instagram admite hasta 4:5 y es el formato que mas alto ocupa en el feed: el
+ * mismo post gana un tercio de pantalla frente al cuadrado, y esa altura es
+ * justo lo que deja poner la foto arriba y el titular abajo sin apretar.
+ */
+export const ANCHO = 1080
+export const ALTO = 1350
 
 export type Paleta = {
   fondo: string
@@ -19,6 +27,10 @@ export type Paleta = {
   velo: string
   /** Para el cierre y la tarjeta, donde el texto va suelto y pide mas calma. */
   veloFuerte: string
+  /** Los tres cortes del degradado que funde la foto en el fondo. */
+  fundido: [string, string, string]
+  /** Banda superior sobre la foto, para que la marca se lea sobre un cielo claro. */
+  veloTecho: string
 }
 
 export const PALETA: Paleta = {
@@ -29,6 +41,8 @@ export const PALETA: Paleta = {
   acento: "#FFFFFF",
   velo: "rgba(0, 0, 0, 0.66)",
   veloFuerte: "rgba(0, 0, 0, 0.8)",
+  fundido: ["rgba(10, 10, 10, 0)", "rgba(10, 10, 10, 0.92)", "#0A0A0A"],
+  veloTecho: "rgba(10, 10, 10, 0.55)",
 }
 
 /**
@@ -53,6 +67,8 @@ export const PALETAS: Record<string, Paleta> = {
     // Sobre fondo claro el velo tambien aclara: si no, el texto negro no se lee.
     velo: "rgba(255, 255, 255, 0.78)",
     veloFuerte: "rgba(255, 255, 255, 0.88)",
+    fundido: ["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 0.94)", "#FFFFFF"],
+    veloTecho: "rgba(255, 255, 255, 0.62)",
   },
   carbon: {
     fondo: "#1C1C1C",
@@ -62,6 +78,8 @@ export const PALETAS: Record<string, Paleta> = {
     acento: "#FAFAFA",
     velo: "rgba(12, 12, 12, 0.62)",
     veloFuerte: "rgba(8, 8, 8, 0.78)",
+    fundido: ["rgba(28, 28, 28, 0)", "rgba(28, 28, 28, 0.92)", "#1C1C1C"],
+    veloTecho: "rgba(28, 28, 28, 0.55)",
   },
 }
 
@@ -88,14 +106,14 @@ export type NombreFuente = keyof typeof FUENTES
 export const FUENTE_POR_DEFECTO: NombreFuente = "HeroFont"
 
 /**
- * Escala tipografica sobre el lienzo de 1080.
+ * Escala tipografica sobre el lienzo de 1080x1350.
  *
  * Grande a proposito: un carrusel se lee en un telefono, a menudo en miniatura
  * dentro del feed.
  */
 export const ESCALA = {
   /** Portada. */
-  hook: 88,
+  hook: 92,
   /** Titulo de lamina. */
   titulo: 64,
   /** Descripcion: el cuerpo de texto de cualquier lamina. */
@@ -104,6 +122,8 @@ export const ESCALA = {
   cita: 60,
   /** Etiqueta en versalitas bajo una cita. */
   etiqueta: 30,
+  /** Antetitulo de la portada: el tema, en versalitas sobre el hook. */
+  antetitulo: 30,
   pie: 28,
   numero: 26,
 }
@@ -119,15 +139,32 @@ export const ESCALA = {
  * palabra contra el borde.
  */
 export const TOPES = {
-  hook: 130,
-  titulo: 70,
+  // Corto a proposito: en la portada el hook va abajo, sobre el fondo del
+  // degradado, y pasar de cuatro o cinco lineas se come la foto que tiene que
+  // atraer la mirada. Es un titular, no un resumen.
+  hook: 100,
+  titulo: 80,
   /** El hueco de la descripcion cambia segun la composicion. */
-  cuerpoAmplio: 320,
-  cuerpoAjustado: 210,
-  cita: 200,
+  cuerpoAmplio: 420,
+  cuerpoAjustado: 300,
+  cita: 260,
+  antetitulo: 34,
 }
 
-export const MARGEN = 96
+/**
+ * El marco: el aire que ninguna lamina invade.
+ *
+ * Es el mismo en las ocho composiciones y en las cuatro esquinas, y todo
+ * —titulares, cuerpos, fotos de contenido, numeracion— vive dentro. Es lo unico
+ * que hace que ocho maquetaciones distintas se lean como una serie: si cada
+ * lamina empezara su texto a una altura distinta, el carrusel parecerian ocho
+ * posts pegados.
+ *
+ * La excepcion es la foto de fondo, que va a sangre por debajo del marco. Ahi no
+ * es contenido sino lienzo, y recuadrarla dejaria un borde que compite con el
+ * texto en vez de sostenerlo.
+ */
+export const MARGEN = 84
 
 /**
  * Como se compone cada lamina.

@@ -341,7 +341,7 @@ function PieceCard({
                   <img
                     src={src}
                     alt={`Lamina ${i + 1} del carrusel`}
-                    className="size-32 rounded-md border object-cover"
+                    className="h-40 w-32 rounded-md border object-cover"
                     loading="lazy"
                   />
                   <span className="bg-background/85 absolute bottom-1 left-1 rounded px-1 text-[10px] font-medium">
@@ -352,7 +352,8 @@ function PieceCard({
             </div>
             {carrusel?.portadaSinFoto ? (
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                La portada salio sin foto: la imagen de la noticia no se pudo usar.
+                La portada salio sin foto: ni el banco ni la noticia dieron una. Regenera
+                para volver a intentarlo.
               </p>
             ) : null}
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{carrusel?.caption}</p>

@@ -2,10 +2,10 @@ import { ImageResponse } from "next/og"
 
 import { cargarFuente } from "./fonts"
 import { Composicion, TarjetaLinkedin, type Slide } from "./templates"
-import { ESTILO_POR_DEFECTO, LIENZO, type Estilo, type Variante } from "./theme"
+import { ALTO, ANCHO, ESTILO_POR_DEFECTO, type Estilo, type Variante } from "./theme"
 
 /**
- * Convierte un slide en un PNG cuadrado de 1080x1080.
+ * Convierte un slide en un PNG vertical de 1080x1350.
  *
  * El motor es Satori, via `next/og`: renderiza un arbol de React a imagen sin
  * navegador headless. Se eligio sobre Puppeteer porque en serverless un Chromium
@@ -57,10 +57,12 @@ export type SlideRender = {
   slide: Slide
   variante: Variante
   foto?: string | null
+  /** Antetitulo de la portada. Las laminas interiores lo ignoran. */
+  etiqueta?: string | null
 }
 
 export async function renderSlide(
-  { slide, variante, foto }: SlideRender,
+  { slide, variante, foto, etiqueta }: SlideRender,
   total: number,
   estilo: Estilo = ESTILO_POR_DEFECTO
 ): Promise<Buffer> {
@@ -73,8 +75,9 @@ export async function renderSlide(
       estilo={estilo}
       variante={variante}
       foto={foto ?? null}
+      etiqueta={etiqueta ?? null}
     />,
-    { width: LIENZO, height: LIENZO, fonts }
+    { width: ANCHO, height: ALTO, fonts }
   )
 
   return Buffer.from(await respuesta.arrayBuffer())
@@ -92,7 +95,8 @@ export const TARJETA_ALTO = 627
 export async function renderTarjetaLinkedin(
   titular: string,
   foto: string | null,
-  estilo: Estilo = ESTILO_POR_DEFECTO
+  estilo: Estilo = ESTILO_POR_DEFECTO,
+  etiqueta: string | null = null
 ): Promise<Buffer> {
   const fonts = await cargarFuente(estilo.fuente)
 
@@ -103,6 +107,7 @@ export async function renderTarjetaLinkedin(
       foto={foto}
       ancho={TARJETA_ANCHO}
       alto={TARJETA_ALTO}
+      etiqueta={etiqueta}
     />,
     { width: TARJETA_ANCHO, height: TARJETA_ALTO, fonts }
   )
