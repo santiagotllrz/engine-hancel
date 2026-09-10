@@ -1,5 +1,6 @@
 import type { RawNews } from "@/lib/types"
 
+import { publishPiece, pendingToPublish } from "../publish/publish-piece"
 import type { RoutineCallResult } from "../routines"
 import { supabaseAdmin } from "../supabase-admin"
 import {
@@ -41,6 +42,9 @@ import type { ContentAngle, JobAngle, JobLinkedin, Variables } from "./types"
  */
 export const MAX_AUTO_POR_TICK = 5
 
+/** Tope de publicaciones por pasada: LinkedIn limita el ritmo y no hay prisa. */
+export const MAX_PUBLICAR_POR_TICK = 3
+
 export type TickTrigger = "trigger" | "cron" | "manual" | "app"
 
 export type TickSummary = {
@@ -53,6 +57,7 @@ export type TickSummary = {
   linkedinQueued: number
   linkedinJobsConsumed: number
   piecesCreated: number
+  piecesPublished: number
   failedJobs: number
   routines: RoutineCallResult[]
   errors: string[]
@@ -80,6 +85,7 @@ export async function runContentTick(
   let linkedinQueued = 0
   let linkedinJobsConsumed = 0
   let piecesCreated = 0
+  let piecesPublished = 0
   let failedJobs = 0
 
   const supabase = supabaseAdmin()
@@ -282,6 +288,33 @@ export async function runContentTick(
     }
   }
 
+  // -------------------------------------------------------------- publicacion
+  //
+  // Se publica aqui y no al crear la pieza para que el modo automatico funcione
+  // sin nadie delante: el cron y los triggers pasan por esta misma pasada.
+  if (config.autopublish) {
+    try {
+      for (const pieza of await pendingToPublish(MAX_PUBLICAR_POR_TICK)) {
+        const result = await publishPiece(pieza.id)
+        if (result.ok) {
+          piecesPublished++
+          log.emit("content.piece.published", "Pieza publicada en LinkedIn", {
+            pieceId: pieza.id,
+            urn: result.urn,
+          })
+        } else {
+          errors.push(result.error)
+          log.emit("content.publish.failed", "No se pudo publicar", {
+            pieceId: pieza.id,
+            error: result.error,
+          })
+        }
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error))
+    }
+  }
+
   // ------------------------------------------------------------------- avisos
   //
   // Un aviso por rutina y por pasada, y solo si hay algo esperando: el webhook
@@ -326,6 +359,7 @@ export async function runContentTick(
     linkedinQueued,
     linkedinJobsConsumed,
     piecesCreated,
+    piecesPublished,
     failedJobs,
     routines,
     errors,

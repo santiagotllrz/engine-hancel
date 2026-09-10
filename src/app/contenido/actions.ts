@@ -11,6 +11,8 @@ import { angleRoutineConfig, linkedinRoutineConfig } from "@/engine/content/rout
 import { runContentTick } from "@/engine/content/tick"
 import type { ContentAngle, Variables } from "@/engine/content/types"
 import { parseVariables, validateVariables } from "@/engine/content/variables"
+import { disconnectLinkedin } from "@/engine/publish/linkedin"
+import { publishPiece } from "@/engine/publish/publish-piece"
 import { supabaseAdmin } from "@/engine/supabase-admin"
 import type { RawNews } from "@/lib/types"
 
@@ -258,6 +260,27 @@ export async function updatePiece(form: FormData): Promise<ActionResult> {
   }
 }
 
+// ---------------------------------------------------------------- publicacion
+
+/** Publica una pieza a mano. El automatico hace lo mismo desde el tick. */
+export async function publishPieceNow(pieceId: string): Promise<ActionResult> {
+  if (!pieceId) return { ok: false, error: "Falta el id de la pieza." }
+
+  const result = await publishPiece(pieceId)
+  refresh()
+  return result.ok ? { ok: true } : { ok: false, error: result.error }
+}
+
+export async function disconnectLinkedinAccount(): Promise<ActionResult> {
+  try {
+    await disconnectLinkedin()
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return fail(error, "No se pudo desconectar la cuenta.")
+  }
+}
+
 // -------------------------------------------------------------------- la cola
 
 /**
@@ -337,6 +360,7 @@ export async function updateGenerationConfig(form: FormData): Promise<ActionResu
   const invalido = validateVariables(variables)
   if (invalido) return { ok: false, error: invalido }
 
+  const autopublish = form.get("autopublish") === "true"
   const modo = text(form, "generation_mode") || "manual"
   if (modo !== "auto" && modo !== "manual") {
     return { ok: false, error: "El modo tiene que ser automatico o manual." }
@@ -367,6 +391,7 @@ export async function updateGenerationConfig(form: FormData): Promise<ActionResu
         variables: parseVariables(variables),
         score_threshold: umbral,
         generation_mode: modo,
+        autopublish: autopublish,
         updated_at: new Date().toISOString(),
       })
       .eq("id", true)

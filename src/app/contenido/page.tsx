@@ -10,6 +10,7 @@ import {
   getPieces,
   getRoutinesStatus,
 } from "@/lib/content-data"
+import { getLinkedinStatus } from "@/engine/publish/linkedin"
 import { formatNumber } from "@/lib/format"
 
 // Cambia con cada pasada del pipeline: nada que prerenderizar.
@@ -33,12 +34,13 @@ function StatCard({ label, value }: { label: string; value: string }) {
 }
 
 export default async function ContenidoPage() {
-  const [config, candidates, angles, pieces, counts] = await Promise.all([
+  const [config, candidates, angles, pieces, counts, linkedin] = await Promise.all([
     getGenerationConfig(),
     getCandidates(),
     getAngles(),
     getPieces(),
     getContentCounts(),
+    getLinkedinStatus(),
   ])
 
   return (
@@ -57,6 +59,7 @@ export default async function ContenidoPage() {
         angles={angles}
         pieces={pieces}
         hasThreshold={config.score_threshold !== null}
+        linkedinConnected={linkedin.connected && !linkedin.expired}
       />
     </DashboardShell>
   )

@@ -382,3 +382,54 @@ alter table public.content_pieces    enable row level security;
 
 -- Obligatoria: el codigo lee y escribe con .eq("id", true), como engine_settings.
 insert into public.generation_config (id) values (true) on conflict (id) do nothing;
+
+-- ------------------------------------------------------------- publicacion
+--
+-- Publicar en LinkedIn la pieza generada.
+
+-- La cuenta conectada por OAuth. Tabla de una sola fila, como engine_settings.
+--
+-- Guarda el token porque la app publica en nombre del miembro cuando el ya no
+-- esta delante: un flujo que solo viviera en la sesion del navegador no serviria
+-- para el modo automatico. De ahi RLS activo y solo service_role, igual que
+-- engine_routines, que tambien custodia credenciales.
+--
+-- LinkedIn emite tokens de 60 dias y los refresh programaticos estan
+-- restringidos a partners, asi que `expires_at` no es informativo: cuando pasa,
+-- hay que reconectar a mano. La interfaz avisa una semana antes.
+create table if not exists public.linkedin_account (
+  id                 boolean primary key default true,
+  access_token       text        not null,
+  refresh_token      text,
+  expires_at         timestamptz not null,
+  refresh_expires_at timestamptz,
+  -- urn:li:person:{sub}, que es lo que la Posts API espera en `author`.
+  person_urn         text        not null,
+  display_name       text,
+  scope              text,
+  connected_at       timestamptz not null default now(),
+
+  constraint linkedin_account_singleton check (id)
+);
+
+alter table public.linkedin_account enable row level security;
+
+-- Publicar en automatico nace apagado a proposito: manda contenido generado a
+-- una cuenta real sin que nadie lo lea antes.
+alter table public.generation_config
+  add column if not exists autopublish boolean not null default false;
+
+-- Una pieza publicada guarda el URN que devuelve LinkedIn, que es lo que
+-- permite reconstruir la URL del post y no publicarla dos veces.
+alter table public.content_pieces add column if not exists published_at  timestamptz;
+alter table public.content_pieces add column if not exists linkedin_urn  text;
+alter table public.content_pieces add column if not exists publish_error text;
+
+alter table public.content_pieces drop constraint if exists content_pieces_status_check;
+alter table public.content_pieces
+  add constraint content_pieces_status_check
+  check (status in ('generated', 'approved', 'published', 'rejected'));
+
+-- Lo que mira el modo automatico: generado o aprobado, y aun sin publicar.
+create index if not exists content_pieces_publicables_idx on public.content_pieces (created_at)
+  where status in ('generated', 'approved') and published_at is null;

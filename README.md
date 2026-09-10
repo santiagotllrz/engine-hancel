@@ -14,6 +14,7 @@ interfaz viven juntos. Base de datos: proyecto Supabase `iddjepduokjysnibjjqy`.
 | 1 — Ingesta de noticias        | **Aqui, en codigo**                          |
 | 2 — Analisis y enriquecimiento | **Se dispara desde aqui** (rutina de Claude) |
 | 3 — Generacion de contenido    | **Aqui, en codigo** (angulo + LinkedIn)      |
+| 4 — Publicacion en LinkedIn    | **Aqui, en codigo** (OAuth + Posts API)      |
 
 Antes de activar la ingesta hay que **apagar el workflow de n8n**, o las dos
 correran en paralelo y duplicaran el consumo de Serper.
@@ -36,6 +37,9 @@ SERPER_API_KEY=xxx                            # busqueda de noticias
 INGEST_SECRET=<openssl rand -hex 32>          # protege /api/ingest
 ANALYSIS_ROUTINE_URL=https://api.anthropic.com/v1/claude_code/routines/<id>/fire
 ANALYSIS_ROUTINE_TOKEN=sk-ant-oat01-xxx       # sin el prefijo "Bearer"
+LINKEDIN_CLIENT_ID=xxx                        # publicar en LinkedIn
+LINKEDIN_CLIENT_SECRET=xxx
+LINKEDIN_REDIRECT_URI=https://<host>/api/auth/linkedin/callback
 ANGLE_ROUTINE_URL=…/routines/<id>/fire        # etapa 2: angulo
 ANGLE_ROUTINE_TOKEN=sk-ant-oat01-xxx
 LINKEDIN_ROUTINE_URL=…/routines/<id>/fire     # etapa 2: post
@@ -65,6 +69,7 @@ clave publicable no debe poder leerlos.
 | `/contenido`         | Estudio: candidatas, angulos y piezas generadas                 |
 | `/contenido/config`  | Variables de marca, umbral de score y modo                     |
 | `/contenido/cola`    | Los buzones en crudo, para diagnosticar                        |
+| `/api/auth/linkedin/*` | OAuth de LinkedIn: conectar la cuenta que publica            |
 | `/pipeline`          | Historial de corridas                                          |
 | `/api/ingest`        | Dispara la Etapa 1 desde un scheduler (requiere secreto)       |
 | `/api/engine/stream` | Corrida con eventos en streaming (usa la consola en vivo)      |
@@ -359,6 +364,70 @@ modo ni el umbral.
 y el error si lo hubo, con un boton para reintentar un trabajo fallido y otro
 para forzar una pasada. No hay reintento automatico a proposito: un prompt que
 falla reintentado en bucle quema cuota sin converger.
+
+## Etapa 3 — Publicar en LinkedIn
+
+La pieza generada se publica en el feed de una cuenta conectada por OAuth. Dos
+modos, como en la generacion:
+
+- **Manual** (por defecto): el boton **Publicar** de cada pieza en `/contenido`.
+- **Automatico**: el interruptor de `/contenido/config`. Cada post generado se
+  publica **sin que nadie lo lea antes**. Nace apagado y no se puede encender
+  sin una cuenta conectada.
+
+### Conectar la cuenta
+
+```
+LINKEDIN_CLIENT_ID=xxx
+LINKEDIN_CLIENT_SECRET=xxx
+LINKEDIN_REDIRECT_URI=https://<host>/api/auth/linkedin/callback
+```
+
+El redirect tiene que estar dado de alta **tal cual** en la app de LinkedIn
+Developers, pestaña Auth. LinkedIn solo admite `https`, asi que la conexion se
+hace desde el despliegue, no desde `localhost`.
+
+Con eso, **Conectar LinkedIn** en `/contenido/config` lanza el flujo de 3 patas:
+
+```
+/api/auth/linkedin/start     genera un `state`, lo guarda en cookie httpOnly
+   ↓                          y manda al usuario a LinkedIn
+LinkedIn                     el miembro autoriza (en el dominio de LinkedIn)
+   ↓
+/api/auth/linkedin/callback  compara el `state`, cambia el codigo por el token,
+                             lee /v2/userinfo y guarda la cuenta
+```
+
+Permisos que se piden: `openid profile w_member_social`. Los dos primeros son
+para leer el `sub` de `/v2/userinfo`, que es el id con el que se arma el URN del
+autor; el tercero es el permiso de publicar en nombre del miembro, abierto a
+cualquier app.
+
+El token se guarda en `linkedin_account` porque el modo automatico publica
+cuando no hay nadie delante — una sesion de navegador no serviria.
+
+### Caducidad: hay que reconectar a mano
+
+LinkedIn emite tokens de **60 dias** y los *refresh tokens programaticos estan
+restringidos a partners*. Sin ese permiso no se puede renovar por codigo: hay que
+volver a pasar por **Reconectar**, que es transparente si la sesion de LinkedIn
+sigue abierta. La tarjeta de `/contenido/config` avisa una semana antes y marca
+la cuenta como caducada cuando pasa.
+
+### Como se publica
+
+`POST https://api.linkedin.com/rest/posts` con `Linkedin-Version` y
+`X-Restli-Protocol-Version: 2.0.0`. El texto va en `commentary` (hook, cuerpo y
+hashtags, en ese orden) y el `author` es el URN de la persona. LinkedIn responde
+`201` y devuelve el id del post **en la cabecera `x-restli-id`**, no en el
+cuerpo; ese URN se guarda en `content_pieces.linkedin_urn` y con el se arma el
+enlace al post.
+
+Publicar no lanza nunca: el fallo se guarda en `content_pieces.publish_error` y
+se ve bajo la pieza. La guarda contra publicar dos veces es `published_at`.
+
+En automatico se publica desde el mismo tick que drena las colas, con un tope de
+tres por pasada — LinkedIn limita el ritmo y no hay ninguna prisa.
 
 ## ⚠ El dashboard no tiene autenticacion
 

@@ -6,6 +6,7 @@ import {
   approvePiece,
   discardAngle,
   generateFromAngle,
+  publishPieceNow,
   rejectPiece,
   updatePiece,
   type ActionResult,
@@ -18,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import type { AngleView, PieceView } from "@/lib/content-data"
 import { formatDateTime } from "@/lib/format"
 import type { RawNews } from "@/lib/types"
-import { CheckIcon, CopyIcon, ExternalLinkIcon, XIcon } from "lucide-react"
+import { CheckIcon, CopyIcon, ExternalLinkIcon, SendIcon, XIcon } from "lucide-react"
 
 /** Envuelve una accion de servidor con estado pendiente y mensaje de error. */
 function useAction() {
@@ -55,11 +56,13 @@ export function ContentStudio({
   angles,
   pieces,
   hasThreshold,
+  linkedinConnected,
 }: {
   candidates: RawNews[]
   angles: AngleView[]
   pieces: PieceView[]
   hasThreshold: boolean
+  linkedinConnected: boolean
 }) {
   return (
     <div className="flex flex-col gap-8">
@@ -118,7 +121,7 @@ export function ContentStudio({
         ) : (
           <div className="flex flex-col gap-3">
             {pieces.map((piece) => (
-              <PieceCard key={piece.id} piece={piece} />
+              <PieceCard key={piece.id} piece={piece} linkedinConnected={linkedinConnected} />
             ))}
           </div>
         )}
@@ -185,7 +188,13 @@ function AngleCard({ angle }: { angle: AngleView }) {
   )
 }
 
-function PieceCard({ piece }: { piece: PieceView }) {
+function PieceCard({
+  piece,
+  linkedinConnected,
+}: {
+  piece: PieceView
+  linkedinConnected: boolean
+}) {
   const { pending, error, run } = useAction()
   const [editando, setEditando] = React.useState(false)
   const [copiado, setCopiado] = React.useState(false)
@@ -200,13 +209,25 @@ function PieceCard({ piece }: { piece: PieceView }) {
       <CardContent className="flex flex-col gap-3 py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <Badge variant={piece.status === "approved" ? "default" : "secondary"}>
-              {piece.status === "approved"
-                ? "Aprobada"
-                : piece.status === "rejected"
-                  ? "Rechazada"
-                  : "Por revisar"}
+            <Badge variant={piece.status === "rejected" ? "outline" : "default"}>
+              {piece.status === "published"
+                ? "Publicada"
+                : piece.status === "approved"
+                  ? "Aprobada"
+                  : piece.status === "rejected"
+                    ? "Rechazada"
+                    : "Por revisar"}
             </Badge>
+            {piece.linkedin_urn ? (
+              <a
+                href={`https://www.linkedin.com/feed/update/${piece.linkedin_urn}/`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-muted-foreground hover:text-foreground text-xs underline"
+              >
+                ver en LinkedIn
+              </a>
+            ) : null}
             <span className="text-muted-foreground text-xs">
               {formatDateTime(piece.generated_at ?? piece.created_at)}
             </span>
@@ -283,6 +304,18 @@ function PieceCard({ piece }: { piece: PieceView }) {
             </Button>
             <Button
               size="sm"
+              variant="secondary"
+              disabled={pending || !linkedinConnected || piece.published_at !== null}
+              title={
+                !linkedinConnected ? "Conecta una cuenta de LinkedIn en Variables" : undefined
+              }
+              onClick={() => run(() => publishPieceNow(piece.id))}
+            >
+              <SendIcon />
+              {piece.published_at ? "Publicada" : "Publicar"}
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
               disabled={pending || piece.status === "rejected"}
               onClick={() => run(() => rejectPiece(piece.id))}
@@ -291,6 +324,9 @@ function PieceCard({ piece }: { piece: PieceView }) {
               Rechazar
             </Button>
             {error ? <span className="text-destructive text-xs">{error}</span> : null}
+            {!error && piece.publish_error ? (
+              <span className="text-destructive text-xs">{piece.publish_error}</span>
+            ) : null}
           </div>
         ) : null}
       </CardContent>

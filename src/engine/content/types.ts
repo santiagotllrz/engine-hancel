@@ -52,7 +52,7 @@ export type ContentAngle = {
   created_at: string
 }
 
-export type PieceStatus = "generated" | "approved" | "rejected"
+export type PieceStatus = "generated" | "approved" | "published" | "rejected"
 
 /** Fila de `public.content_pieces`. */
 export type ContentPiece = {
@@ -68,6 +68,10 @@ export type ContentPiece = {
   created_at: string
   generated_at: string | null
   approved_at: string | null
+  published_at: string | null
+  /** El id que devuelve LinkedIn; con el se arma la URL del post publicado. */
+  linkedin_urn: string | null
+  publish_error: string | null
 }
 
 /**
@@ -93,6 +97,8 @@ export type GenerationConfig = {
   /** NULL mientras el usuario no defina el scoring desde la interfaz. */
   score_threshold: number | null
   generation_mode: "auto" | "manual"
+  /** Publicar en LinkedIn sin revision previa. Nace apagado. */
+  autopublish: boolean
   updated_at: string
 }
 

@@ -20,6 +20,8 @@ export type ContentEventKind =
   | "content.linkedin.queued"
   | "content.piece.created"
   | "content.linkedin.failed"
+  | "content.piece.published"
+  | "content.publish.failed"
   | "content.routine.called"
   | "content.routine.failed"
   | "content.tick.completed"
