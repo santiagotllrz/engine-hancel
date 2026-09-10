@@ -302,6 +302,84 @@ export async function publishPieceNow(pieceId: string): Promise<ActionResult> {
   return result.ok ? { ok: true } : { ok: false, error: result.error }
 }
 
+/**
+ * Vuelve a dibujar y subir las imagenes de un carrusel.
+ *
+ * El guion vive en el buzon, asi que se puede reconstruir exactamente: el
+ * reparto de composiciones depende del indice, no del azar. Sirve cuando las
+ * imagenes ya no estan en el storage —Buffer responde entonces "Image could not
+ * be read from its URL"— y tambien para reaplicar un cambio de aspecto sin
+ * volver a gastar una generacion de la rutina.
+ */
+export async function regenerateCarousel(pieceId: string): Promise<ActionResult> {
+  if (!pieceId) return { ok: false, error: "Falta el id de la pieza." }
+
+  try {
+    const supabase = supabaseAdmin()
+
+    const { data: piezaRaw, error: errorPieza } = await supabase
+      .from("content_pieces")
+      .select("*")
+      .eq("id", pieceId)
+      .single()
+
+    if (errorPieza) throw new Error(errorPieza.message)
+    const pieza = piezaRaw as {
+      job_instagram_id: string | null
+      content_angle_id: string
+      network: string
+      payload: { caption?: string; hashtags?: string[] }
+    }
+
+    if (pieza.network !== "instagram") {
+      return { ok: false, error: "Solo los carruseles se regeneran." }
+    }
+    if (!pieza.job_instagram_id) {
+      return { ok: false, error: "Esta pieza no conserva el buzon del que salio." }
+    }
+
+    const [{ data: job }, { data: cfg }] = await Promise.all([
+      supabase.from("jobs_instagram").select("*").eq("id", pieza.job_instagram_id).single(),
+      supabase.from("generation_config").select("carousel").eq("id", true).single(),
+    ])
+
+    if (!job) return { ok: false, error: "No se encontro el buzon original." }
+
+    const { generarCarrusel, nichosConocidos, noticiaDelAngulo } = await import(
+      "@/engine/render/carousel"
+    )
+    const { estiloDesdeConfig } = await import("@/engine/render/theme")
+
+    const news = await noticiaDelAngulo(pieza.content_angle_id)
+    const carrusel = await generarCarrusel(
+      (job as { id: string }).id,
+      (job as { respuesta: unknown }).respuesta,
+      news,
+      estiloDesdeConfig((cfg as { carousel?: unknown } | null)?.carousel),
+      await nichosConocidos()
+    )
+
+    // El texto lo escribio la rutina y no cambia porque se redibujen las imagenes.
+    const { error } = await supabase
+      .from("content_pieces")
+      .update({
+        payload: {
+          ...carrusel,
+          caption: pieza.payload?.caption ?? carrusel.caption,
+          hashtags: pieza.payload?.hashtags ?? carrusel.hashtags,
+        },
+        publish_error: null,
+      })
+      .eq("id", pieceId)
+
+    if (error) throw new Error(error.message)
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return fail(error, "No se pudieron regenerar las imagenes.")
+  }
+}
+
 export async function disconnectLinkedinAccount(): Promise<ActionResult> {
   try {
     await disconnectLinkedin()

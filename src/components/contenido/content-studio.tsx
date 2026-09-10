@@ -7,6 +7,7 @@ import {
   discardAngle,
   generateFromAngle,
   publishPieceNow,
+  regenerateCarousel,
   rejectPiece,
   updatePiece,
   type ActionResult,
@@ -27,6 +28,7 @@ import {
   FileTextIcon,
   DownloadIcon,
   ImagesIcon,
+  RefreshCwIcon,
   SendIcon,
   XIcon,
 } from "lucide-react"
@@ -384,14 +386,26 @@ function PieceCard({
               </Button>
             ) : null}
             {esCarrusel ? (
-              <Button
-                size="sm"
-                variant="outline"
-                render={<a href={`/api/content/carousel?piece=${piece.id}`} download />}
-              >
-                <DownloadIcon />
-                Descargar
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  render={<a href={`/api/content/carousel?piece=${piece.id}`} download />}
+                >
+                  <DownloadIcon />
+                  Descargar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending || piece.published_at !== null}
+                  title="Vuelve a dibujar y subir las imagenes desde el guion original"
+                  onClick={() => run(() => regenerateCarousel(piece.id))}
+                >
+                  <RefreshCwIcon />
+                  Regenerar
+                </Button>
+              </>
             ) : null}
             <Button
               size="sm"
