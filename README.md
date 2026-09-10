@@ -513,6 +513,30 @@ volver a pasar por **Reconectar**, que es transparente si la sesion de LinkedIn
 sigue abierta. La tarjeta de `/contenido/config` avisa una semana antes y marca
 la cuenta como caducada cuando pasa.
 
+### Cuando se publica: horas y tandas
+
+`/contenido/config` tiene una seccion por red. Cada una va por su cuenta: se
+puede tener LinkedIn publicando a diario e Instagram parado.
+
+- **Horas**: las tandas del dia, en la zona de `engine_settings` — un solo huso
+  para toda la aplicacion.
+- **Minuto**: comun a todas las horas de esa red.
+- **Piezas por tanda**: cuantas se publican en cada una. Si no hay tantas listas,
+  se publica lo que haya.
+- **Sin horas y encendido**: publica en cuanto hay una pieza lista. Es lo que
+  hacia el viejo interruptor de autopublicar, que se ha retirado por duplicado.
+
+Se ejecuta desde el mismo tick que drena las colas, asi que funciona sin nadie
+delante. Como el tick pasa cada cinco minutos, la misma hora programada se
+evalua varias veces: `last_batch_at` es lo que impide repetir la tanda, y se
+compara por hora local porque el disparo nunca cae en el mismo segundo.
+
+La tanda se cierra aunque alguna pieza falle: reintentarla entera cinco minutos
+despues republicaria las que si salieron.
+
+> **Instagram guarda el horario pero no publica todavia**: falta construir el
+> publicador. La interfaz lo dice en la propia seccion.
+
 ### Como se publica
 
 `POST https://api.linkedin.com/rest/posts` con `Linkedin-Version` y

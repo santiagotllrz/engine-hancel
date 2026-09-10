@@ -1,6 +1,7 @@
 import type { RawNews } from "@/lib/types"
 
 import { publishPiece, pendingToPublish } from "../publish/publish-piece"
+import { decidirTanda, getPublishSchedules, marcarTanda } from "../publish/schedule"
 import { generarCarrusel, nichosConocidos, noticiaDelAngulo } from "../render/carousel"
 import { estiloDesdeConfig } from "../render/theme"
 import type { RoutineCallResult } from "../routines"
@@ -363,17 +364,33 @@ export async function runContentTick(
 
   // -------------------------------------------------------------- publicacion
   //
-  // Se publica aqui y no al crear la pieza para que el modo automatico funcione
-  // sin nadie delante: el cron y los triggers pasan por esta misma pasada.
-  if (config.autopublish) {
-    try {
-      for (const pieza of await pendingToPublish(MAX_PUBLICAR_POR_TICK)) {
+  // Se publica aqui y no al generar la pieza para que las tandas funcionen sin
+  // nadie delante: el cron y los triggers pasan por esta misma pasada, y es
+  // quien decide si a esta red le toca ahora.
+  //
+  // Instagram todavia no tiene publicador, asi que su programacion se guarda y
+  // se respeta, pero no llega a publicar nada.
+  try {
+    const { getSettings } = await import("../schedule")
+    const ajustes = await getSettings()
+
+    for (const programa of await getPublishSchedules()) {
+      if (programa.network !== "linkedin") continue
+
+      const decision = decidirTanda(programa, ajustes.timezone, new Date())
+      if (!decision.publicar) continue
+
+      const piezas = await pendingToPublish(programa.network, decision.cantidad)
+      if (piezas.length === 0) continue
+
+      for (const pieza of piezas) {
         const result = await publishPiece(pieza.id)
         if (result.ok) {
           piecesPublished++
           log.emit("content.piece.published", "Pieza publicada en LinkedIn", {
             pieceId: pieza.id,
             urn: result.urn,
+            tanda: decision.motivo,
           })
         } else {
           errors.push(result.error)
@@ -383,9 +400,13 @@ export async function runContentTick(
           })
         }
       }
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error))
+
+      // Se cierra la tanda aunque alguna haya fallado: reintentarla entera cinco
+      // minutos despues republicaria las que si salieron.
+      await marcarTanda(programa.network)
     }
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error))
   }
 
   // ------------------------------------------------------------------- avisos

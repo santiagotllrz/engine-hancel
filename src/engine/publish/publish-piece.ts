@@ -59,11 +59,20 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
   return result
 }
 
-/** Las piezas que el modo automatico publicaria: generadas o aprobadas, sin publicar. */
-export async function pendingToPublish(limite = 5): Promise<ContentPiece[]> {
+/**
+ * Las piezas que una tanda publicaria: generadas o aprobadas, sin publicar.
+ *
+ * Por orden de creacion, que es el orden en que se generaron: si una tanda no da
+ * para todas, las mas viejas salen primero.
+ */
+export async function pendingToPublish(
+  network: string,
+  limite = 5
+): Promise<ContentPiece[]> {
   const { data, error } = await supabaseAdmin()
     .from("content_pieces")
     .select("*")
+    .eq("network", network)
     .in("status", ["generated", "approved"])
     .is("published_at", null)
     .order("created_at")

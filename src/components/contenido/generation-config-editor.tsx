@@ -26,19 +26,16 @@ import { formatNumber } from "@/lib/format"
 export function GenerationConfigEditor({
   config,
   distribution,
-  linkedinConnected,
 }: {
   config: GenerationConfig
   /** Cuantas analizadas hay por cada umbral, para elegirlo con datos. */
   distribution: { score: number; count: number }[]
-  linkedinConnected: boolean
 }) {
   const [variables, setVariables] = React.useState(config.variables)
   const [umbral, setUmbral] = React.useState(
     config.score_threshold === null ? "" : String(config.score_threshold)
   )
   const [auto, setAuto] = React.useState(config.generation_mode === "auto")
-  const [autopublish, setAutopublish] = React.useState(config.autopublish)
   const [pending, startTransition] = React.useTransition()
   const [result, setResult] = React.useState<ActionResult | null>(null)
 
@@ -54,14 +51,12 @@ export function GenerationConfigEditor({
     for (const [clave, valor] of Object.entries(variables)) form.set(clave, valor)
     form.set("score_threshold", umbral.trim())
     form.set("generation_mode", auto ? "auto" : "manual")
-    form.set("autopublish", autopublish ? "true" : "false")
 
     setResult(null)
     startTransition(async () => setResult(await updateGenerationConfig(form)))
   }
 
   const dirty =
-    autopublish !== config.autopublish ||
     auto !== (config.generation_mode === "auto") ||
     umbral.trim() !== (config.score_threshold === null ? "" : String(config.score_threshold)) ||
     JSON.stringify(variables) !== JSON.stringify(config.variables)
@@ -181,34 +176,6 @@ export function GenerationConfigEditor({
                 <>El umbral va de 0 a 10, la misma escala que usa la rutina de analisis.</>
               )}
             </p>
-          </div>
-
-          <div className="border-t pt-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <Label htmlFor="autopublish">Publicar en LinkedIn automaticamente</Label>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  {linkedinConnected ? (
-                    <>
-                      Cada post generado se publica <strong>sin que nadie lo lea antes</strong>.
-                      Con esto apagado, los posts esperan a que pulses Publicar.
-                    </>
-                  ) : (
-                    <>Conecta primero una cuenta de LinkedIn, arriba.</>
-                  )}
-                </p>
-              </div>
-              <Switch
-                id="autopublish"
-                checked={autopublish}
-                disabled={!linkedinConnected}
-                onCheckedChange={(checked) => {
-                  setResult(null)
-                  setAutopublish(Boolean(checked))
-                }}
-                aria-label="Publicar automaticamente en LinkedIn"
-              />
-            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

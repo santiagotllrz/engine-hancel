@@ -482,3 +482,43 @@ alter table public.content_pieces
 insert into storage.buckets (id, name, public)
 values ('carousels', 'carousels', true)
 on conflict (id) do update set public = true;
+
+-- ------------------------------------------------- programacion de publicacion
+--
+-- Cuando y cuanto se publica, por red.
+--
+-- Una fila por red y no un jsonb en generation_config porque cada red tiene su
+-- propio ritmo: LinkedIn aguanta un post diario y a Instagram le sienta bien
+-- otro horario. Separarlas deja ademas activar una y dejar la otra parada.
+--
+-- La zona horaria no se repite aqui: se usa la de engine_settings, para que toda
+-- la aplicacion hable de un solo huso.
+create table if not exists public.publish_schedule (
+  network       text        primary key,
+  enabled       boolean     not null default false,
+  -- Horas locales. Vacio con enabled = publicar en cuanto haya, sin esperar.
+  run_hours     integer[]   not null default '{}',
+  run_minute    integer     not null default 0,
+  -- Cuantas piezas por tanda. Si no hay tantas, se publica lo que haya.
+  batch_size    integer     not null default 1,
+  -- Cierre de la ultima tanda: impide repetirla cuando el tick vuelve a pasar
+  -- cinco minutos despues, dentro de la misma hora programada.
+  last_batch_at timestamptz,
+  updated_at    timestamptz not null default now(),
+
+  constraint publish_schedule_network_check check (network in ('linkedin', 'instagram')),
+  constraint publish_schedule_minute_check  check (run_minute between 0 and 59),
+  constraint publish_schedule_batch_check   check (batch_size between 1 and 20)
+);
+
+alter table public.publish_schedule enable row level security;
+
+-- Las dos redes existen siempre, apagadas: asi la interfaz no inventa filas y el
+-- estado por defecto es "no publica nada".
+insert into public.publish_schedule (network) values ('linkedin'), ('instagram')
+on conflict (network) do nothing;
+
+-- El aspecto del carrusel, configurable desde /contenido/config.
+alter table public.generation_config
+  add column if not exists carousel jsonb not null default
+    '{"paleta":"noche","fuente":"HeroFont","marca":"","mostrarPaginacion":true,"usarFotos":true}'::jsonb;
