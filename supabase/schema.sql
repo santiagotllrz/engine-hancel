@@ -522,3 +522,20 @@ on conflict (network) do nothing;
 alter table public.generation_config
   add column if not exists carousel jsonb not null default
     '{"paleta":"noche","fuente":"HeroFont","marca":"","mostrarPaginacion":true,"usarFotos":true}'::jsonb;
+
+-- Para que redes genera el modo automatico.
+--
+-- Las dos por defecto: una noticia que supera el umbral se cuenta en LinkedIn y
+-- en Instagram desde el mismo angulo, que es lo que hace que las dos redes digan
+-- lo mismo con distinta forma en vez de parecer dos cuentas que no se conocen.
+-- Quitar una de la lista la deja fuera del automatico sin tocar el envio manual,
+-- que sigue pudiendo generar para cualquiera de las dos. Lista vacia = el
+-- automatico saca angulos pero no genera nada, que es un estado valido: sirve
+-- para acumular angulos y decidir a mano.
+alter table public.generation_config
+  add column if not exists auto_networks text[] not null default '{linkedin,instagram}'::text[];
+
+alter table public.generation_config drop constraint if exists generation_config_auto_networks_check;
+alter table public.generation_config
+  add constraint generation_config_auto_networks_check
+  check (auto_networks <@ array['linkedin', 'instagram']::text[]);

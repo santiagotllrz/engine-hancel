@@ -10,6 +10,22 @@
 /** Estados de un buzon. Los escribe la rutina externa, salvo el inicial. */
 export type JobStatus = "pending" | "processing" | "done" | "failed"
 
+/**
+ * Las redes en las que se publica.
+ *
+ * Aqui y no en `publish/`: la eleccion de red empieza al generar —una pieza nace
+ * siendo de una red o de otra— y publicarla es solo el ultimo paso. El modulo no
+ * toca la base, asi que la interfaz puede importar la lista y ofrecer justo lo
+ * que el servidor acepta.
+ */
+export const REDES = ["linkedin", "instagram"] as const
+export type Red = (typeof REDES)[number]
+
+export const NOMBRE_DE_RED: Record<Red, string> = {
+  linkedin: "LinkedIn",
+  instagram: "Instagram",
+}
+
 /** Fila de `public.jobs_angle`, tal cual la devuelve Postgres. */
 export type JobAngle = {
   id: string
@@ -110,6 +126,13 @@ export type GenerationConfig = {
   /** NULL mientras el usuario no defina el scoring desde la interfaz. */
   score_threshold: number | null
   generation_mode: "auto" | "manual"
+  /**
+   * Para que redes genera el modo automatico.
+   *
+   * Las dos por defecto. Vacia es un estado valido: el automatico sigue sacando
+   * angulos pero no genera piezas, que sirve para acumular y decidir a mano.
+   */
+  auto_networks: Red[]
   /** Publicar en LinkedIn sin revision previa. Nace apagado. */
   autopublish: boolean
   /** Aspecto del carrusel: paleta, fuente, marca. Lo interpreta `render/theme.ts`. */

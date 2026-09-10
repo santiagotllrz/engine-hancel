@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import type { GenerationConfig } from "@/engine/content/types"
+import { NOMBRE_DE_RED, REDES, type GenerationConfig, type Red } from "@/engine/content/types"
 // Las mismas listas que valida el servidor al guardar: la interfaz no puede
 // ofrecer un valor que la accion vaya a rechazar. El modulo solo tiene
 // constantes y tipos, asi que se puede importar desde el cliente.
@@ -36,6 +36,7 @@ export function GenerationConfigEditor({
     config.score_threshold === null ? "" : String(config.score_threshold)
   )
   const [auto, setAuto] = React.useState(config.generation_mode === "auto")
+  const [redes, setRedes] = React.useState<Red[]>(config.auto_networks)
   const [pending, startTransition] = React.useTransition()
   const [result, setResult] = React.useState<ActionResult | null>(null)
 
@@ -46,11 +47,23 @@ export function GenerationConfigEditor({
 
   const afectadas = distribution.find((d) => String(d.score) === umbral.trim())?.count ?? null
 
+  const alternarRed = (red: Red) => {
+    setResult(null)
+    setRedes((actuales) =>
+      actuales.includes(red)
+        ? actuales.filter((r) => r !== red)
+        : // En el orden de REDES, no en el de los clics: la lista se compara
+          // como texto para saber si hay cambios sin guardar.
+          REDES.filter((r) => r === red || actuales.includes(r))
+    )
+  }
+
   const save = () => {
     const form = new FormData()
     for (const [clave, valor] of Object.entries(variables)) form.set(clave, valor)
     form.set("score_threshold", umbral.trim())
     form.set("generation_mode", auto ? "auto" : "manual")
+    for (const red of redes) form.append("auto_networks", red)
 
     setResult(null)
     startTransition(async () => setResult(await updateGenerationConfig(form)))
@@ -59,6 +72,7 @@ export function GenerationConfigEditor({
   const dirty =
     auto !== (config.generation_mode === "auto") ||
     umbral.trim() !== (config.score_threshold === null ? "" : String(config.score_threshold)) ||
+    redes.join(",") !== config.auto_networks.join(",") ||
     JSON.stringify(variables) !== JSON.stringify(config.variables)
 
   return (
@@ -174,6 +188,47 @@ export function GenerationConfigEditor({
                 </>
               ) : (
                 <>El umbral va de 0 a 10, la misma escala que usa la rutina de analisis.</>
+              )}
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Redes que se generan</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {REDES.map((red) => (
+                <button
+                  key={red}
+                  type="button"
+                  onClick={() => alternarRed(red)}
+                  aria-pressed={redes.includes(red)}
+                  className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${
+                    redes.includes(red)
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "hover:bg-accent border-input"
+                  }`}
+                >
+                  {NOMBRE_DE_RED[red]}
+                </button>
+              ))}
+            </div>
+            <p className="text-muted-foreground text-xs">
+              {redes.length === 0 ? (
+                <>
+                  Sin ninguna red: el automatico saca los angulos y los deja esperando. Nada se
+                  genera hasta que tu elijas.
+                </>
+              ) : redes.length === REDES.length ? (
+                <>
+                  Cada noticia que supere el umbral produce <strong>{redes.length} piezas</strong>,
+                  una por red, todas desde el mismo angulo. Es lo que hace que las dos cuenten lo
+                  mismo con distinta forma.
+                </>
+              ) : (
+                <>
+                  Cada noticia que supere el umbral produce una sola pieza, para{" "}
+                  {NOMBRE_DE_RED[redes[0]]}. El envio manual sigue pudiendo generar para
+                  cualquiera de las dos.
+                </>
               )}
             </p>
           </div>

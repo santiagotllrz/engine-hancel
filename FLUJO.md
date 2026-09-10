@@ -115,20 +115,32 @@ distinta forma, en vez de parecer dos contenidos que no se conocen.
 
 ## 4. Escribir el contenido
 
-Del mismo angulo salen dos piezas distintas, una por red.
+**Una noticia produce dos publicaciones.** Del mismo angulo sale un post de
+LinkedIn y un carrusel de Instagram: la misma idea contada de dos formas
+distintas, no el mismo texto copiado dos veces.
 
 ```mermaid
 flowchart TD
-    A["🎯 El angulo"] --> L["✍️ Post de LinkedIn"]
-    A --> I["✍️ Guion del carrusel"]
+    N["📰 Una noticia<br/>que pasa el umbral"] --> A["🎯 Un angulo"]
+
+    A --> L["✍️ Post de LinkedIn"]
+    A --> I["✍️ Carrusel de Instagram"]
 
     L --> LD["Gancho en la primera linea,<br/>parrafos cortos, cierre con una idea"]
     I --> ID["Portada + laminas,<br/>una idea por lamina"]
 
+    style N fill:#111,color:#fff,stroke:#555
     style A fill:#111,color:#fff,stroke:#555
     style L fill:#111,color:#fff,stroke:#555
     style I fill:#111,color:#fff,stroke:#555
 ```
+
+**Tu eliges en que redes.** Por defecto las dos, y entonces cada noticia que
+pasa el umbral genera dos publicaciones. Puedes dejar solo una —solo LinkedIn,
+solo Instagram— y entonces genera una. Puedes incluso no marcar ninguna: el
+sistema sigue buscando el angulo de cada noticia y lo deja preparado, y tu
+decides luego que hacer con el. Se cambia desde la configuracion, y afecta solo
+al modo automatico: enviar una noticia a mano sigue dejandote elegir red.
 
 **Tu marcas el tono.** En la configuracion defines a quien le hablas, con que voz,
 que quieres que haga quien lo lee y que temas evitar. Eso viaja con cada encargo,
@@ -212,7 +224,8 @@ antes de que salga. Si prefieres no revisar nada, el automatico se encarga.
 | --- | --- |
 | Los temas que le interesan | Buscar y descartar repetidos |
 | La nota minima para producir | Leer, puntuar y elegir el enfoque |
-| El tono, la audiencia y la voz | Escribir el post y el carrusel |
+| En que redes se publica | Escribir el post y el carrusel |
+| El tono, la audiencia y la voz | Adaptar la idea al formato de cada red |
 | El aspecto de las imagenes | Buscar fotos y dibujar las laminas |
 | Las horas y cuanto se publica | Publicar a esas horas |
 

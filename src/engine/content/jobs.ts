@@ -2,6 +2,7 @@ import type { RawNews } from "@/lib/types"
 
 import { supabaseAdmin } from "../supabase-admin"
 import { mergeVariables, parseVariables } from "./variables"
+import { REDES } from "./types"
 import type {
   AngleJobInput,
   ContentAngle,
@@ -10,6 +11,7 @@ import type {
   JobInstagram,
   JobLinkedin,
   LinkedinJobInput,
+  Red,
   Variables,
 } from "./types"
 
@@ -31,7 +33,9 @@ const MAX_CONTENIDO = 12_000
 export async function getGenerationConfig(): Promise<GenerationConfig> {
   const { data, error } = await supabaseAdmin()
     .from("generation_config")
-    .select("variables, score_threshold, generation_mode, autopublish, carousel, updated_at")
+    .select(
+      "variables, score_threshold, generation_mode, auto_networks, autopublish, carousel, updated_at"
+    )
     .eq("id", true)
     .maybeSingle()
 
@@ -42,10 +46,24 @@ export async function getGenerationConfig(): Promise<GenerationConfig> {
     variables: parseVariables(row.variables),
     score_threshold: typeof row.score_threshold === "number" ? row.score_threshold : null,
     generation_mode: row.generation_mode === "auto" ? "auto" : "manual",
+    auto_networks: parseRedes(row.auto_networks),
     autopublish: row.autopublish === true,
     carousel: row.carousel ?? {},
     updated_at: row.updated_at ?? new Date(0).toISOString(),
   }
+}
+
+/**
+ * Normaliza la lista de redes del automatico.
+ *
+ * Se filtra contra `REDES` en vez de confiar en la columna porque una red que se
+ * retire del codigo puede seguir escrita en filas viejas, y encolar para una red
+ * que ya no existe fallaria mas tarde y en otro sitio. Una columna ausente —fila
+ * anterior a la migracion— cae en las dos, que es el comportamiento que habia.
+ */
+function parseRedes(valor: unknown): Red[] {
+  if (!Array.isArray(valor)) return [...REDES]
+  return REDES.filter((red) => valor.includes(red))
 }
 
 /** El recorte de la noticia que viaja en los dos buzones. */

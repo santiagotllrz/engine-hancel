@@ -156,37 +156,47 @@ export async function runContentTick(
       rawNewsId: job.raw_news_id,
     })
 
-    // En automatico se genera para las dos redes a partir del primer angulo que
-    // propuso la rutina; en manual esperan a que el usuario elija cual convertir
-    // y para donde. Las dos comparten angulo a proposito: es lo que hace que el
-    // post y el carrusel cuenten lo mismo.
-    if (config.generation_mode === "auto" && creados.length > 0) {
+    // En automatico se genera una pieza por cada red configurada, todas desde el
+    // primer angulo que propuso la rutina; en manual esperan a que el usuario
+    // elija cual convertir y para donde. Que compartan angulo es lo que hace que
+    // el post y el carrusel cuenten lo mismo con distinta forma.
+    //
+    // `auto_networks` puede estar vacia, y entonces no se genera nada: el
+    // automatico sigue sacando angulos y quedan esperando decision manual.
+    if (config.generation_mode === "auto" && creados.length > 0 && config.auto_networks.length > 0) {
       const primero = creados.reduce((a, b) => (a.position <= b.position ? a : b))
       const news = (await loadNews([job.raw_news_id])).get(job.raw_news_id)
       if (news) {
-        try {
-          await enqueueLinkedinJob(primero, news, config.variables)
-          linkedinQueued++
-          log.emit("content.linkedin.queued", "Post encolado en automatico", {
-            angleId: primero.id,
-          })
-        } catch (error) {
-          errors.push(error instanceof Error ? error.message : String(error))
+        let algunaEncolada = false
+
+        for (const red of config.auto_networks) {
+          try {
+            if (red === "linkedin") {
+              await enqueueLinkedinJob(primero, news, config.variables)
+              linkedinQueued++
+              log.emit("content.linkedin.queued", "Post encolado en automatico", {
+                angleId: primero.id,
+              })
+            } else {
+              await enqueueInstagramJob(primero, news, config.variables)
+              log.emit("content.instagram.queued", "Carrusel encolado en automatico", {
+                angleId: primero.id,
+              })
+            }
+            algunaEncolada = true
+          } catch (error) {
+            errors.push(error instanceof Error ? error.message : String(error))
+          }
         }
 
-        try {
-          await enqueueInstagramJob(primero, news, config.variables)
-          log.emit("content.instagram.queued", "Carrusel encolado en automatico", {
-            angleId: primero.id,
-          })
-        } catch (error) {
-          errors.push(error instanceof Error ? error.message : String(error))
+        // Solo si algo llego a la cola: marcarlo con las dos caidas dejaria el
+        // angulo en un estado que dice que se esta generando algo que no existe.
+        if (algunaEncolada) {
+          await supabase
+            .from("content_angles")
+            .update({ status: "pending_generation" })
+            .eq("id", primero.id)
         }
-
-        await supabase
-          .from("content_angles")
-          .update({ status: "pending_generation" })
-          .eq("id", primero.id)
       }
     }
   }

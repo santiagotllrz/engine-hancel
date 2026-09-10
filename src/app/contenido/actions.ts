@@ -14,7 +14,8 @@ import {
   linkedinRoutineConfig,
 } from "@/engine/content/routines"
 import { runContentTick } from "@/engine/content/tick"
-import type { ContentAngle, Variables } from "@/engine/content/types"
+import { REDES } from "@/engine/content/types"
+import type { ContentAngle, Red, Variables } from "@/engine/content/types"
 import { parseVariables, validateVariables } from "@/engine/content/variables"
 import { disconnectLinkedin } from "@/engine/publish/linkedin"
 import { publishPiece } from "@/engine/publish/publish-piece"
@@ -29,8 +30,8 @@ import type { RawNews } from "@/lib/types"
  * navegador manda la intencion, nunca la credencial.
  */
 
-/** Las redes que el pipeline sabe generar hoy. */
-export type Network = "linkedin" | "instagram"
+/** Las redes que el pipeline sabe generar hoy. Definidas en `content/types`. */
+export type Network = Red
 
 /**
  * `warning` es para lo que salio bien pero no va a llegar a ninguna parte: el
@@ -576,6 +577,10 @@ export async function updateGenerationConfig(form: FormData): Promise<ActionResu
     }
   }
 
+  // Se filtra contra la lista real en vez de confiar en lo que llegue del
+  // formulario: es una accion de servidor y cualquiera puede mandarle otra cosa.
+  const redes = REDES.filter((red) => form.getAll("auto_networks").includes(red))
+
   try {
     const { error } = await supabaseAdmin()
       .from("generation_config")
@@ -583,6 +588,7 @@ export async function updateGenerationConfig(form: FormData): Promise<ActionResu
         variables: parseVariables(variables),
         score_threshold: umbral,
         generation_mode: modo,
+        auto_networks: redes,
         updated_at: new Date().toISOString(),
       })
       .eq("id", true)
