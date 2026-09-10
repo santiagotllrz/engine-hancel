@@ -13,12 +13,15 @@ import { AlertTriangleIcon } from "lucide-react"
  * por mucho que la de LinkedIn este montada.
  */
 export function RoutinesWarning({ status }: { status: RoutinesStatus }) {
-  if (status.angle && status.linkedin) return null
+  if (status.angle && status.linkedin && status.instagram) return null
 
   const faltan = [
     !status.angle ? { nombre: "angulo", vars: "ANGLE_ROUTINE_URL / ANGLE_ROUTINE_TOKEN" } : null,
     !status.linkedin
       ? { nombre: "LinkedIn", vars: "LINKEDIN_ROUTINE_URL / LINKEDIN_ROUTINE_TOKEN" }
+      : null,
+    !status.instagram
+      ? { nombre: "Instagram", vars: "INSTAGRAM_ROUTINE_URL / INSTAGRAM_ROUTINE_TOKEN" }
       : null,
   ].filter((item) => item !== null)
 
@@ -28,9 +31,11 @@ export function RoutinesWarning({ status }: { status: RoutinesStatus }) {
         <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-amber-600" />
         <div className="min-w-0 text-sm">
           <p className="font-medium text-amber-900 dark:text-amber-200">
-            {faltan.length === 2
+            {faltan.length === 3
               ? "No hay ninguna rutina configurada"
-              : `Falta la rutina de ${faltan[0].nombre}`}
+              : faltan.length > 1
+                ? `Faltan ${faltan.length} rutinas`
+                : `Falta la rutina de ${faltan[0].nombre}`}
           </p>
           <p className="mt-1 text-amber-800 dark:text-amber-300/90">
             {!status.angle ? (
@@ -39,7 +44,10 @@ export function RoutinesWarning({ status }: { status: RoutinesStatus }) {
                 procesar aunque la rutina de LinkedIn este lista.{" "}
               </>
             ) : (
-              <>Los angulos se crearan, pero no se podra generar el post. </>
+              <>
+                Los angulos se crearan, pero no se podra generar contenido para{" "}
+                {faltan.map((f) => f.nombre).join(" ni ")}.{" "}
+              </>
             )}
             Define en el entorno:{" "}
             {faltan.map((item, index) => (

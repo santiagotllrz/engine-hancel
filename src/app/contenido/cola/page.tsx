@@ -16,7 +16,7 @@ export default async function ContenidoColaPage() {
     <DashboardShell title="Cola">
       <RoutinesWarning status={getRoutinesStatus()} />
 
-      <QueuePanel angle={queue.angle} linkedin={queue.linkedin} />
+      <QueuePanel angle={queue.angle} linkedin={queue.linkedin} instagram={queue.instagram} />
     </DashboardShell>
   )
 }

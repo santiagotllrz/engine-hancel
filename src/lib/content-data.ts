@@ -1,12 +1,17 @@
 import "server-only"
 
 import { getGenerationConfig } from "@/engine/content/jobs"
-import { angleRoutineConfig, linkedinRoutineConfig } from "@/engine/content/routines"
+import {
+  angleRoutineConfig,
+  instagramRoutineConfig,
+  linkedinRoutineConfig,
+} from "@/engine/content/routines"
 import type {
   ContentAngle,
   ContentPiece,
   GenerationConfig,
   JobAngle,
+  JobInstagram,
   JobLinkedin,
   PiecePayload,
 } from "@/engine/content/types"
@@ -47,12 +52,14 @@ export type PieceView = ContentPiece & {
 export type RoutinesStatus = {
   angle: boolean
   linkedin: boolean
+  instagram: boolean
 }
 
 export function getRoutinesStatus(): RoutinesStatus {
   return {
     angle: angleRoutineConfig() !== null,
     linkedin: linkedinRoutineConfig() !== null,
+    instagram: instagramRoutineConfig() !== null,
   }
 }
 
@@ -190,16 +197,22 @@ export async function getPieces(limit = 60): Promise<PieceView[]> {
 export type QueueView = {
   angle: JobAngle[]
   linkedin: JobLinkedin[]
+  instagram: JobInstagram[]
 }
 
 /** Los buzones en crudo, para diagnosticar cuando algo se atasca. */
 export async function getQueue(limit = 30): Promise<QueueView> {
   const supabase = supabaseAdmin()
 
-  const [angle, linkedin] = await Promise.all([
+  const [angle, linkedin, instagram] = await Promise.all([
     supabase.from("jobs_angle").select("*").order("created_at", { ascending: false }).limit(limit),
     supabase
       .from("jobs_linkedin")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    supabase
+      .from("jobs_instagram")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(limit),
@@ -209,10 +222,14 @@ export async function getQueue(limit = 30): Promise<QueueView> {
   if (linkedin.error) {
     throw new Error(`No se pudo cargar la cola de posts: ${linkedin.error.message}`)
   }
+  if (instagram.error) {
+    throw new Error(`No se pudo cargar la cola de carruseles: ${instagram.error.message}`)
+  }
 
   return {
     angle: (angle.data ?? []) as JobAngle[],
     linkedin: (linkedin.data ?? []) as JobLinkedin[],
+    instagram: (instagram.data ?? []) as JobInstagram[],
   }
 }
 
@@ -220,19 +237,24 @@ export async function getContentCounts(): Promise<ContentCounts> {
   const supabase = supabaseAdmin()
   const contar = (tabla: string) => supabase.from(tabla).select("id", { count: "exact", head: true })
 
-  const [angulos, piezas, porRevisar, aprobadas, colaAngle, colaLinkedin, fallAngle, fallLinkedin] =
-    await Promise.all([
-      contar("content_angles"),
-      contar("content_pieces"),
-      supabase.from("content_pieces").select("id", { count: "exact", head: true }).eq("status", "generated"),
-      supabase.from("content_pieces").select("id", { count: "exact", head: true }).eq("status", "approved"),
-      supabase.from("jobs_angle").select("id", { count: "exact", head: true }).eq("status", "pending"),
-      supabase.from("jobs_linkedin").select("id", { count: "exact", head: true }).eq("status", "pending"),
-      supabase.from("jobs_angle").select("id", { count: "exact", head: true }).eq("status", "failed"),
-      supabase.from("jobs_linkedin").select("id", { count: "exact", head: true }).eq("status", "failed"),
-    ])
+  /** Cuenta filas de un buzon en un estado, sin traerselas. */
+  const enEstado = (tabla: string, status: string) =>
+    supabase.from(tabla).select("id", { count: "exact", head: true }).eq("status", status)
+
+  const BUZONES = ["jobs_angle", "jobs_linkedin", "jobs_instagram"]
+
+  const [angulos, piezas, porRevisar, aprobadas, pendientes, fallidos] = await Promise.all([
+    contar("content_angles"),
+    contar("content_pieces"),
+    enEstado("content_pieces", "generated"),
+    enEstado("content_pieces", "approved"),
+    Promise.all(BUZONES.map((t) => enEstado(t, "pending"))),
+    Promise.all(BUZONES.map((t) => enEstado(t, "failed"))),
+  ])
 
   const candidatas = await getCandidates(200)
+  const sumar = (filas: { count: number | null }[]) =>
+    filas.reduce((total, fila) => total + (fila.count ?? 0), 0)
 
   return {
     candidatas: candidatas.length,
@@ -240,8 +262,8 @@ export async function getContentCounts(): Promise<ContentCounts> {
     piezas: piezas.count ?? 0,
     porRevisar: porRevisar.count ?? 0,
     aprobadas: aprobadas.count ?? 0,
-    enCola: (colaAngle.count ?? 0) + (colaLinkedin.count ?? 0),
-    fallidos: (fallAngle.count ?? 0) + (fallLinkedin.count ?? 0),
+    enCola: sumar(pendientes),
+    fallidos: sumar(fallidos),
   }
 }
 

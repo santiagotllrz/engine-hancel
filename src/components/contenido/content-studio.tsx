@@ -10,6 +10,7 @@ import {
   rejectPiece,
   updatePiece,
   type ActionResult,
+  type Network,
 } from "@/app/contenido/actions"
 import { SendToPipelineButton } from "@/components/contenido/send-to-pipeline-button"
 import { Badge } from "@/components/ui/badge"
@@ -19,7 +20,15 @@ import { Textarea } from "@/components/ui/textarea"
 import type { AngleView, PieceView } from "@/lib/content-data"
 import { formatDateTime } from "@/lib/format"
 import type { RawNews } from "@/lib/types"
-import { CheckIcon, CopyIcon, ExternalLinkIcon, SendIcon, XIcon } from "lucide-react"
+import {
+  CheckIcon,
+  CopyIcon,
+  ExternalLinkIcon,
+  FileTextIcon,
+  ImagesIcon,
+  SendIcon,
+  XIcon,
+} from "lucide-react"
 
 /** Envuelve una accion de servidor con estado pendiente y mensaje de error. */
 function useAction() {
@@ -130,9 +139,17 @@ export function ContentStudio({
   )
 }
 
+/**
+ * Un angulo alimenta las dos redes por separado.
+ *
+ * Cada red se mira por su cuenta: tener ya el post de LinkedIn no impide generar
+ * el carrusel de Instagram del mismo angulo, que es justamente para lo que se
+ * decide el angulo una sola vez.
+ */
 function AngleCard({ angle }: { angle: AngleView }) {
   const { pending, error, run } = useAction()
-  const yaGenerado = angle.pieces.length > 0
+
+  const generada = (network: Network) => angle.pieces.some((p) => p.network === network)
 
   return (
     <Card>
@@ -158,19 +175,27 @@ function AngleCard({ angle }: { angle: AngleView }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            disabled={pending || yaGenerado || angle.status === "pending_generation"}
-            onClick={() => run(() => generateFromAngle(angle.id))}
-          >
-            {pending
-              ? "Encolando…"
-              : yaGenerado
-                ? "Ya generado"
-                : angle.status === "pending_generation"
-                  ? "En cola"
-                  : "Generar post"}
-          </Button>
+          {(["linkedin", "instagram"] as const).map((network) => {
+            const hecha = generada(network)
+            return (
+              <Button
+                key={network}
+                size="sm"
+                variant={network === "linkedin" ? "default" : "secondary"}
+                disabled={pending || hecha}
+                onClick={() => run(() => generateFromAngle(angle.id, network))}
+              >
+                {network === "linkedin" ? <FileTextIcon /> : <ImagesIcon />}
+                {hecha
+                  ? network === "linkedin"
+                    ? "Post hecho"
+                    : "Carrusel hecho"
+                  : network === "linkedin"
+                    ? "Generar post"
+                    : "Generar carrusel"}
+              </Button>
+            )
+          })}
           {angle.status !== "discarded" ? (
             <Button
               size="sm"

@@ -6,7 +6,7 @@ import { retryJob, runTickNow, type ActionResult } from "@/app/contenido/actions
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import type { JobAngle, JobLinkedin } from "@/engine/content/types"
+import type { JobAngle, JobInstagram, JobLinkedin } from "@/engine/content/types"
 import { formatDateTime } from "@/lib/format"
 import { Loader2Icon, RefreshCwIcon } from "lucide-react"
 
@@ -20,9 +20,11 @@ import { Loader2Icon, RefreshCwIcon } from "lucide-react"
 export function QueuePanel({
   angle,
   linkedin,
+  instagram,
 }: {
   angle: JobAngle[]
   linkedin: JobLinkedin[]
+  instagram: JobInstagram[]
 }) {
   const [pending, startTransition] = React.useTransition()
   const [result, setResult] = React.useState<ActionResult | null>(null)
@@ -52,6 +54,7 @@ export function QueuePanel({
 
       <QueueSection titulo="Angulos" tabla="jobs_angle" jobs={angle} />
       <QueueSection titulo="Posts de LinkedIn" tabla="jobs_linkedin" jobs={linkedin} />
+      <QueueSection titulo="Carruseles de Instagram" tabla="jobs_instagram" jobs={instagram} />
     </div>
   )
 }
@@ -62,8 +65,8 @@ function QueueSection({
   jobs,
 }: {
   titulo: string
-  tabla: "jobs_angle" | "jobs_linkedin"
-  jobs: (JobAngle | JobLinkedin)[]
+  tabla: "jobs_angle" | "jobs_linkedin" | "jobs_instagram"
+  jobs: (JobAngle | JobLinkedin | JobInstagram)[]
 }) {
   return (
     <section className="flex flex-col gap-2">
@@ -100,8 +103,8 @@ function JobRow({
   job,
   tabla,
 }: {
-  job: JobAngle | JobLinkedin
-  tabla: "jobs_angle" | "jobs_linkedin"
+  job: JobAngle | JobLinkedin | JobInstagram
+  tabla: "jobs_angle" | "jobs_linkedin" | "jobs_instagram"
 }) {
   const [pending, startTransition] = React.useTransition()
   const [error, setError] = React.useState<string | null>(null)

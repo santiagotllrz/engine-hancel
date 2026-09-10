@@ -4,10 +4,15 @@ import { revalidatePath } from "next/cache"
 
 import {
   enqueueAngleJob,
+  enqueueInstagramJob,
   enqueueLinkedinJob,
   getGenerationConfig,
 } from "@/engine/content/jobs"
-import { angleRoutineConfig, linkedinRoutineConfig } from "@/engine/content/routines"
+import {
+  angleRoutineConfig,
+  instagramRoutineConfig,
+  linkedinRoutineConfig,
+} from "@/engine/content/routines"
 import { runContentTick } from "@/engine/content/tick"
 import type { ContentAngle, Variables } from "@/engine/content/types"
 import { parseVariables, validateVariables } from "@/engine/content/variables"
@@ -22,6 +27,9 @@ import type { RawNews } from "@/lib/types"
  * Todas escriben con el cliente service-role, que solo existe en el servidor: el
  * navegador manda la intencion, nunca la credencial.
  */
+
+/** Las redes que el pipeline sabe generar hoy. */
+export type Network = "linkedin" | "instagram"
 
 /**
  * `warning` es para lo que salio bien pero no va a llegar a ninguna parte: el
@@ -70,7 +78,7 @@ function overrideFromForm(form: FormData): Partial<Variables> | null {
 }
 
 /** El aviso de que nadie va a recoger lo que se acaba de encolar. */
-function avisoSiFaltaRutina(cual: "angle" | "linkedin"): string | undefined {
+function avisoSiFaltaRutina(cual: "angle" | Network): string | undefined {
   if (cual === "angle" && angleRoutineConfig() === null) {
     return (
       "Encolado, pero la rutina de angulo no esta configurada " +
@@ -81,6 +89,12 @@ function avisoSiFaltaRutina(cual: "angle" | "linkedin"): string | undefined {
     return (
       "Encolado, pero la rutina de LinkedIn no esta configurada " +
       "(LINKEDIN_ROUTINE_URL / LINKEDIN_ROUTINE_TOKEN): se quedara pendiente."
+    )
+  }
+  if (cual === "instagram" && instagramRoutineConfig() === null) {
+    return (
+      "Encolado, pero la rutina de Instagram no esta configurada " +
+      "(INSTAGRAM_ROUTINE_URL / INSTAGRAM_ROUTINE_TOKEN): se quedara pendiente."
     )
   }
   return undefined
@@ -138,12 +152,16 @@ export async function sendToPipelineWithOverride(form: FormData): Promise<Action
 
 // ------------------------------------------------------------------- angulos
 
-/** Promueve un angulo concreto a post de LinkedIn. */
+/** Promueve un angulo a contenido de la red elegida. */
 export async function generateFromAngle(
   angleId: string,
+  network: Network = "linkedin",
   form?: FormData
 ): Promise<ActionResult> {
   if (!angleId) return { ok: false, error: "Falta el id del angulo." }
+  if (network !== "linkedin" && network !== "instagram") {
+    return { ok: false, error: "Red no soportada." }
+  }
 
   const override = form ? overrideFromForm(form) : null
   const invalido = override ? validateVariables(override as Record<string, unknown>) : null
@@ -161,17 +179,29 @@ export async function generateFromAngle(
     const angle = data as ContentAngle
 
     const [news, config] = await Promise.all([loadNews(angle.raw_news_id), getGenerationConfig()])
-    await enqueueLinkedinJob(angle, news, config.variables, override)
-    await supabase
-      .from("content_angles")
-      .update({ status: "pending_generation" })
-      .eq("id", angleId)
+
+    // El mismo angulo alimenta las dos redes: esa es la razon de que el angulo
+    // se decida una sola vez y por separado.
+    if (network === "instagram") {
+      await enqueueInstagramJob(angle, news, config.variables, override)
+    } else {
+      await enqueueLinkedinJob(angle, news, config.variables, override)
+    }
+
+    // Solo se marca a la espera si no habia nada generado aun; si ya hay una
+    // pieza de la otra red, el angulo se queda en 'generated' y no retrocede.
+    if (angle.status === "angled") {
+      await supabase
+        .from("content_angles")
+        .update({ status: "pending_generation" })
+        .eq("id", angleId)
+    }
 
     await runContentTick({ trigger: "manual" })
     refresh()
-    return { ok: true, warning: avisoSiFaltaRutina("linkedin") }
+    return { ok: true, warning: avisoSiFaltaRutina(network) }
   } catch (error) {
-    return fail(error, "No se pudo generar el post.")
+    return fail(error, "No se pudo generar el contenido.")
   }
 }
 
@@ -290,7 +320,7 @@ export async function disconnectLinkedinAccount(): Promise<ActionResult> {
  * quema cuota sin converger. El usuario mira el error y decide.
  */
 export async function retryJob(
-  tabla: "jobs_angle" | "jobs_linkedin",
+  tabla: "jobs_angle" | "jobs_linkedin" | "jobs_instagram",
   jobId: string
 ): Promise<ActionResult> {
   if (!jobId) return { ok: false, error: "Falta el id del trabajo." }
@@ -317,7 +347,7 @@ export async function retryJob(
             })
           ).error
         : (
-            await supabase.from("jobs_linkedin").insert({
+            await supabase.from(tabla).insert({
               content_angle_id: job.content_angle_id as string,
               input: job.input,
             })

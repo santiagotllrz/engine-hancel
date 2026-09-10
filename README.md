@@ -368,6 +368,20 @@ y el error si lo hubo, con un boton para reintentar un trabajo fallido y otro
 para forzar una pasada. No hay reintento automatico a proposito: un prompt que
 falla reintentado en bucle quema cuota sin converger.
 
+### Elegir la red
+
+Cada angulo ofrece **Generar post** (LinkedIn) y **Generar carrusel**
+(Instagram), y las dos se piden por separado. Tener ya el post no impide generar
+el carrusel del mismo angulo: esa es justamente la razon de decidir el angulo una
+sola vez y aparte — las dos redes heredan la misma tesis y salen coherentes.
+
+El boton de cada red se apaga cuando esa pieza ya existe, no cuando existe
+cualquiera.
+
+> El **modo automatico** sigue encolando solo LinkedIn al aparecer un angulo. Si
+> se quiere que genere tambien el carrusel, hay que decidirlo: son dos rutinas
+> por noticia en vez de una.
+
 ### Carrusel de Instagram
 
 La rutina de Instagram devuelve el guion; la app lo convierte en imagenes reales
