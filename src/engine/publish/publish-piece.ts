@@ -54,6 +54,9 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
         // La columna guarda el identificador del post publicado, sea de la red
         // que sea: el URN de LinkedIn o el id que devuelve Buffer.
         linkedin_urn: result.urn,
+        // Queda anotado que el post salio ilustrado, que es la unica forma de
+        // comprobarlo despues sin abrir el feed.
+        ...(result.imageUrn ? { image_urn: result.imageUrn } : {}),
         publish_error: null,
       })
       .eq("id", pieceId)
@@ -68,16 +71,29 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
   return result
 }
 
-/** LinkedIn: texto mas la tarjeta con el titular. */
+/**
+ * LinkedIn: texto mas la tarjeta con el titular.
+ *
+ * La imagen no es opcional. Antes, si algo fallaba al dibujarla o subirla, el
+ * post salia igual solo con texto; el problema es que eso no tiene arreglo
+ * despues —habria que borrar el post y volver a publicarlo— y encima no dejaba
+ * rastro de por que. Ahora, si no hay imagen, no hay post: la pieza se queda sin
+ * publicar con el motivo escrito, y la siguiente tanda lo reintenta. Un fallo
+ * pasajero se cura solo y uno de verdad se ve en la interfaz.
+ */
 async function publicarEnLinkedin(piece: ContentPiece): Promise<PublishResult> {
   const commentary = buildCommentary(piece.payload)
   if (!commentary.trim()) {
     return { ok: false, error: "La pieza no tiene texto que publicar." }
   }
 
-  // La ilustracion es opcional: si algo falla se publica igual, solo con texto.
-  const imagen = await tarjetaDelPost(piece, commentary)
-  return publishText(commentary, imagen)
+  const tarjeta = await tarjetaDelPost(piece, commentary)
+  if (!tarjeta.ok) {
+    return { ok: false, error: `No se pudo preparar la imagen del post: ${tarjeta.error}` }
+  }
+
+  const resultado = await publishText(commentary, tarjeta.imagen)
+  return resultado.ok ? { ...resultado, imageUrn: tarjeta.imagen.urn } : resultado
 }
 
 /**
@@ -156,13 +172,19 @@ export async function pendingToPublish(
  * ir mezclando. Cada una hace de respaldo de la otra, asi que basta con que
  * responda una de las dos.
  *
- * Devuelve `null` sin ruido ante cualquier problema: un post con texto y sin
- * imagen sigue sirviendo, y perderlo por la ilustracion seria absurdo.
+ * La foto de fondo si es opcional —sin ella la tarjeta sale sobre el fondo
+ * solido de la paleta, que sigue siendo una tarjeta— pero la tarjeta no lo es:
+ * cualquier fallo vuelve con su motivo para que quien publica decida, en vez de
+ * dejar salir un post pelado sin que nadie se entere.
  */
+type TarjetaResult =
+  | { ok: true; imagen: { urn: string; altText: string } }
+  | { ok: false; error: string }
+
 async function tarjetaDelPost(
   piece: ContentPiece,
   commentary: string
-): Promise<{ urn: string; altText: string } | null> {
+): Promise<TarjetaResult> {
   try {
     const supabase = supabaseAdmin()
 
@@ -204,14 +226,21 @@ async function tarjetaDelPost(
         ?.trim() ||
       ""
 
-    if (!titular) return null
+    if (!titular) {
+      return { ok: false, error: "La pieza no tiene titular con el que armar la tarjeta." }
+    }
 
     const etiqueta = (news?.tema ?? news?.niche ?? "").trim() || null
     const png = await renderTarjetaLinkedin(titular, foto, estilo, etiqueta)
-    const urn = await subirImagen(png)
 
-    return urn ? { urn, altText: titular } : null
-  } catch {
-    return null
+    const subida = await subirImagen(png)
+    if (!subida.ok) return { ok: false, error: subida.error }
+
+    return { ok: true, imagen: { urn: subida.urn, altText: titular } }
+  } catch (error) {
+    // Aqui caen sobre todo los fallos de dibujo: una fuente que no esta donde se
+    // espera, o un texto que Satori no sabe medir.
+    const message = error instanceof Error ? error.message : String(error)
+    return { ok: false, error: `No se pudo dibujar la tarjeta: ${message}` }
   }
 }

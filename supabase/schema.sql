@@ -539,3 +539,14 @@ alter table public.generation_config drop constraint if exists generation_config
 alter table public.generation_config
   add constraint generation_config_auto_networks_check
   check (auto_networks <@ array['linkedin', 'instagram']::text[]);
+
+-- El URN de la imagen adjunta al post de LinkedIn.
+--
+-- Existe para poder responder despues a "¿este post salio con imagen?". Hasta
+-- ahora la unica forma de saberlo era mirar el feed, y cuando se miraba ya no
+-- habia arreglo posible. Nulo en las piezas publicadas antes de esta columna y
+-- en las de Instagram, donde las imagenes viajan en `payload.images`.
+alter table public.content_pieces add column if not exists image_urn text;
+
+comment on column public.content_pieces.image_urn is
+  'URN de la imagen adjunta al post. Permite comprobar despues que salio ilustrado.';

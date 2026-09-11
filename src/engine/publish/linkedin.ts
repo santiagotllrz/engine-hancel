@@ -203,7 +203,12 @@ export async function disconnectLinkedin(): Promise<void> {
 // ------------------------------------------------------------------ publicar
 
 export type PublishResult =
-  | { ok: true; urn: string }
+  | {
+      ok: true
+      urn: string
+      /** URN de la imagen adjunta, cuando la publicacion llevo una. */
+      imageUrn?: string
+    }
   | { ok: false; error: string }
 
 /** El texto tal como se publica: hook, cuerpo y hashtags, en ese orden. */
@@ -212,6 +217,8 @@ export function buildCommentary(payload: PiecePayload): string {
     .filter((parte) => parte && String(parte).trim().length > 0)
     .join("\n\n")
 }
+
+export type SubidaResult = { ok: true; urn: string } | { ok: false; error: string }
 
 /**
  * Sube una imagen y devuelve su URN.
@@ -223,12 +230,13 @@ export function buildCommentary(payload: PiecePayload): string {
  * El texto alternativo no va aqui sino en el post: la subida solo registra los
  * bytes.
  *
- * Devuelve `null` si algo falla: un post con texto y sin imagen sigue siendo un
- * post, y no merece la pena perderlo por la ilustracion.
+ * Devuelve el motivo en vez de `null` a secas. Antes se tragaba el fallo, y el
+ * resultado era un post publicado sin imagen sin que quedara rastro de por que:
+ * el unico sitio donde se notaba era el feed, cuando ya no habia arreglo.
  */
-export async function subirImagen(png: Buffer): Promise<string | null> {
+export async function subirImagen(png: Buffer): Promise<SubidaResult> {
   const account = await getLinkedinAccount()
-  if (!account) return null
+  if (!account) return { ok: false, error: "No hay ninguna cuenta de LinkedIn conectada." }
 
   try {
     const inicio = await fetch(`${IMAGES_URL}?action=initializeUpload`, {
@@ -243,14 +251,22 @@ export async function subirImagen(png: Buffer): Promise<string | null> {
       signal: AbortSignal.timeout(20_000),
     })
 
-    if (!inicio.ok) return null
+    if (!inicio.ok) {
+      const detalle = await inicio.text().catch(() => "")
+      return {
+        ok: false,
+        error: `LinkedIn rechazo el registro de la imagen (${inicio.status}): ${detalle.slice(0, 200)}`,
+      }
+    }
 
     const registro = (await inicio.json()) as {
       value?: { uploadUrl?: string; image?: string }
     }
     const uploadUrl = registro.value?.uploadUrl
     const urn = registro.value?.image
-    if (!uploadUrl || !urn) return null
+    if (!uploadUrl || !urn) {
+      return { ok: false, error: "LinkedIn no devolvio direccion de subida ni URN de imagen." }
+    }
 
     const subida = await fetch(uploadUrl, {
       method: "PUT",
@@ -262,10 +278,18 @@ export async function subirImagen(png: Buffer): Promise<string | null> {
       signal: AbortSignal.timeout(45_000),
     })
 
-    if (!subida.ok) return null
-    return urn
-  } catch {
-    return null
+    if (!subida.ok) {
+      const detalle = await subida.text().catch(() => "")
+      return {
+        ok: false,
+        error: `Fallo al subir los bytes de la imagen (${subida.status}): ${detalle.slice(0, 200)}`,
+      }
+    }
+
+    return { ok: true, urn }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { ok: false, error: `Fallo subiendo la imagen a LinkedIn: ${message}` }
   }
 }
 
