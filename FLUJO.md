@@ -8,6 +8,37 @@ programar para seguirlo.
 
 ---
 
+## Antes de nada: las cuentas
+
+Hancel maneja varias cuentas a la vez, y cada una es un mundo aparte: sus temas,
+sus noticias, su contenido y sus redes sociales. Lo que ves en el panel depende
+siempre de la cuenta que tengas abierta, y se cambia desde el selector de arriba
+a la izquierda.
+
+Lo unico que comparten las cuentas son las herramientas de fondo —el buscador de
+noticias, el banco de fotos, la inteligencia que escribe— porque es la misma
+maquinaria trabajando para clientes distintos. Los datos nunca se mezclan: nadie
+ve las noticias ni el contenido de una cuenta a la que no pertenece.
+
+```mermaid
+flowchart TD
+    U["👤 Entras"] --> C{"¿A que cuentas<br/>perteneces?"}
+    C --> A1["Cuenta A<br/>sus temas, su contenido,<br/>sus redes"]
+    C --> A2["Cuenta B<br/>los suyos, aparte"]
+
+    A1 --> R["🔧 Mismas herramientas<br/>de fondo"]
+    A2 --> R
+
+    style U fill:#111,color:#fff,stroke:#555
+    style A1 fill:#111,color:#fff,stroke:#555
+    style A2 fill:#111,color:#fff,stroke:#555
+    style R fill:#1a1a1a,color:#999,stroke:#444
+```
+
+Todo lo que viene a continuacion pasa **dentro de una cuenta**.
+
+---
+
 ## El recorrido, de un vistazo
 
 ```mermaid
@@ -224,6 +255,7 @@ antes de que salga. Si prefieres no revisar nada, el automatico se encarga.
 | --- | --- |
 | Los temas que le interesan | Buscar y descartar repetidos |
 | La nota minima para producir | Leer, puntuar y elegir el enfoque |
+| A que cuenta pertenece cada cosa | Mantener las cuentas separadas |
 | En que redes se publica | Escribir el post y el carrusel |
 | El tono, la audiencia y la voz | Adaptar la idea al formato de cada red |
 | El aspecto de las imagenes | Buscar fotos y dibujar las laminas |
