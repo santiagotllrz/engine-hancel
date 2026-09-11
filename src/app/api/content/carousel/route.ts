@@ -26,10 +26,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Falta el id de la pieza." }, { status: 400 })
   }
 
+  // Acotado a la cuenta abierta. La sesion ya la exige el proxy, pero el id de
+  // una pieza es adivinable y sin este filtro cualquiera con sesion podria
+  // descargar el carrusel de otra cuenta pasando su id a mano.
+  const { idDeCuentaActual } = await import("@/lib/accounts")
+
   const { data, error } = await supabaseAdmin()
     .from("content_pieces")
     .select("*")
     .eq("id", pieceId)
+    .eq("account_id", await idDeCuentaActual())
     .maybeSingle()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

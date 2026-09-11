@@ -103,8 +103,20 @@ function avisoSiFaltaRutina(cual: "angle" | Network): string | undefined {
   return undefined
 }
 
+/**
+ * Trae una noticia de la cuenta abierta.
+ *
+ * El filtro por cuenta no es decorativo: el id llega del cliente, y sin el
+ * cualquiera con sesion podria meter en su pipeline una noticia de otra cuenta
+ * pasando su id a mano. Lo mismo vale para el resto de acciones de este fichero.
+ */
 async function loadNews(id: string): Promise<RawNews> {
-  const { data, error } = await supabaseAdmin().from("raw_news").select("*").eq("id", id).single()
+  const { data, error } = await supabaseAdmin()
+    .from("raw_news")
+    .select("*")
+    .eq("id", id)
+    .eq("account_id", await idDeCuentaActual())
+    .single()
   if (error) throw new Error(`No se encontro la noticia: ${error.message}`)
   return data as RawNews
 }
@@ -176,6 +188,7 @@ export async function generateFromAngle(
       .from("content_angles")
       .select("*")
       .eq("id", angleId)
+      .eq("account_id", await idDeCuentaActual())
       .single()
 
     if (error) throw new Error(error.message)
@@ -198,6 +211,7 @@ export async function generateFromAngle(
         .from("content_angles")
         .update({ status: "pending_generation" })
         .eq("id", angleId)
+        .eq("account_id", await idDeCuentaActual())
     }
 
     await runContentTick({ trigger: "manual" })
@@ -216,6 +230,7 @@ export async function discardAngle(angleId: string): Promise<ActionResult> {
       .from("content_angles")
       .update({ status: "discarded" })
       .eq("id", angleId)
+      .eq("account_id", await idDeCuentaActual())
 
     if (error) throw new Error(error.message)
     refresh()
@@ -241,6 +256,7 @@ async function setPieceStatus(
         approved_at: status === "approved" ? new Date().toISOString() : null,
       })
       .eq("id", pieceId)
+      .eq("account_id", await idDeCuentaActual())
 
     if (error) throw new Error(error.message)
     refresh()
@@ -272,6 +288,7 @@ export async function updatePiece(form: FormData): Promise<ActionResult> {
       .from("content_pieces")
       .select("payload")
       .eq("id", pieceId)
+      .eq("account_id", await idDeCuentaActual())
       .single()
 
     if (error) throw new Error(error.message)
@@ -284,6 +301,7 @@ export async function updatePiece(form: FormData): Promise<ActionResult> {
       .from("content_pieces")
       .update({ payload: actualizado })
       .eq("id", pieceId)
+      .eq("account_id", await idDeCuentaActual())
 
     if (errorUpdate) throw new Error(errorUpdate.message)
     refresh()
@@ -298,6 +316,16 @@ export async function updatePiece(form: FormData): Promise<ActionResult> {
 /** Publica una pieza a mano. El automatico hace lo mismo desde el tick. */
 export async function publishPieceNow(pieceId: string): Promise<ActionResult> {
   if (!pieceId) return { ok: false, error: "Falta el id de la pieza." }
+
+  // `publishPiece` recibe solo el id, asi que la pertenencia se comprueba antes:
+  // publicar la pieza de otra cuenta la mandaria a las redes equivocadas.
+  const { count } = await supabaseAdmin()
+    .from("content_pieces")
+    .select("id", { count: "exact", head: true })
+    .eq("id", pieceId)
+    .eq("account_id", await idDeCuentaActual())
+
+  if (!count) return { ok: false, error: "Esa pieza no es de esta cuenta." }
 
   const result = await publishPiece(pieceId)
   refresh()
@@ -323,6 +351,7 @@ export async function regenerateCarousel(pieceId: string): Promise<ActionResult>
       .from("content_pieces")
       .select("*")
       .eq("id", pieceId)
+      .eq("account_id", await idDeCuentaActual())
       .single()
 
     if (errorPieza) throw new Error(errorPieza.message)
@@ -378,6 +407,7 @@ export async function regenerateCarousel(pieceId: string): Promise<ActionResult>
         publish_error: null,
       })
       .eq("id", pieceId)
+      .eq("account_id", await idDeCuentaActual())
 
     if (error) throw new Error(error.message)
     refresh()
@@ -417,6 +447,7 @@ export async function retryJob(
       .from(tabla)
       .select("*")
       .eq("id", jobId)
+      .eq("account_id", await idDeCuentaActual())
       .single()
 
     if (error) throw new Error(error.message)
