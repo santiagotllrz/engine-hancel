@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { GalleryVerticalEndIcon } from "lucide-react"
+import Image from "next/image"
 
 import { iniciarSesion, type LoginResult } from "@/app/login/actions"
 import { Button } from "@/components/ui/button"
@@ -37,11 +37,20 @@ export function LoginForm({
         <input type="hidden" name="destino" value={destino ?? ""} />
 
         <div className="flex flex-col gap-6">
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-md">
-              <GalleryVerticalEndIcon className="size-6" />
-            </div>
-            <h1 className="text-xl font-bold">Hancel</h1>
+          <div className="flex flex-col items-center gap-3">
+            {/* El lockup ya lleva el nombre dentro, asi que hace de titulo y no
+                se repite debajo en texto. El alt es el nombre, que es lo que la
+                imagen dice. */}
+            <h1 className="flex">
+              <Image
+                src="/hancel-lockup.png"
+                alt="Hancel"
+                width={469}
+                height={114}
+                priority
+                className="h-9 w-auto"
+              />
+            </h1>
             <div className="text-muted-foreground text-center text-sm">
               Entra para ver el motor de contenido.
             </div>
