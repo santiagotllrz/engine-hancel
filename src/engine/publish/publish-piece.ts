@@ -92,7 +92,7 @@ async function publicarEnLinkedin(piece: ContentPiece): Promise<PublishResult> {
     return { ok: false, error: `No se pudo preparar la imagen del post: ${tarjeta.error}` }
   }
 
-  const resultado = await publishText(commentary, tarjeta.imagen)
+  const resultado = await publishText(piece.account_id, commentary, tarjeta.imagen)
   return resultado.ok ? { ...resultado, imageUrn: tarjeta.imagen.urn } : resultado
 }
 
@@ -114,13 +114,13 @@ async function publicarCarrusel(piece: ContentPiece): Promise<PublishResult> {
     return { ok: false, error: "El carrusel no tiene imagenes." }
   }
 
-  const channelId = await resolverCanalInstagram()
+  const channelId = await resolverCanalInstagram(piece.account_id)
   if (!channelId) {
     return {
       ok: false,
       error:
-        "No hay canal de Instagram: define BUFFER_CHANNEL_ID en el entorno " +
-        "o comprueba que BUFFER_API_KEY es valida.",
+        "Esta cuenta no tiene canal de Instagram configurado. Ponlo en " +
+        "/contenido/config, con el id que aparece en la URL del canal en Buffer.",
     }
   }
 
@@ -142,12 +142,14 @@ async function publicarCarrusel(piece: ContentPiece): Promise<PublishResult> {
  * para todas, las mas viejas salen primero.
  */
 export async function pendingToPublish(
+  accountId: string,
   network: string,
   limite = 5
 ): Promise<ContentPiece[]> {
   const { data, error } = await supabaseAdmin()
     .from("content_pieces")
     .select("*")
+    .eq("account_id", accountId)
     .eq("network", network)
     .in("status", ["generated", "approved"])
     .is("published_at", null)
@@ -191,7 +193,7 @@ async function tarjetaDelPost(
     const { data: cfg } = await supabase
       .from("generation_config")
       .select("carousel")
-      .eq("id", true)
+      .eq("account_id", piece.account_id)
       .maybeSingle()
 
     const estilo = estiloDesdeConfig((cfg as { carousel?: unknown } | null)?.carousel)
@@ -206,7 +208,10 @@ async function tarjetaDelPost(
     // justo la cabeza del sujeto.
     const delBanco = async (): Promise<string | null> => {
       if (!estilo.usarFotos || !pexelsConfigurado()) return null
-      const banco = new BancoDeFotos(terminosDeBusqueda(news, await nichosConocidos()), "apaisada")
+      const banco = new BancoDeFotos(
+        terminosDeBusqueda(news, await nichosConocidos(piece.account_id)),
+        "apaisada"
+      )
       const elegida = await banco.siguiente()
       return elegida ? descargarFotoPexels(elegida) : null
     }
@@ -233,7 +238,7 @@ async function tarjetaDelPost(
     const etiqueta = (news?.tema ?? news?.niche ?? "").trim() || null
     const png = await renderTarjetaLinkedin(titular, foto, estilo, etiqueta)
 
-    const subida = await subirImagen(png)
+    const subida = await subirImagen(piece.account_id, png)
     if (!subida.ok) return { ok: false, error: subida.error }
 
     return { ok: true, imagen: { urn: subida.urn, altText: titular } }

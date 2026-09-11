@@ -1,7 +1,17 @@
 import "server-only"
 
+import { idDeCuentaActual } from "@/lib/accounts"
 import { supabase } from "@/lib/supabase/server"
 import type { PipelineRun, RawNews } from "@/lib/types"
+
+/**
+ * Todo lo que se lee aqui esta acotado a la cuenta activa.
+ *
+ * El filtro se resuelve dentro de cada funcion y no se recibe por parametro a
+ * proposito: son lecturas para la interfaz, siempre en el contexto de una
+ * sesion, y un parametro obligatorio que siempre vale lo mismo es una invitacion
+ * a olvidarlo en una llamada nueva y filtrar los datos de otra cuenta.
+ */
 
 /** Todas las columnas de raw_news, incluido el cuerpo completo del articulo. */
 const ALL_COLUMNS = "*"
@@ -20,6 +30,7 @@ export async function getNews(filters: NewsFilters = {}): Promise<RawNews[]> {
   let query = supabase
     .from("raw_news")
     .select(ALL_COLUMNS)
+    .eq("account_id", await idDeCuentaActual())
     .order("created_at", { ascending: false })
 
   if (filters.niche) query = query.eq("niche", filters.niche)
@@ -75,6 +86,7 @@ export async function getPipelineRuns(): Promise<PipelineRun[]> {
   const { data, error } = await supabase
     .from("pipeline_runs")
     .select("*")
+    .eq("account_id", await idDeCuentaActual())
     .order("started_at", { ascending: false })
 
   if (error) throw new Error(`No se pudieron cargar las ejecuciones: ${error.message}`)
@@ -83,7 +95,10 @@ export async function getPipelineRuns(): Promise<PipelineRun[]> {
 
 /** Conteo de noticias por nicho, para la navegacion lateral. */
 export async function getNicheCounts(): Promise<{ value: string; count: number }[]> {
-  const { data, error } = await supabase.from("raw_news").select("niche")
+  const { data, error } = await supabase
+    .from("raw_news")
+    .select("niche")
+    .eq("account_id", await idDeCuentaActual())
   if (error) throw new Error(`No se pudieron cargar los nichos: ${error.message}`)
 
   const map = new Map<string, number>()
@@ -107,7 +122,10 @@ export type NewsFacets = {
  * filtro deben ofrecer siempre todas las opciones disponibles.
  */
 export async function getFacets(): Promise<NewsFacets> {
-  const { data, error } = await supabase.from("raw_news").select("niche, status")
+  const { data, error } = await supabase
+    .from("raw_news")
+    .select("niche, status")
+    .eq("account_id", await idDeCuentaActual())
   if (error) throw new Error(`No se pudieron cargar los filtros: ${error.message}`)
 
   const rows = (data ?? []) as { niche: string | null; status: string | null }[]

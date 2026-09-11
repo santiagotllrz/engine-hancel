@@ -1,12 +1,13 @@
 import { ContentStudio } from "@/components/contenido/content-studio"
 import { RoutinesWarning } from "@/components/contenido/routines-warning"
+import { idDeCuentaActual } from "@/lib/accounts"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   getAngles,
   getCandidates,
   getContentCounts,
-  getGenerationConfig,
+  configuracionDeGeneracion,
   getPieces,
   getRoutinesStatus,
 } from "@/lib/content-data"
@@ -35,13 +36,14 @@ function StatCard({ label, value }: { label: string; value: string }) {
 }
 
 export default async function ContenidoPage() {
+  const accountId = await idDeCuentaActual()
   const [config, candidates, angles, pieces, counts, linkedin] = await Promise.all([
-    getGenerationConfig(),
+    configuracionDeGeneracion(),
     getCandidates(),
     getAngles(),
     getPieces(),
     getContentCounts(),
-    getLinkedinStatus(),
+    getLinkedinStatus(accountId),
   ])
 
 

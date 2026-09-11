@@ -29,6 +29,7 @@ export const NOMBRE_DE_RED: Record<Red, string> = {
 /** Fila de `public.jobs_angle`, tal cual la devuelve Postgres. */
 export type JobAngle = {
   id: string
+  account_id: string
   raw_news_id: string
   input: AngleJobInput
   status: JobStatus
@@ -43,6 +44,7 @@ export type JobAngle = {
 /** Fila de `public.jobs_linkedin`. */
 export type JobLinkedin = {
   id: string
+  account_id: string
   content_angle_id: string
   input: LinkedinJobInput
   status: JobStatus
@@ -56,6 +58,7 @@ export type JobLinkedin = {
 /** Fila de `public.jobs_instagram`. Mismo contrato que los otros buzones. */
 export type JobInstagram = {
   id: string
+  account_id: string
   content_angle_id: string
   input: LinkedinJobInput
   status: JobStatus
@@ -71,6 +74,7 @@ export type AngleStatus = "angled" | "pending_generation" | "generated" | "disca
 /** Fila de `public.content_angles`. */
 export type ContentAngle = {
   id: string
+  account_id: string
   raw_news_id: string
   job_angle_id: string | null
   angle: string
@@ -86,6 +90,7 @@ export type PieceStatus = "generated" | "approved" | "published" | "rejected"
 /** Fila de `public.content_pieces`. */
 export type ContentPiece = {
   id: string
+  account_id: string
   content_angle_id: string
   raw_news_id: string | null
   job_linkedin_id: string | null

@@ -44,6 +44,8 @@ export type DryRunSummary = {
 }
 
 export type RunOptions = {
+  /** La cuenta para la que se ingiere. Cada una tiene su taxonomia y su corpus. */
+  accountId: string
   signal?: AbortSignal
   /** Recibe cada evento en el momento en que ocurre (vista en vivo). */
   onEvent?: EventSink
@@ -114,24 +116,25 @@ async function collectCandidates(
  * Etapa 1 completa: abre la corrida, busca, inserta lo nuevo, elimina
  * duplicados del dia, dispara el analisis y cierra la corrida.
  */
-export async function runIngestion(options: RunOptions = {}): Promise<IngestionSummary> {
+export async function runIngestion(options: RunOptions): Promise<IngestionSummary> {
   const supabase = supabaseAdmin()
   const started = new Date()
+  const accountId = options.accountId
 
   const { data: run, error: runError } = await supabase
     .from("pipeline_runs")
-    .insert({ run_type: "research_engine", status: "running" })
+    .insert({ account_id: accountId, run_type: "research_engine", status: "running" })
     .select("id")
     .single()
 
   if (runError) throw new Error(`No se pudo abrir la corrida: ${runError.message}`)
   const runId = run.id as string
 
-  const recorder = new EventRecorder(runId, options.onEvent)
+  const recorder = new EventRecorder(runId, options.onEvent, accountId)
   recorder.emit("run.started", "Corrida iniciada", { runId })
 
   try {
-    const specs = await getActiveSearches()
+    const specs = await getActiveSearches(accountId)
     const { searches, candidates } = await collectCandidates(specs, recorder, options.signal)
 
     // `ignoreDuplicates` es un ON CONFLICT DO NOTHING sobre el UNIQUE de `link`,
@@ -142,7 +145,10 @@ export async function runIngestion(options: RunOptions = {}): Promise<IngestionS
     for (const batch of chunk(candidates, 500)) {
       const { data, error } = await supabase
         .from("raw_news")
-        .upsert(batch, { onConflict: "link", ignoreDuplicates: true })
+        .upsert(
+          batch.map((fila) => ({ ...fila, account_id: accountId })),
+          { onConflict: "account_id,link", ignoreDuplicates: true }
+        )
         .select("id")
 
       if (error) throw new Error(`Fallo al insertar noticias: ${error.message}`)
@@ -156,6 +162,7 @@ export async function runIngestion(options: RunOptions = {}): Promise<IngestionS
     const { data: todayRows, error: fetchError } = await supabase
       .from("raw_news")
       .select("id, title, niche")
+      .eq("account_id", accountId)
       .gte("created_at", startOfTodayUtc(started))
       .order("created_at", { ascending: true })
       .limit(DEDUPE_FETCH_LIMIT)
@@ -271,19 +278,23 @@ export async function runIngestion(options: RunOptions = {}): Promise<IngestionS
  * no abre corrida, no inserta, no borra y no llama rutinas.
  */
 export async function dryRunIngestion(
-  options: { signal?: AbortSignal; onEvent?: EventSink } = {}
+  options: { accountId: string; signal?: AbortSignal; onEvent?: EventSink }
 ): Promise<DryRunSummary> {
   const supabase = supabaseAdmin()
   const started = new Date()
   const recorder = new EventRecorder(null, options.onEvent)
 
   recorder.emit("run.started", "Ensayo en seco iniciado")
-  const specs = await getActiveSearches()
+  const specs = await getActiveSearches(options.accountId)
   const { searches, candidates } = await collectCandidates(specs, recorder, options.signal)
 
   const known = new Set<string>()
   for (const batch of chunk(candidates.map((row) => row.link), 200)) {
-    const { data, error } = await supabase.from("raw_news").select("link").in("link", batch)
+    const { data, error } = await supabase
+      .from("raw_news")
+      .select("link")
+      .eq("account_id", options.accountId)
+      .in("link", batch)
     if (error) throw new Error(`Fallo al comprobar links existentes: ${error.message}`)
     for (const row of data ?? []) known.add((row as { link: string }).link)
   }

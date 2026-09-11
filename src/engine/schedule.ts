@@ -6,6 +6,8 @@ export type EngineSettings = {
   run_minute: number
   timezone: string
   enabled: boolean
+  /** Cuando corrio la ultima ingesta. Cierra la ventana de la hora en curso. */
+  last_ingest_at: string | null
   updated_at: string
 }
 
@@ -14,14 +16,15 @@ const DEFAULTS: EngineSettings = {
   run_minute: 0,
   timezone: "America/Bogota",
   enabled: true,
+  last_ingest_at: null,
   updated_at: new Date(0).toISOString(),
 }
 
-export async function getSettings(): Promise<EngineSettings> {
+export async function getSettings(accountId: string): Promise<EngineSettings> {
   const { data, error } = await supabaseAdmin()
     .from("engine_settings")
-    .select("run_hours, run_minute, timezone, enabled, updated_at")
-    .eq("id", true)
+    .select("run_hours, run_minute, timezone, enabled, last_ingest_at, updated_at")
+    .eq("account_id", accountId)
     .maybeSingle()
 
   if (error) throw new Error(`No se pudo leer la configuracion: ${error.message}`)
@@ -99,6 +102,18 @@ export function decide(settings: EngineSettings, now: Date): ScheduleDecision {
     }
   }
 
+  // El cron es la union de los horarios de todas las cuentas, asi que dentro de
+  // una misma hora puede disparar varias veces. Sin esta guarda, una cuenta
+  // ingeriria dos veces seguidas y gastaria el doble de cuota de Serper para
+  // traer lo mismo.
+  if (settings.last_ingest_at) {
+    const ultima = new Date(settings.last_ingest_at)
+    const anterior = partsIn(settings.timezone, ultima)
+    if (ultima.toDateString() === now.toDateString() && anterior.hour === hour) {
+      return { run: false, reason: "La ingesta de esta hora ya corrio.", hour }
+    }
+  }
+
   return { run: true, hour }
 }
 
@@ -121,4 +136,12 @@ export function nextRuns(settings: EngineSettings, now: Date, count = 3): string
   }
 
   return upcoming
+}
+
+/** Cierra la ventana de la hora en curso para que el siguiente disparo no repita. */
+export async function marcarIngesta(accountId: string): Promise<void> {
+  await supabaseAdmin()
+    .from("engine_settings")
+    .update({ last_ingest_at: new Date().toISOString() })
+    .eq("account_id", accountId)
 }

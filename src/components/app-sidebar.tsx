@@ -5,6 +5,8 @@ import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 
+import type { Cuenta } from "@/engine/accounts"
+import { AccountSwitcher } from "@/components/account-switcher"
 import { NavMain } from "@/components/nav-main"
 import { NavNiches } from "@/components/nav-niches"
 import { NavSecondary } from "@/components/nav-secondary"
@@ -32,8 +34,15 @@ export type NicheCount = { value: string; count: number }
 export function AppSidebar({
   niches,
   email,
+  cuentas,
+  cuenta,
   ...props
-}: { niches: NicheCount[]; email: string } & React.ComponentProps<typeof Sidebar>) {
+}: {
+  niches: NicheCount[]
+  email: string
+  cuentas: Cuenta[]
+  cuenta: Cuenta
+} & React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const currentNiche = searchParams.get("niche")
@@ -125,6 +134,7 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <AccountSwitcher cuentas={cuentas} activa={cuenta} />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />

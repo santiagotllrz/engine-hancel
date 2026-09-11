@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto"
 import { NextResponse } from "next/server"
 
 import { buildAuthUrl, linkedinConfig } from "@/engine/publish/linkedin"
+import { cuentaActual } from "@/lib/accounts"
 
 export const dynamic = "force-dynamic"
 
@@ -13,9 +14,10 @@ export const dynamic = "force-dynamic"
  * impide que alguien nos haga conectar una cuenta ajena con un enlace preparado
  * (CSRF). Dura lo que dura el codigo de autorizacion, 30 minutos.
  *
- * OJO: esto no esta autenticado, como el resto del dashboard. Quien alcance la
- * URL puede iniciar la conexion — pero solo puede conectar SU propia cuenta de
- * LinkedIn, porque el consentimiento ocurre en el dominio de LinkedIn.
+ * A que cuenta se conecta va dentro del propio `state`, delante del azar. No se
+ * pierde nada de seguridad: el state entero se sigue comparando con la cookie,
+ * asi que un state manipulado no supera la comprobacion. Y evita una segunda
+ * cookie que tendria que viajar y expirar en paralelo con esta.
  */
 export async function GET() {
   if (linkedinConfig() === null) {
@@ -28,7 +30,8 @@ export async function GET() {
     )
   }
 
-  const state = randomUUID()
+  const cuenta = await cuentaActual()
+  const state = `${cuenta.id}.${randomUUID()}`
   const response = NextResponse.redirect(buildAuthUrl(state))
 
   response.cookies.set("linkedin_oauth_state", state, {

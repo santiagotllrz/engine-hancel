@@ -57,8 +57,18 @@ export async function GET(request: Request) {
     })
   }
 
+  // La cuenta viaja delante del azar en el state, que ya se comparo con la
+  // cookie: llegados aqui es un valor que escribimos nosotros.
+  const accountId = state.split(".")[0]
+  if (!accountId) {
+    return volver(request, {
+      linkedin: "error",
+      motivo: "El state no dice a que cuenta conectar. Vuelve a empezar.",
+    })
+  }
+
   try {
-    const cuenta = await exchangeCodeAndStore(code)
+    const cuenta = await exchangeCodeAndStore(accountId, code)
     return volver(request, {
       linkedin: "ok",
       cuenta: cuenta.display_name ?? "conectada",

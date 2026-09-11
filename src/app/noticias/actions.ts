@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { fireAnalysisRoutine } from "@/engine/analysis-routine"
+import { idDeCuentaActual } from "@/lib/accounts"
 import { supabaseAdmin } from "@/engine/supabase-admin"
 
 export type AnalyzeAllResult =
@@ -21,6 +22,7 @@ export async function analyzeAllNews(): Promise<AnalyzeAllResult> {
     const { count, error } = await supabaseAdmin()
       .from("raw_news")
       .select("id", { count: "exact", head: true })
+      .eq("account_id", await idDeCuentaActual())
       .eq("status", "pending_analysis")
 
     if (error) throw new Error(error.message)

@@ -6,8 +6,9 @@ import {
   enqueueAngleJob,
   enqueueInstagramJob,
   enqueueLinkedinJob,
-  getGenerationConfig,
 } from "@/engine/content/jobs"
+import { configuracionDeGeneracion } from "@/lib/content-data"
+import { idDeCuentaActual } from "@/lib/accounts"
 import {
   angleRoutineConfig,
   instagramRoutineConfig,
@@ -120,7 +121,7 @@ export async function sendToPipeline(rawNewsId: string): Promise<ActionResult> {
   if (!rawNewsId) return { ok: false, error: "Falta el id de la noticia." }
 
   try {
-    const [news, config] = await Promise.all([loadNews(rawNewsId), getGenerationConfig()])
+    const [news, config] = await Promise.all([loadNews(rawNewsId), configuracionDeGeneracion()])
     await enqueueAngleJob(news, config.variables)
     // La rutina no espera al webhook para trabajar, pero el tick tambien drena
     // lo que ya estuviera hecho y avisa a las dos rutinas de una vez.
@@ -142,7 +143,7 @@ export async function sendToPipelineWithOverride(form: FormData): Promise<Action
   if (invalido) return { ok: false, error: invalido }
 
   try {
-    const [news, config] = await Promise.all([loadNews(rawNewsId), getGenerationConfig()])
+    const [news, config] = await Promise.all([loadNews(rawNewsId), configuracionDeGeneracion()])
     await enqueueAngleJob(news, config.variables, override)
     await runContentTick({ trigger: "manual" })
     refresh()
@@ -180,7 +181,7 @@ export async function generateFromAngle(
     if (error) throw new Error(error.message)
     const angle = data as ContentAngle
 
-    const [news, config] = await Promise.all([loadNews(angle.raw_news_id), getGenerationConfig()])
+    const [news, config] = await Promise.all([loadNews(angle.raw_news_id), configuracionDeGeneracion()])
 
     // El mismo angulo alimenta las dos redes: esa es la razon de que el angulo
     // se decida una sola vez y por separado.
@@ -326,6 +327,7 @@ export async function regenerateCarousel(pieceId: string): Promise<ActionResult>
 
     if (errorPieza) throw new Error(errorPieza.message)
     const pieza = piezaRaw as {
+      account_id: string
       job_instagram_id: string | null
       content_angle_id: string
       network: string
@@ -341,7 +343,11 @@ export async function regenerateCarousel(pieceId: string): Promise<ActionResult>
 
     const [{ data: job }, { data: cfg }] = await Promise.all([
       supabase.from("jobs_instagram").select("*").eq("id", pieza.job_instagram_id).single(),
-      supabase.from("generation_config").select("carousel").eq("id", true).single(),
+      supabase
+        .from("generation_config")
+        .select("carousel")
+        .eq("account_id", pieza.account_id)
+        .single(),
     ])
 
     if (!job) return { ok: false, error: "No se encontro el buzon original." }
@@ -357,7 +363,7 @@ export async function regenerateCarousel(pieceId: string): Promise<ActionResult>
       (job as { respuesta: unknown }).respuesta,
       news,
       estiloDesdeConfig((cfg as { carousel?: unknown } | null)?.carousel),
-      await nichosConocidos()
+      await nichosConocidos(pieza.account_id)
     )
 
     // El texto lo escribio la rutina y no cambia porque se redibujen las imagenes.
@@ -383,7 +389,7 @@ export async function regenerateCarousel(pieceId: string): Promise<ActionResult>
 
 export async function disconnectLinkedinAccount(): Promise<ActionResult> {
   try {
-    await disconnectLinkedin()
+    await disconnectLinkedin(await idDeCuentaActual())
     refresh()
     return { ok: true }
   } catch (error) {
@@ -422,12 +428,16 @@ export async function retryJob(
       tabla === "jobs_angle"
         ? (
             await supabase.from("jobs_angle").insert({
+              // La cuenta se copia del trabajo original: reintentar es repetir
+              // lo mismo, no empezar algo nuevo.
+              account_id: job.account_id as string,
               raw_news_id: job.raw_news_id as string,
               input: job.input,
             })
           ).error
         : (
             await supabase.from(tabla).insert({
+              account_id: job.account_id as string,
               content_angle_id: job.content_angle_id as string,
               input: job.input,
             })
@@ -492,6 +502,7 @@ export async function updatePublishSchedule(form: FormData): Promise<ActionResul
         batch_size: tanda,
         updated_at: new Date().toISOString(),
       })
+      .eq("account_id", await idDeCuentaActual())
       .eq("network", network)
 
     if (error) throw new Error(error.message)
@@ -530,7 +541,7 @@ export async function updateCarouselStyle(form: FormData): Promise<ActionResult>
         },
         updated_at: new Date().toISOString(),
       })
-      .eq("id", true)
+      .eq("account_id", await idDeCuentaActual())
 
     if (error) throw new Error(error.message)
     refresh()
@@ -591,7 +602,7 @@ export async function updateGenerationConfig(form: FormData): Promise<ActionResu
         auto_networks: redes,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", true)
+      .eq("account_id", await idDeCuentaActual())
 
     if (error) throw new Error(error.message)
     refresh()

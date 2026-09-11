@@ -1,6 +1,8 @@
 /** Fila de `public.raw_news`, tal cual la devuelve Postgres. */
 export type RawNews = {
   id: string
+  /** La cuenta a la que pertenece. Todo el corpus esta acotado por aqui. */
+  account_id: string
   niche: string
   tema: string
   title: string
@@ -24,6 +26,7 @@ export type RawNews = {
 /** Fila de `public.pipeline_runs`. */
 export type PipelineRun = {
   id: string
+  account_id: string
   run_type: string
   status: string
   started_at: string

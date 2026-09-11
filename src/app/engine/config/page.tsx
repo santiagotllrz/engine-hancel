@@ -1,3 +1,4 @@
+import { idDeCuentaActual } from "@/lib/accounts"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { TaxonomyEditor } from "@/components/engine/taxonomy-editor"
 import { getTaxonomy } from "@/lib/engine-data"
@@ -7,7 +8,7 @@ export const dynamic = "force-dynamic"
 export const metadata = { title: "Taxonomia · Hancel Engine" }
 
 export default async function EngineConfigPage() {
-  const taxonomy = await getTaxonomy()
+  const taxonomy = await getTaxonomy(await idDeCuentaActual())
 
   return (
     <DashboardShell title="Taxonomia">

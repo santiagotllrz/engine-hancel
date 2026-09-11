@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
+import { idDeCuentaActual } from "@/lib/accounts"
 import { supabaseAdmin } from "@/engine/supabase-admin"
 
 /**
@@ -59,11 +60,14 @@ export async function createCategory(form: FormData): Promise<ActionResult> {
 
   try {
     const supabase = supabaseAdmin()
+    const accountId = await idDeCuentaActual()
     const { count } = await supabase
       .from("engine_categories")
       .select("id", { count: "exact", head: true })
+      .eq("account_id", accountId)
 
     const { error } = await supabase.from("engine_categories").insert({
+      account_id: accountId,
       name,
       slug,
       description: text(form, "description") || null,
@@ -406,7 +410,7 @@ export async function updateSchedule(form: FormData): Promise<ActionResult> {
         enabled,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", true)
+      .eq("account_id", await idDeCuentaActual())
 
     if (error) throw new Error(error.message)
     revalidatePath("/engine/schedule")

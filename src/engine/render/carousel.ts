@@ -179,8 +179,11 @@ export async function noticiaDelAngulo(angleId: string): Promise<RawNews | null>
 }
 
 /** Los slugs de categoria, que son lo implicito y no deben buscarse en el banco. */
-export async function nichosConocidos(): Promise<string[]> {
-  const { data } = await supabaseAdmin().from("engine_categories").select("slug")
+export async function nichosConocidos(accountId: string): Promise<string[]> {
+  const { data } = await supabaseAdmin()
+    .from("engine_categories")
+    .select("slug")
+    .eq("account_id", accountId)
   return ((data ?? []) as { slug: string }[]).map((row) => row.slug)
 }
 

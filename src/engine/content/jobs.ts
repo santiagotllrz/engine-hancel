@@ -30,13 +30,13 @@ export const MAX_DRENAJE_POR_TICK = 25
 /** Recorta el articulo: el buzon no es sitio para guardar megabytes de texto. */
 const MAX_CONTENIDO = 12_000
 
-export async function getGenerationConfig(): Promise<GenerationConfig> {
+export async function getGenerationConfig(accountId: string): Promise<GenerationConfig> {
   const { data, error } = await supabaseAdmin()
     .from("generation_config")
     .select(
       "variables, score_threshold, generation_mode, auto_networks, autopublish, carousel, updated_at"
     )
-    .eq("id", true)
+    .eq("account_id", accountId)
     .maybeSingle()
 
   if (error) throw new Error(`No se pudo leer la configuracion de generacion: ${error.message}`)
@@ -113,6 +113,7 @@ export async function enqueueAngleJob(
   const { data, error } = await supabaseAdmin()
     .from("jobs_angle")
     .insert({
+      account_id: news.account_id,
       raw_news_id: news.id,
       input: buildAngleInput(news, mergeVariables(variables, override)),
     })
@@ -132,6 +133,7 @@ export async function enqueueLinkedinJob(
   const { data, error } = await supabaseAdmin()
     .from("jobs_linkedin")
     .insert({
+      account_id: angle.account_id,
       content_angle_id: angle.id,
       input: buildLinkedinInput(angle, news, mergeVariables(variables, override)),
     })
@@ -237,6 +239,7 @@ export async function enqueueInstagramJob(
   const { data, error } = await supabaseAdmin()
     .from("jobs_instagram")
     .insert({
+      account_id: angle.account_id,
       content_angle_id: angle.id,
       input: buildLinkedinInput(angle, news, mergeVariables(variables, override)),
     })

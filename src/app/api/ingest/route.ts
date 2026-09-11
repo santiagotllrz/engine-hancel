@@ -1,17 +1,25 @@
 import { NextResponse } from "next/server"
 
-import { runIngestion } from "@/engine/ingest"
-import { decide, getSettings } from "@/engine/schedule"
+import { todasLasCuentas } from "@/engine/accounts"
+import { runIngestion, type IngestionSummary } from "@/engine/ingest"
+import { decide, getSettings, marcarIngesta } from "@/engine/schedule"
 import { authorizeEngineRequest } from "@/lib/api-auth"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
 /**
- * El scheduler externo llama cada hora y aqui se decide si toca correr.
+ * El cron de Postgres llama y aqui se decide a que cuentas les toca.
  *
- * Asi los horarios se cambian desde /engine/schedule sin volver a desplegar.
- * `?force=1` salta la comprobacion, para disparos manuales.
+ * El cron ya no puede ser el horario de una sola cuenta: es la union de todos,
+ * asi que dispara mas veces de las que le toca a cada una y puede llegar a ratos
+ * que no son de nadie. Quien decide es esto, comparando la hora con el horario
+ * de cada cuenta, que es lo que se edita en /engine/schedule.
+ *
+ * Las cuentas van en serie y cada una en su propio try: una taxonomia rota o una
+ * cuota de Serper agotada no puede impedir que las demas ingieran.
+ *
+ * `?force=1` salta la comprobacion de hora, para disparos manuales.
  */
 async function handle(request: Request) {
   const denied = authorizeEngineRequest(request)
@@ -19,36 +27,52 @@ async function handle(request: Request) {
     return NextResponse.json({ error: denied }, { status: 401 })
   }
 
-  const force = new URL(request.url).searchParams.get("force") === "1"
+  const url = new URL(request.url)
+  const force = url.searchParams.get("force") === "1"
+  // Permite disparar una sola cuenta a mano sin tocar a las demas.
+  const soloCuenta = url.searchParams.get("cuenta")
 
-  if (!force) {
-    const settings = await getSettings()
-    const decision = decide(settings, new Date())
-    if (!decision.run) {
-      return NextResponse.json({
-        skipped: true,
-        reason: decision.reason,
-        hour: decision.hour,
-        timezone: settings.timezone,
-        runHours: settings.run_hours,
-      })
+  const ahora = new Date()
+  const cuentas = (await todasLasCuentas()).filter(
+    (cuenta) => !soloCuenta || cuenta.slug === soloCuenta
+  )
+
+  const corridas: (
+    | { cuenta: string; skipped: true; reason: string }
+    | { cuenta: string; skipped: false; summary: IngestionSummary }
+    | { cuenta: string; error: string }
+  )[] = []
+
+  for (const cuenta of cuentas) {
+    try {
+      if (!force) {
+        const settings = await getSettings(cuenta.id)
+        const decision = decide(settings, ahora)
+        if (!decision.run) {
+          corridas.push({ cuenta: cuenta.slug, skipped: true, reason: decision.reason })
+          continue
+        }
+      }
+
+      // Se marca antes de correr: si la corrida tarda mas que el siguiente
+      // disparo del cron, marcar al final dejaria entrar una segunda.
+      await marcarIngesta(cuenta.id)
+      const summary = await runIngestion({ accountId: cuenta.id, signal: request.signal })
+      corridas.push({ cuenta: cuenta.slug, skipped: false, summary })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      corridas.push({ cuenta: cuenta.slug, error: message })
     }
   }
 
-  try {
-    const summary = await runIngestion({ signal: request.signal })
-    return NextResponse.json(summary)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
+  return NextResponse.json({ at: ahora.toISOString(), corridas })
 }
 
 export async function POST(request: Request) {
   return handle(request)
 }
 
-// Vercel Cron invoca por GET.
+// El cron de Postgres invoca por POST; el GET queda para comprobar a mano.
 export async function GET(request: Request) {
   return handle(request)
 }

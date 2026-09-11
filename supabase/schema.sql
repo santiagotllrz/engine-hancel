@@ -550,3 +550,134 @@ alter table public.content_pieces add column if not exists image_urn text;
 
 comment on column public.content_pieces.image_urn is
   'URN de la imagen adjunta al post. Permite comprobar despues que salio ilustrado.';
+
+-- =========================================================================
+-- Multicuenta
+-- =========================================================================
+--
+-- Una cuenta es un espacio de trabajo entero: su taxonomia, sus noticias, su
+-- contenido, su LinkedIn y su Instagram. Lo unico que comparten todas son las
+-- credenciales de las herramientas —Serper, Pexels, la app de LinkedIn, las
+-- rutinas de Claude— porque son la misma maquinaria trabajando para clientes
+-- distintos. Por eso esas siguen en el entorno y todo lo demas cuelga de aqui.
+
+create table if not exists public.accounts (
+  id                uuid primary key default gen_random_uuid(),
+  name              text        not null,
+  slug              text        not null,
+  -- El canal de Instagram en Buffer. Vive aqui y no en el entorno porque cada
+  -- cuenta publica en el suyo, y una variable no distingue cuentas.
+  buffer_channel_id text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+
+  constraint accounts_slug_key   unique (slug),
+  constraint accounts_slug_check check (slug ~ '^[a-z0-9-]+$')
+);
+
+-- Quien entra a que cuenta. `user_id` apunta a auth.users sin clave foranea: el
+-- esquema auth es de Supabase y no conviene atarle cascadas nuestras.
+create table if not exists public.account_members (
+  account_id uuid        not null references public.accounts (id) on delete cascade,
+  user_id    uuid        not null,
+  created_at timestamptz not null default now(),
+
+  primary key (account_id, user_id)
+);
+
+create index if not exists account_members_user_id_idx on public.account_members (user_id);
+
+alter table public.accounts        enable row level security;
+alter table public.account_members enable row level security;
+
+insert into public.accounts (name, slug) values ('Hancel', 'hancel')
+on conflict (slug) do nothing;
+
+-- Las tablas con dueño directo. El bloque es idempotente: añade la columna,
+-- rellena lo que hubiera con la primera cuenta y la deja obligatoria.
+do $$
+declare
+  v_cuenta uuid;
+  t text;
+begin
+  select id into v_cuenta from public.accounts order by created_at limit 1;
+
+  foreach t in array array[
+    'raw_news', 'pipeline_runs', 'pipeline_events', 'engine_categories',
+    'jobs_angle', 'jobs_linkedin', 'jobs_instagram',
+    'content_angles', 'content_pieces'
+  ] loop
+    execute format('alter table public.%I add column if not exists account_id uuid', t);
+    execute format('update public.%I set account_id = %L where account_id is null', t, v_cuenta);
+    execute format('alter table public.%I alter column account_id set not null', t);
+    execute format('alter table public.%I drop constraint if exists %I', t, t || '_account_id_fkey');
+    execute format(
+      'alter table public.%I add constraint %I foreign key (account_id) references public.accounts (id) on delete cascade',
+      t, t || '_account_id_fkey'
+    );
+    execute format('create index if not exists %I on public.%I (account_id)', t || '_account_id_idx', t);
+  end loop;
+end $$;
+
+-- Los eventos del tick abarcan varias cuentas en la misma pasada: "revision de
+-- la cola" no es de ninguna. Nulo significa "del motor".
+alter table public.pipeline_events alter column account_id drop not null;
+
+-- El enlace de una noticia era unico globalmente, y eso impedia que la segunda
+-- cuenta ingiriera algo que ya tenia la primera. Son corpus independientes.
+alter table public.raw_news drop constraint if exists raw_news_link_key;
+alter table public.raw_news add constraint raw_news_account_link_key unique (account_id, link);
+
+-- Mismo motivo con el slug de categoria: 'ia' puede existir en las dos.
+alter table public.engine_categories drop constraint if exists engine_categories_slug_key;
+alter table public.engine_categories
+  add constraint engine_categories_account_slug_key unique (account_id, slug);
+
+-- Las tres tablas de fila unica pasan a una fila por cuenta. El `id boolean`
+-- que impedia la segunda fila desaparece: dejarlo seria arrastrar una columna
+-- que ya no significa nada.
+do $$
+declare
+  v_cuenta uuid;
+  t text;
+begin
+  select id into v_cuenta from public.accounts order by created_at limit 1;
+
+  foreach t in array array['engine_settings', 'generation_config', 'linkedin_account'] loop
+    execute format('alter table public.%I add column if not exists account_id uuid', t);
+    execute format('update public.%I set account_id = %L where account_id is null', t, v_cuenta);
+    execute format('alter table public.%I drop constraint if exists %I', t, t || '_singleton');
+    execute format('alter table public.%I drop constraint if exists %I', t, t || '_pkey');
+    execute format('alter table public.%I alter column account_id set not null', t);
+    execute format('alter table public.%I add primary key (account_id)', t);
+    execute format('alter table public.%I drop column if exists id', t);
+    execute format(
+      'alter table public.%I add constraint %I foreign key (account_id) references public.accounts (id) on delete cascade',
+      t, t || '_account_id_fkey'
+    );
+  end loop;
+end $$;
+
+-- publish_schedule tenia una fila por red; ahora una por cuenta y red.
+alter table public.publish_schedule add column if not exists account_id uuid;
+update public.publish_schedule
+  set account_id = (select id from public.accounts order by created_at limit 1)
+  where account_id is null;
+alter table public.publish_schedule drop constraint if exists publish_schedule_pkey;
+alter table public.publish_schedule alter column account_id set not null;
+alter table public.publish_schedule add primary key (account_id, network);
+alter table public.publish_schedule drop constraint if exists publish_schedule_account_id_fkey;
+alter table public.publish_schedule
+  add constraint publish_schedule_account_id_fkey
+  foreign key (account_id) references public.accounts (id) on delete cascade;
+
+-- Con varias cuentas el cron de ingesta es la union de todos los horarios, y esa
+-- expresion combina minutos y horas en producto cartesiano: puede disparar dos
+-- veces dentro de la misma hora. Comprobar solo la hora dejaria que una cuenta
+-- ingiriera dos veces seguidas y gastara el doble de cuota de Serper para traer
+-- lo mismo. Esta marca cierra la ventana, igual que `publish_schedule.last_batch_at`
+-- hace con las tandas de publicacion.
+alter table public.engine_settings add column if not exists last_ingest_at timestamptz;
+
+comment on column public.engine_settings.last_ingest_at is
+  'Cuando corrio la ultima ingesta. Impide repetirla dentro de la misma hora.';

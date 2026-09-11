@@ -1,5 +1,6 @@
 import Link from "next/link"
 
+import { idDeCuentaActual } from "@/lib/accounts"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { LiveConsole, type SpokeSeed } from "@/components/engine/live-console"
 import { Badge } from "@/components/ui/badge"
@@ -17,12 +18,13 @@ export const dynamic = "force-dynamic"
 export const metadata = { title: "Hancel Engine" }
 
 export default async function EnginePage() {
+  const accountId = await idDeCuentaActual()
   const [taxonomy, routines, events, runs, settings] = await Promise.all([
-    getTaxonomy(),
+    getTaxonomy(accountId),
     getRoutines(),
     getRecentEvents(40),
     getPipelineRuns(),
-    getSettings(),
+    getSettings(accountId),
   ])
   const storedBySegment = await getSegmentCounts()
   const upcoming = nextRuns(settings, new Date(), 2)

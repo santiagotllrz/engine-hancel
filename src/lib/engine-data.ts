@@ -1,5 +1,6 @@
 import "server-only"
 
+import { idDeCuentaActual } from "@/lib/accounts"
 import { supabaseAdmin } from "@/engine/supabase-admin"
 import type { Routine } from "@/engine/routines"
 import { getTaxonomy, type CategoryWithSegments } from "@/engine/taxonomy"
@@ -47,6 +48,9 @@ export async function getRecentEvents(limit = 60): Promise<PipelineEvent[]> {
   const { data, error } = await supabaseAdmin()
     .from("pipeline_events")
     .select("*")
+    // Los de la cuenta, mas los del motor. Un evento sin cuenta es de la pasada
+    // entera —"revision de la cola"— y no pertenece a ninguna en concreto.
+    .or(`account_id.eq.${await idDeCuentaActual()},account_id.is.null`)
     .order("at", { ascending: false })
     .limit(limit)
 
@@ -79,11 +83,13 @@ export type GraphData = {
  */
 export async function getGraphData(newsLimit = 160): Promise<GraphData> {
   const supabase = supabaseAdmin()
+  const accountId = await idDeCuentaActual()
   const [taxonomy, news] = await Promise.all([
-    getTaxonomy(),
+    getTaxonomy(accountId),
     supabase
       .from("raw_news")
       .select("id, title, niche, tema, status, relevance_score, full_content")
+      .eq("account_id", accountId)
       .order("created_at", { ascending: false })
       .limit(newsLimit),
   ])
@@ -178,7 +184,10 @@ export async function getGraphData(newsLimit = 160): Promise<GraphData> {
  * esto la vista solo tendria algo que mostrar mientras corre una ingesta.
  */
 export async function getSegmentCounts(): Promise<Record<string, number>> {
-  const { data, error } = await supabaseAdmin().from("raw_news").select("niche, tema")
+  const { data, error } = await supabaseAdmin()
+    .from("raw_news")
+    .select("niche, tema")
+    .eq("account_id", await idDeCuentaActual())
   if (error) throw new Error(`No se pudieron contar las noticias: ${error.message}`)
 
   const counts: Record<string, number> = {}

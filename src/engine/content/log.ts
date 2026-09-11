@@ -51,7 +51,12 @@ export class ContentLog {
   async flush(): Promise<void> {
     if (this.buffer.length === 0) return
 
+    // La cuenta sale del propio detalle del evento. Una pasada del tick mezcla
+    // trabajos de varias cuentas, asi que no puede fijarse al crear el log; y
+    // los eventos que abarcan la pasada entera —"revision de la cola"— no son de
+    // ninguna en concreto y se quedan en nulo, que significa "del motor".
     const rows = this.buffer.map((event) => ({
+      account_id: (event.detail?.accountId as string | undefined) ?? null,
       run_id: null,
       at: event.at,
       kind: event.kind,

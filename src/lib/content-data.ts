@@ -1,5 +1,6 @@
 import "server-only"
 
+import { idDeCuentaActual } from "@/lib/accounts"
 import { getGenerationConfig } from "@/engine/content/jobs"
 import {
   angleRoutineConfig,
@@ -27,7 +28,17 @@ import type { RawNews } from "@/lib/types"
  * `lib/engine-data.ts`.
  */
 
-export { getGenerationConfig }
+/**
+ * La configuracion de la cuenta activa.
+ *
+ * El modulo del motor la pide por parametro porque alli se itera sobre cuentas;
+ * aqui, que siempre es la de la sesion, se resuelve sola. Asi ninguna pantalla
+ * tiene que acordarse de pasarla.
+ */
+export async function configuracionDeGeneracion(): Promise<GenerationConfig> {
+  return getGenerationConfig(await idDeCuentaActual())
+}
+
 export type { GenerationConfig, ContentAngle, ContentPiece, PiecePayload }
 
 /** Un angulo con la noticia de la que salio y las piezas que produjo. */
@@ -90,13 +101,15 @@ async function newsById(ids: string[]): Promise<Map<string, RawNews>> {
  * para cualquier noticia desde `/noticias`.
  */
 export async function getCandidates(limit = 60): Promise<RawNews[]> {
-  const config = await getGenerationConfig()
+  const accountId = await idDeCuentaActual()
+  const config = await getGenerationConfig(accountId)
   if (config.score_threshold === null) return []
 
   const supabase = supabaseAdmin()
   const { data, error } = await supabase
     .from("raw_news")
     .select("*")
+    .eq("account_id", accountId)
     .eq("status", "analyzed")
     .gte("relevance_score", config.score_threshold)
     .order("relevance_score", { ascending: false })
@@ -127,6 +140,7 @@ export async function getAngles(limit = 60): Promise<AngleView[]> {
   const { data, error } = await supabase
     .from("content_angles")
     .select("*")
+    .eq("account_id", await idDeCuentaActual())
     .order("created_at", { ascending: false })
     .limit(limit)
 
@@ -165,6 +179,7 @@ export async function getPieces(limit = 60): Promise<PieceView[]> {
   const { data, error } = await supabase
     .from("content_pieces")
     .select("*")
+    .eq("account_id", await idDeCuentaActual())
     .order("created_at", { ascending: false })
     .limit(limit)
 
@@ -203,19 +218,20 @@ export type QueueView = {
 /** Los buzones en crudo, para diagnosticar cuando algo se atasca. */
 export async function getQueue(limit = 30): Promise<QueueView> {
   const supabase = supabaseAdmin()
+  const accountId = await idDeCuentaActual()
+
+  const cola = (tabla: string) =>
+    supabase
+      .from(tabla)
+      .select("*")
+      .eq("account_id", accountId)
+      .order("created_at", { ascending: false })
+      .limit(limit)
 
   const [angle, linkedin, instagram] = await Promise.all([
-    supabase.from("jobs_angle").select("*").order("created_at", { ascending: false }).limit(limit),
-    supabase
-      .from("jobs_linkedin")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(limit),
-    supabase
-      .from("jobs_instagram")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(limit),
+    cola("jobs_angle"),
+    cola("jobs_linkedin"),
+    cola("jobs_instagram"),
   ])
 
   if (angle.error) throw new Error(`No se pudo cargar la cola de angulos: ${angle.error.message}`)
@@ -235,11 +251,18 @@ export async function getQueue(limit = 30): Promise<QueueView> {
 
 export async function getContentCounts(): Promise<ContentCounts> {
   const supabase = supabaseAdmin()
-  const contar = (tabla: string) => supabase.from(tabla).select("id", { count: "exact", head: true })
+  const accountId = await idDeCuentaActual()
+
+  const contar = (tabla: string) =>
+    supabase.from(tabla).select("id", { count: "exact", head: true }).eq("account_id", accountId)
 
   /** Cuenta filas de un buzon en un estado, sin traerselas. */
   const enEstado = (tabla: string, status: string) =>
-    supabase.from(tabla).select("id", { count: "exact", head: true }).eq("status", status)
+    supabase
+      .from(tabla)
+      .select("id", { count: "exact", head: true })
+      .eq("account_id", accountId)
+      .eq("status", status)
 
   const BUZONES = ["jobs_angle", "jobs_linkedin", "jobs_instagram"]
 
@@ -272,6 +295,7 @@ export async function getScoreDistribution(): Promise<{ score: number; count: nu
   const { data, error } = await supabaseAdmin()
     .from("raw_news")
     .select("relevance_score")
+    .eq("account_id", await idDeCuentaActual())
     .eq("status", "analyzed")
 
   if (error) throw new Error(`No se pudo leer la distribucion de scores: ${error.message}`)

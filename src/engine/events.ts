@@ -42,7 +42,9 @@ export class EventRecorder {
 
   constructor(
     private runId: string | null,
-    private sink?: EventSink
+    private sink?: EventSink,
+    /** La cuenta de la corrida. Sin ella los eventos no se podrian separar. */
+    private accountId?: string
   ) {}
 
   emit(kind: EngineEventKind, label: string, detail?: Record<string, unknown>) {
@@ -65,6 +67,7 @@ export class EventRecorder {
     if (!this.runId || this.buffer.length === 0) return
 
     const rows = this.buffer.map((event) => ({
+      account_id: this.accountId,
       run_id: this.runId,
       at: event.at,
       kind: event.kind,

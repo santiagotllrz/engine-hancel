@@ -26,10 +26,11 @@ export type PublishSchedule = {
   updated_at: string
 }
 
-export async function getPublishSchedules(): Promise<PublishSchedule[]> {
+export async function getPublishSchedules(accountId: string): Promise<PublishSchedule[]> {
   const { data, error } = await supabaseAdmin()
     .from("publish_schedule")
     .select("*")
+    .eq("account_id", accountId)
     .order("network")
 
   if (error) throw new Error(`No se pudo leer la programacion: ${error.message}`)
@@ -107,10 +108,11 @@ export function decidirTanda(
 }
 
 /** Cierra la tanda para que el siguiente tick de la misma hora no la repita. */
-export async function marcarTanda(network: Network): Promise<void> {
+export async function marcarTanda(accountId: string, network: Network): Promise<void> {
   await supabaseAdmin()
     .from("publish_schedule")
     .update({ last_batch_at: new Date().toISOString() })
+    .eq("account_id", accountId)
     .eq("network", network)
 }
 

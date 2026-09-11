@@ -29,11 +29,14 @@ export type CategoryWithSegments = Category & { segments: Segment[] }
 /**
  * Taxonomia completa, activa e inactiva, para la pantalla de configuracion.
  */
-export async function getTaxonomy(): Promise<CategoryWithSegments[]> {
+export async function getTaxonomy(accountId: string): Promise<CategoryWithSegments[]> {
   const supabase = supabaseAdmin()
 
+  // Los segmentos no llevan `account_id`: cuelgan de su categoria, que si lo
+  // lleva. Traerlos todos y cruzarlos en memoria es correcto porque el mapa solo
+  // se rellena con las categorias de esta cuenta, y son pocas filas.
   const [categories, segments] = await Promise.all([
-    supabase.from("engine_categories").select("*").order("position"),
+    supabase.from("engine_categories").select("*").eq("account_id", accountId).order("position"),
     supabase.from("engine_segments").select("*").order("position"),
   ])
 
@@ -64,8 +67,8 @@ export async function getTaxonomy(): Promise<CategoryWithSegments[]> {
  * Si no hay ninguna configurada todavia cae al respaldo de `config.ts`, para
  * que una base recien creada siga funcionando sin configurar nada a mano.
  */
-export async function getActiveSearches(): Promise<SearchSpec[]> {
-  const taxonomy = await getTaxonomy()
+export async function getActiveSearches(accountId: string): Promise<SearchSpec[]> {
+  const taxonomy = await getTaxonomy(accountId)
 
   const searches = taxonomy
     .filter((category) => category.is_active)

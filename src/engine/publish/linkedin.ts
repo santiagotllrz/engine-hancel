@@ -60,11 +60,11 @@ export type LinkedinAccount = {
   connected_at: string
 }
 
-export async function getLinkedinAccount(): Promise<LinkedinAccount | null> {
+export async function getLinkedinAccount(accountId: string): Promise<LinkedinAccount | null> {
   const { data, error } = await supabaseAdmin()
     .from("linkedin_account")
     .select("*")
-    .eq("id", true)
+    .eq("account_id", accountId)
     .maybeSingle()
 
   if (error) throw new Error(`No se pudo leer la cuenta de LinkedIn: ${error.message}`)
@@ -82,9 +82,9 @@ export type LinkedinStatus = {
   expiringSoon: boolean
 }
 
-export async function getLinkedinStatus(): Promise<LinkedinStatus> {
+export async function getLinkedinStatus(accountId: string): Promise<LinkedinStatus> {
   const configured = linkedinConfig() !== null
-  const account = await getLinkedinAccount()
+  const account = await getLinkedinAccount(accountId)
 
   if (!account) {
     return {
@@ -141,7 +141,10 @@ type TokenResponse = {
  * El `sub` de /v2/userinfo es el id del miembro; el URN del autor se arma con
  * el, que es lo que la Posts API espera en `author`.
  */
-export async function exchangeCodeAndStore(code: string): Promise<LinkedinAccount> {
+export async function exchangeCodeAndStore(
+  accountId: string,
+  code: string
+): Promise<LinkedinAccount> {
   const config = linkedinConfig()
   if (!config) throw new Error("Faltan las credenciales de LinkedIn en el entorno.")
 
@@ -176,7 +179,7 @@ export async function exchangeCodeAndStore(code: string): Promise<LinkedinAccoun
   const ahora = Date.now()
 
   const fila = {
-    id: true,
+    account_id: accountId,
     access_token: token.access_token,
     refresh_token: token.refresh_token ?? null,
     expires_at: new Date(ahora + token.expires_in * 1000).toISOString(),
@@ -195,8 +198,11 @@ export async function exchangeCodeAndStore(code: string): Promise<LinkedinAccoun
   return fila as LinkedinAccount
 }
 
-export async function disconnectLinkedin(): Promise<void> {
-  const { error } = await supabaseAdmin().from("linkedin_account").delete().eq("id", true)
+export async function disconnectLinkedin(accountId: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("linkedin_account")
+    .delete()
+    .eq("account_id", accountId)
   if (error) throw new Error(`No se pudo desconectar: ${error.message}`)
 }
 
@@ -234,8 +240,8 @@ export type SubidaResult = { ok: true; urn: string } | { ok: false; error: strin
  * resultado era un post publicado sin imagen sin que quedara rastro de por que:
  * el unico sitio donde se notaba era el feed, cuando ya no habia arreglo.
  */
-export async function subirImagen(png: Buffer): Promise<SubidaResult> {
-  const account = await getLinkedinAccount()
+export async function subirImagen(accountId: string, png: Buffer): Promise<SubidaResult> {
+  const account = await getLinkedinAccount(accountId)
   if (!account) return { ok: false, error: "No hay ninguna cuenta de LinkedIn conectada." }
 
   try {
@@ -300,10 +306,11 @@ export async function subirImagen(png: Buffer): Promise<SubidaResult> {
  * error de LinkedIn no tumbe una pasada del pipeline que ya hizo su trabajo.
  */
 export async function publishText(
+  accountId: string,
   commentary: string,
   imagen?: { urn: string; altText: string } | null
 ): Promise<PublishResult> {
-  const account = await getLinkedinAccount()
+  const account = await getLinkedinAccount(accountId)
   if (!account) {
     return { ok: false, error: "No hay ninguna cuenta de LinkedIn conectada." }
   }

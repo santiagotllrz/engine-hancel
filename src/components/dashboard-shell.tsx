@@ -18,6 +18,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { getNicheCounts } from "@/lib/news"
+import { cuentaActual, cuentasDelUsuario } from "@/lib/accounts"
 import { usuarioActual } from "@/lib/supabase/auth"
 
 /**
@@ -34,12 +35,21 @@ export async function DashboardShell({
 }) {
   // El proxy ya desvio a quien no tenia sesion; esto es la segunda comprobacion,
   // la que de verdad decide, porque corre donde se renderizan los datos.
-  const [niches, usuario] = await Promise.all([getNicheCounts(), usuarioActual()])
+  const usuario = await usuarioActual()
   if (!usuario) redirect("/login")
+
+  // La cuenta primero: los conteos de nichos ya salen acotados a ella.
+  const [cuenta, cuentas] = await Promise.all([cuentaActual(), cuentasDelUsuario()])
+  const niches = await getNicheCounts()
 
   return (
     <SidebarProvider>
-      <AppSidebar niches={niches} email={usuario.email ?? ""} />
+      <AppSidebar
+        niches={niches}
+        email={usuario.email ?? ""}
+        cuentas={cuentas}
+        cuenta={cuenta}
+      />
       <SidebarInset>
         <header className="bg-background/85 sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4 backdrop-blur md:px-6">
           <div className="flex items-center gap-2">

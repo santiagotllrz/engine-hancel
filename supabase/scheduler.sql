@@ -96,41 +96,38 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_settings public.engine_settings%rowtype;
-  v_hours    text;
-  v_minute   int;
-  v_expr     text;
+  v_hours   text;
+  v_minutes text;
+  v_expr    text;
 begin
-  select * into v_settings from public.engine_settings where id;
-
   -- Un job viejo con otro horario tiene que morir antes de programar el nuevo.
   perform cron.unschedule(jobid) from cron.job where jobname = 'engine_hancel_ingest';
 
-  if not found and v_settings is null then
-    return 'sin configuracion';
-  end if;
-
-  if not v_settings.enabled or coalesce(array_length(v_settings.run_hours, 1), 0) = 0 then
-    return 'programacion desactivada';
-  end if;
-
-  -- El distinct va en la subconsulta para poder ordenar por numero y no por
-  -- texto, que pondria "10" antes que "9".
-  select string_agg(utc_hour::text, ',' order by utc_hour), min(utc_minute)
-  into v_hours, v_minute
+  -- Con varias cuentas el cron ya no puede ser el horario de una: es la union de
+  -- todos. Como una expresion cron combina minutos y horas en producto
+  -- cartesiano, puede disparar a ratos que no le tocan a nadie; eso es barato y
+  -- deliberado, porque quien decide si a una cuenta le toca ahora es el endpoint,
+  -- que si conoce el horario de cada una. El cron solo dice "ve a mirar".
+  select string_agg(distinct utc_hour::text,   ',' order by utc_hour::text),
+         string_agg(distinct utc_minute::text, ',' order by utc_minute::text)
+  into v_hours, v_minutes
   from (
-    select distinct
-      extract(hour   from momento_utc)::int as utc_hour,
-      extract(minute from momento_utc)::int as utc_minute
+    select extract(hour   from momento_utc)::int as utc_hour,
+           extract(minute from momento_utc)::int as utc_minute
     from (
-      select ((current_date
-               + make_interval(hours => h, mins => v_settings.run_minute))
-              at time zone v_settings.timezone) at time zone 'UTC' as momento_utc
-      from unnest(v_settings.run_hours) as h
+      select ((current_date + make_interval(hours => h, mins => s.run_minute))
+              at time zone s.timezone) at time zone 'UTC' as momento_utc
+      from public.engine_settings s
+      cross join lateral unnest(s.run_hours) as h
+      where s.enabled and coalesce(array_length(s.run_hours, 1), 0) > 0
     ) as convertidas
   ) as horas;
 
-  v_expr := v_minute || ' ' || v_hours || ' * * *';
+  if v_hours is null then
+    return 'programacion desactivada';
+  end if;
+
+  v_expr := v_minutes || ' ' || v_hours || ' * * *';
   perform cron.schedule('engine_hancel_ingest', v_expr, 'select public.fire_ingest();');
 
   return v_expr;

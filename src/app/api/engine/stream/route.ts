@@ -41,6 +41,11 @@ export async function POST(request: Request) {
     return new Response("Ya hay una corrida en curso", { status: 409 })
   }
 
+  // La consola en vivo corre para la cuenta que el usuario tiene abierta. La
+  // ruta esta detras del proxy de sesion, asi que aqui siempre hay una.
+  const { idDeCuentaActual } = await import("@/lib/accounts")
+  const accountId = await idDeCuentaActual()
+
   const mode = new URL(request.url).searchParams.get("mode") === "dry" ? "dry" : "run"
   const encoder = new TextEncoder()
   running = true
@@ -62,8 +67,8 @@ export async function POST(request: Request) {
       try {
         const summary =
           mode === "dry"
-            ? await dryRunIngestion({ onEvent, signal: request.signal })
-            : await runIngestion({ onEvent, signal: request.signal })
+            ? await dryRunIngestion({ accountId, onEvent, signal: request.signal })
+            : await runIngestion({ accountId, onEvent, signal: request.signal })
 
         send("summary", summary)
       } catch (error) {

@@ -1,5 +1,6 @@
 import { CarouselStyleEditor } from "@/components/contenido/carousel-style-editor"
 import { GenerationConfigEditor } from "@/components/contenido/generation-config-editor"
+import { InstagramChannel } from "@/components/contenido/instagram-channel"
 import { LinkedinConnection } from "@/components/contenido/linkedin-connection"
 import { PublishScheduleEditor } from "@/components/contenido/publish-schedule-editor"
 import { DashboardShell } from "@/components/dashboard-shell"
@@ -9,7 +10,8 @@ import { getLinkedinStatus } from "@/engine/publish/linkedin"
 import { getPublishSchedules, proximasTandas } from "@/engine/publish/schedule"
 import { pendingToPublish } from "@/engine/publish/publish-piece"
 import { getSettings, hourIn } from "@/engine/schedule"
-import { getGenerationConfig, getScoreDistribution } from "@/lib/content-data"
+import { cuentaActual } from "@/lib/accounts"
+import { configuracionDeGeneracion, getScoreDistribution } from "@/lib/content-data"
 
 export const dynamic = "force-dynamic"
 
@@ -28,12 +30,13 @@ export default async function ContenidoConfigPage({
     return Array.isArray(value) ? value[0] : value
   }
 
+  const cuenta = await cuentaActual()
   const [config, distribution, linkedin, schedules, ajustes] = await Promise.all([
-    getGenerationConfig(),
+    configuracionDeGeneracion(),
     getScoreDistribution(),
-    getLinkedinStatus(),
-    getPublishSchedules(),
-    getSettings(),
+    getLinkedinStatus(cuenta.id),
+    getPublishSchedules(cuenta.id),
+    getSettings(cuenta.id),
   ])
 
   const ahora = new Date()
@@ -41,7 +44,7 @@ export default async function ContenidoConfigPage({
   const disponibles: Record<string, number> = {}
   for (const schedule of schedules) {
     proximas[schedule.network] = proximasTandas(schedule, ajustes.timezone, ahora)
-    disponibles[schedule.network] = (await pendingToPublish(schedule.network, 50)).length
+    disponibles[schedule.network] = (await pendingToPublish(cuenta.id, schedule.network, 50)).length
   }
 
   return (
@@ -52,6 +55,7 @@ export default async function ContenidoConfigPage({
           resultado={first("linkedin")}
           motivo={first("motivo") ?? first("cuenta")}
         />
+        <InstagramChannel canal={cuenta.buffer_channel_id} nombreCuenta={cuenta.name} />
       </div>
 
       <GenerationConfigEditor config={config} distribution={distribution} />

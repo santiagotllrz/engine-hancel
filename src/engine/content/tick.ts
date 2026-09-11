@@ -1,5 +1,6 @@
 import type { RawNews } from "@/lib/types"
 
+import { todasLasCuentas } from "../accounts"
 import { publishPiece, pendingToPublish } from "../publish/publish-piece"
 import { decidirTanda, getPublishSchedules, marcarTanda } from "../publish/schedule"
 import { generarCarrusel, nichosConocidos, noticiaDelAngulo } from "../render/carousel"
@@ -98,8 +99,29 @@ export async function runContentTick(
   let failedJobs = 0
 
   const supabase = supabaseAdmin()
-  const config = await getGenerationConfig()
   log.emit("content.tick.started", "Revision de la cola de contenido", { trigger })
+
+  // Cada cuenta tiene su propia configuracion de generacion y su propia
+  // taxonomia. Se leen una vez por pasada y se guardan, porque el drenaje puede
+  // traer trabajos de varias cuentas mezclados y volver a la base por cada fila
+  // seria releer lo mismo decenas de veces.
+  const configs = new Map<string, Awaited<ReturnType<typeof getGenerationConfig>>>()
+  const configDe = async (accountId: string) => {
+    const guardada = configs.get(accountId)
+    if (guardada) return guardada
+    const fresca = await getGenerationConfig(accountId)
+    configs.set(accountId, fresca)
+    return fresca
+  }
+
+  const nichos = new Map<string, string[]>()
+  const nichosDe = async (accountId: string) => {
+    const guardados = nichos.get(accountId)
+    if (guardados) return guardados
+    const frescos = await nichosConocidos(accountId)
+    nichos.set(accountId, frescos)
+    return frescos
+  }
 
   // ------------------------------------------------------------ angulos hechos
   const angleJobs = await claimAngleJobs()
@@ -109,6 +131,7 @@ export async function runContentTick(
     if (job.status === "failed") {
       failedJobs++
       log.emit("content.angle.failed", "La rutina marco el angulo como fallido", {
+        accountId: job.account_id,
         jobId: job.id,
         error: job.error,
       })
@@ -124,6 +147,7 @@ export async function runContentTick(
       errors.push(message)
       await markJobUnreadable("jobs_angle", job.id, message)
       log.emit("content.angle.failed", "Respuesta de angulo ilegible", {
+        accountId: job.account_id,
         jobId: job.id,
         error: message,
       })
@@ -131,6 +155,7 @@ export async function runContentTick(
     }
 
     const filas = angulos.map((angulo, index) => ({
+      account_id: job.account_id,
       raw_news_id: job.raw_news_id,
       job_angle_id: job.id,
       angle: angulo.angle,
@@ -143,6 +168,7 @@ export async function runContentTick(
     if (error) {
       errors.push(error.message)
       log.emit("content.angle.failed", "No se pudieron guardar los angulos", {
+        accountId: job.account_id,
         jobId: job.id,
         error: error.message,
       })
@@ -163,6 +189,7 @@ export async function runContentTick(
     //
     // `auto_networks` puede estar vacia, y entonces no se genera nada: el
     // automatico sigue sacando angulos y quedan esperando decision manual.
+    const config = await configDe(job.account_id)
     if (config.generation_mode === "auto" && creados.length > 0 && config.auto_networks.length > 0) {
       const primero = creados.reduce((a, b) => (a.position <= b.position ? a : b))
       const news = (await loadNews([job.raw_news_id])).get(job.raw_news_id)
@@ -175,11 +202,13 @@ export async function runContentTick(
               await enqueueLinkedinJob(primero, news, config.variables)
               linkedinQueued++
               log.emit("content.linkedin.queued", "Post encolado en automatico", {
+                accountId: job.account_id,
                 angleId: primero.id,
               })
             } else {
               await enqueueInstagramJob(primero, news, config.variables)
               log.emit("content.instagram.queued", "Carrusel encolado en automatico", {
+                accountId: job.account_id,
                 angleId: primero.id,
               })
             }
@@ -209,6 +238,7 @@ export async function runContentTick(
     if (job.status === "failed") {
       failedJobs++
       log.emit("content.linkedin.failed", "La rutina marco el post como fallido", {
+        accountId: job.account_id,
         jobId: job.id,
         error: job.error,
       })
@@ -224,6 +254,7 @@ export async function runContentTick(
       errors.push(message)
       await markJobUnreadable("jobs_linkedin", job.id, message)
       log.emit("content.linkedin.failed", "Respuesta de post ilegible", {
+        accountId: job.account_id,
         jobId: job.id,
         error: message,
       })
@@ -239,6 +270,7 @@ export async function runContentTick(
     const variablesUsadas = (job.input?.variables ?? null) as Variables | null
 
     const { error } = await supabase.from("content_pieces").insert({
+      account_id: job.account_id,
       content_angle_id: job.content_angle_id,
       raw_news_id: (angleRow as { raw_news_id: string } | null)?.raw_news_id ?? null,
       job_linkedin_id: job.id,
@@ -252,6 +284,7 @@ export async function runContentTick(
     if (error) {
       errors.push(error.message)
       log.emit("content.linkedin.failed", "No se pudo guardar la pieza", {
+        accountId: job.account_id,
         jobId: job.id,
         error: error.message,
       })
@@ -283,6 +316,7 @@ export async function runContentTick(
     if (job.status === "failed") {
       failedJobs++
       log.emit("content.instagram.failed", "La rutina marco el carrusel como fallido", {
+        accountId: job.account_id,
         jobId: job.id,
         error: job.error,
       })
@@ -291,16 +325,17 @@ export async function runContentTick(
 
     try {
       const news = await noticiaDelAngulo(job.content_angle_id)
-      const [nichos] = await Promise.all([nichosConocidos()])
+      const configCuenta = await configDe(job.account_id)
       const carrusel = await generarCarrusel(
         job.id,
         job.respuesta,
         news,
-        estiloDesdeConfig(config.carousel),
-        nichos
+        estiloDesdeConfig(configCuenta.carousel),
+        await nichosDe(job.account_id)
       )
 
       const { error } = await supabase.from("content_pieces").insert({
+        account_id: job.account_id,
         content_angle_id: job.content_angle_id,
         raw_news_id: news?.id ?? null,
         job_instagram_id: job.id,
@@ -320,6 +355,7 @@ export async function runContentTick(
         .eq("id", job.content_angle_id)
 
       log.emit("content.carousel.created", `Carrusel de ${carrusel.slideCount} imagenes`, {
+        accountId: job.account_id,
         jobId: job.id,
         slides: carrusel.slideCount,
         portadaSinFoto: carrusel.portadaSinFoto,
@@ -330,6 +366,7 @@ export async function runContentTick(
       errors.push(message)
       await markJobUnreadable("jobs_instagram", job.id, message)
       log.emit("content.instagram.failed", "No se pudo generar el carrusel", {
+        accountId: job.account_id,
         jobId: job.id,
         error: message,
       })
@@ -341,11 +378,19 @@ export async function runContentTick(
   // Sin umbral definido no se selecciona nada: el scoring lo decide el usuario
   // desde la interfaz, y encolar con un criterio inventado seria peor que no
   // encolar. El envio manual sigue disponible siempre, al margen de esto.
-  if (config.generation_mode === "auto" && config.score_threshold !== null) {
+  // El tope es por cuenta, no por pasada: si no, la primera cuenta se comeria el
+  // cupo entero y las demas no arrancarian hasta que se quedara sin candidatas.
+  const cuentas = await todasLasCuentas()
+
+  for (const cuenta of cuentas) {
+    const config = await configDe(cuenta.id)
+    if (config.generation_mode !== "auto" || config.score_threshold === null) continue
+
     try {
       const { data: candidatas, error } = await supabase
         .from("raw_news")
         .select("*")
+        .eq("account_id", cuenta.id)
         .eq("status", "analyzed")
         .gte("relevance_score", config.score_threshold)
         .order("relevance_score", { ascending: false })
@@ -355,32 +400,33 @@ export async function runContentTick(
       if (error) throw new Error(error.message)
 
       const noticias = (candidatas ?? []) as RawNews[]
-      if (noticias.length > 0) {
-        // Las que ya pasaron por el pipeline no vuelven a entrar.
-        const { data: yaEncoladas } = await supabase
-          .from("jobs_angle")
-          .select("raw_news_id")
-          .in(
-            "raw_news_id",
-            noticias.map((n) => n.id)
-          )
+      if (noticias.length === 0) continue
 
-        const vistas = new Set(
-          ((yaEncoladas ?? []) as { raw_news_id: string }[]).map((row) => row.raw_news_id)
+      // Las que ya pasaron por el pipeline no vuelven a entrar.
+      const { data: yaEncoladas } = await supabase
+        .from("jobs_angle")
+        .select("raw_news_id")
+        .in(
+          "raw_news_id",
+          noticias.map((n) => n.id)
         )
 
-        for (const news of noticias.filter((n) => !vistas.has(n.id)).slice(0, MAX_AUTO_POR_TICK)) {
-          await enqueueAngleJob(news, config.variables)
-          anglesQueued++
-          log.emit("content.angle.queued", "Noticia enviada al pipeline en automatico", {
-            rawNewsId: news.id,
-            score: news.relevance_score,
-          })
-        }
+      const vistas = new Set(
+        ((yaEncoladas ?? []) as { raw_news_id: string }[]).map((row) => row.raw_news_id)
+      )
+
+      for (const news of noticias.filter((n) => !vistas.has(n.id)).slice(0, MAX_AUTO_POR_TICK)) {
+        await enqueueAngleJob(news, config.variables)
+        anglesQueued++
+        log.emit("content.angle.queued", "Noticia enviada al pipeline en automatico", {
+          accountId: cuenta.id,
+          rawNewsId: news.id,
+          score: news.relevance_score,
+        })
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      errors.push(message)
+      errors.push(`[${cuenta.slug}] ${message}`)
     }
   }
 
@@ -390,41 +436,52 @@ export async function runContentTick(
   // nadie delante: el cron y los triggers pasan por esta misma pasada, y es
   // quien decide si a esta red le toca ahora.
   //
-  try {
-    const { getSettings } = await import("../schedule")
-    const ajustes = await getSettings()
+  const { getSettings } = await import("../schedule")
 
-    for (const programa of await getPublishSchedules()) {
-      const decision = decidirTanda(programa, ajustes.timezone, new Date())
-      if (!decision.publicar) continue
+  for (const cuenta of cuentas) {
+    try {
+      // La zona horaria es de la cuenta: dos cuentas pueden publicar "a las
+      // nueve" y no ser el mismo momento.
+      const ajustes = await getSettings(cuenta.id)
 
-      const piezas = await pendingToPublish(programa.network, decision.cantidad)
-      if (piezas.length === 0) continue
+      for (const programa of await getPublishSchedules(cuenta.id)) {
+        const decision = decidirTanda(programa, ajustes.timezone, new Date())
+        if (!decision.publicar) continue
 
-      for (const pieza of piezas) {
-        const result = await publishPiece(pieza.id)
-        if (result.ok) {
-          piecesPublished++
-          log.emit("content.piece.published", `Pieza publicada en ${programa.network}`, {
-            pieceId: pieza.id,
-            urn: result.urn,
-            tanda: decision.motivo,
-          })
-        } else {
-          errors.push(result.error)
-          log.emit("content.publish.failed", "No se pudo publicar", {
-            pieceId: pieza.id,
-            error: result.error,
-          })
+        const piezas = await pendingToPublish(cuenta.id, programa.network, decision.cantidad)
+        if (piezas.length === 0) continue
+
+        for (const pieza of piezas) {
+          const result = await publishPiece(pieza.id)
+          if (result.ok) {
+            piecesPublished++
+            log.emit("content.piece.published", `Pieza publicada en ${programa.network}`, {
+              accountId: cuenta.id,
+              pieceId: pieza.id,
+              urn: result.urn,
+              tanda: decision.motivo,
+            })
+          } else {
+            errors.push(result.error)
+            log.emit("content.publish.failed", "No se pudo publicar", {
+              accountId: cuenta.id,
+              pieceId: pieza.id,
+              error: result.error,
+            })
+          }
         }
-      }
 
-      // Se cierra la tanda aunque alguna haya fallado: reintentarla entera cinco
-      // minutos despues republicaria las que si salieron.
-      await marcarTanda(programa.network)
+        // Se cierra la tanda aunque alguna haya fallado: reintentarla entera
+        // cinco minutos despues republicaria las que si salieron.
+        await marcarTanda(cuenta.id, programa.network)
+      }
+    } catch (error) {
+      // Cada cuenta en su propio try: que una tenga LinkedIn caducado no puede
+      // impedir que las demas publiquen.
+      errors.push(
+        `[${cuenta.slug}] ${error instanceof Error ? error.message : String(error)}`
+      )
     }
-  } catch (error) {
-    errors.push(error instanceof Error ? error.message : String(error))
   }
 
   // ------------------------------------------------------------------- avisos
