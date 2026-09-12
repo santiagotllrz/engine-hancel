@@ -19,6 +19,8 @@ import { ExternalLinkIcon, FileTextIcon, ImageOffIcon } from "lucide-react"
 function statusVariant(status: string): "default" | "secondary" | "outline" {
   if (status === "analyzed") return "default"
   if (status === "pending_analysis") return "secondary"
+  // Caducada sin analizar: sigue ahi, pero ya no entra en la cola.
+  if (status === "expired") return "outline"
   return "outline"
 }
 

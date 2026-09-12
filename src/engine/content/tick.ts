@@ -1,6 +1,7 @@
 import type { RawNews } from "@/lib/types"
 
 import { todasLasCuentas } from "../accounts"
+import { reanudarAnalisisSiHaceFalta } from "../analysis-routine"
 import { publishPiece, pendingToPublish } from "../publish/publish-piece"
 import { decidirTanda, getPublishSchedules, marcarTanda } from "../publish/schedule"
 import { generarCarrusel, nichosConocidos, noticiaDelAngulo, parseInstagramResponse } from "../render/carousel"
@@ -538,6 +539,18 @@ export async function runContentTick(
     } catch (error) {
       errors.push(error instanceof Error ? error.message : String(error))
     }
+  }
+
+  // ------------------------------------------------------- analisis pendiente
+  //
+  // La rutina de analisis se dispara al ingerir, pero va en tandas cortas y una
+  // cola grande no se vacia con tres disparos al dia. El tick insiste mientras
+  // quede cola, con una hora entre disparos.
+  try {
+    const reanudado = await reanudarAnalisisSiHaceFalta(options.signal)
+    if (reanudado) routines.push(reanudado)
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error))
   }
 
   const durationMs = Date.now() - started.getTime()

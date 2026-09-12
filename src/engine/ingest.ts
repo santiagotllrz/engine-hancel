@@ -1,4 +1,4 @@
-import { fireAnalysisRoutine } from "./analysis-routine"
+import { expirarPendientesViejas, fireAnalysisRoutine } from "./analysis-routine"
 import { DEDUPE_FETCH_LIMIT, type SearchSpec } from "./config"
 import { findDuplicateIds, type DedupeCandidate } from "./dedupe"
 import { EventRecorder, type EventSink } from "./events"
@@ -193,6 +193,16 @@ export async function runIngestion(options: RunOptions): Promise<IngestionSummar
     const removed = new Set(duplicateIds)
     const toAnalyze = insertedIds.filter((id) => !removed.has(id))
     const routines: RoutineCallResult[] = []
+
+    // Lo que lleve dias esperando sale de la cola antes de avisar a la rutina:
+    // analiza por orden de llegada, y si no, las recien llegadas esperarian
+    // detras de prensa caducada.
+    const caducadas = await expirarPendientesViejas(accountId)
+    if (caducadas > 0) {
+      recorder.emit("dedupe.removed", `${caducadas} pendientes caducadas sacadas de la cola`, {
+        expired: caducadas,
+      })
+    }
 
     if (options.skipRoutines) {
       recorder.emit("routine.skipped", "Analisis omitido por configuracion de la corrida")
