@@ -410,6 +410,27 @@ export async function regenerateCarousel(pieceId: string): Promise<ActionResult>
       .eq("account_id", await idDeCuentaActual())
 
     if (error) throw new Error(error.message)
+
+    // La pieza de Facebook que salio de este mismo carrusel lleva la portada:
+    // si se redibujo, la suya tambien cambia. Solo si no se publico ya, porque
+    // lo publicado no se toca. Se lee, se funde y se escribe porque `update`
+    // sobre jsonb reemplaza el documento entero y aqui solo cambia una clave.
+    if (carrusel.images[0]) {
+      const { data: hermanas } = await supabase
+        .from("content_pieces")
+        .select("id, payload")
+        .eq("job_instagram_id", pieza.job_instagram_id)
+        .eq("network", "facebook")
+        .is("published_at", null)
+
+      for (const hermana of (hermanas ?? []) as { id: string; payload: Record<string, unknown> }[]) {
+        await supabase
+          .from("content_pieces")
+          .update({ payload: { ...hermana.payload, image: carrusel.images[0] } })
+          .eq("id", hermana.id)
+      }
+    }
+
     refresh()
     return { ok: true }
   } catch (error) {
@@ -500,7 +521,7 @@ export async function runTickNow(): Promise<ActionResult> {
 /** Cuando y cuanto se publica en una red. */
 export async function updatePublishSchedule(form: FormData): Promise<ActionResult> {
   const network = text(form, "network")
-  if (network !== "linkedin" && network !== "instagram") {
+  if (network !== "linkedin" && network !== "instagram" && network !== "facebook") {
     return { ok: false, error: "Red no soportada." }
   }
 

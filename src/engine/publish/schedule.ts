@@ -14,7 +14,7 @@ import { supabaseAdmin } from "../supabase-admin"
  * de un solo huso.
  */
 
-export type Network = "linkedin" | "instagram"
+export type Network = "linkedin" | "instagram" | "facebook"
 
 export type PublishSchedule = {
   network: Network

@@ -3,7 +3,8 @@ import type { RawNews } from "@/lib/types"
 import { todasLasCuentas } from "../accounts"
 import { publishPiece, pendingToPublish } from "../publish/publish-piece"
 import { decidirTanda, getPublishSchedules, marcarTanda } from "../publish/schedule"
-import { generarCarrusel, nichosConocidos, noticiaDelAngulo } from "../render/carousel"
+import { generarCarrusel, nichosConocidos, noticiaDelAngulo, parseInstagramResponse } from "../render/carousel"
+import { armarPublicacionFacebook } from "../render/facebook"
 import { estiloDesdeConfig } from "../render/theme"
 import type { RoutineCallResult } from "../routines"
 import { supabaseAdmin } from "../supabase-admin"
@@ -65,6 +66,7 @@ export type TickSummary = {
   piecesCreated: number
   instagramJobsConsumed: number
   carouselsCreated: number
+  facebookCreated: number
   piecesPublished: number
   failedJobs: number
   routines: RoutineCallResult[]
@@ -95,6 +97,7 @@ export async function runContentTick(
   let piecesCreated = 0
   let instagramJobsConsumed = 0
   let carouselsCreated = 0
+  let facebookCreated = 0
   let piecesPublished = 0
   let failedJobs = 0
 
@@ -122,6 +125,8 @@ export async function runContentTick(
     nichos.set(accountId, frescos)
     return frescos
   }
+
+  const cuentas = await todasLasCuentas()
 
   // ------------------------------------------------------------ angulos hechos
   const angleJobs = await claimAngleJobs()
@@ -354,6 +359,33 @@ export async function runContentTick(
         .update({ status: "generated" })
         .eq("id", job.content_angle_id)
 
+      // Facebook sale del mismo carrusel, si la cuenta tiene pagina: la portada
+      // como imagen y el texto de las laminas como descripcion. Se gatea por el
+      // canal y no por una casilla aparte porque sin pagina la pieza no tendria
+      // donde ir, y con pagina no hay motivo para no hacerla.
+      const cuentaDelJob = cuentas.find((c) => c.id === job.account_id)
+      if (cuentaDelJob?.buffer_facebook_channel_id && carrusel.images[0]) {
+        const { caption, hashtags, slides } = parseInstagramResponse(job.respuesta)
+        const { error: errorFacebook } = await supabase.from("content_pieces").insert({
+          account_id: job.account_id,
+          content_angle_id: job.content_angle_id,
+          raw_news_id: news?.id ?? null,
+          job_instagram_id: job.id,
+          network: "facebook",
+          payload: armarPublicacionFacebook({ slides, caption, hashtags, portada: carrusel.images[0] }),
+          status: "generated",
+          variables_usadas: (job.input?.variables ?? null) as Variables | null,
+          generated_at: new Date().toISOString(),
+        })
+        if (errorFacebook) {
+          // La de Instagram ya esta guardada; la de Facebook se puede rehacer
+          // desde la interfaz. No merece tumbar el carrusel.
+          errors.push(`Facebook: ${errorFacebook.message}`)
+        } else {
+          facebookCreated++
+        }
+      }
+
       log.emit("content.carousel.created", `Carrusel de ${carrusel.slideCount} imagenes`, {
         accountId: job.account_id,
         jobId: job.id,
@@ -380,7 +412,6 @@ export async function runContentTick(
   // encolar. El envio manual sigue disponible siempre, al margen de esto.
   // El tope es por cuenta, no por pasada: si no, la primera cuenta se comeria el
   // cupo entero y las demas no arrancarian hasta que se quedara sin candidatas.
-  const cuentas = await todasLasCuentas()
 
   for (const cuenta of cuentas) {
     const config = await configDe(cuenta.id)
@@ -532,6 +563,7 @@ export async function runContentTick(
     piecesCreated,
     instagramJobsConsumed,
     carouselsCreated,
+    facebookCreated,
     piecesPublished,
     failedJobs,
     routines,

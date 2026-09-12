@@ -6,7 +6,7 @@ import { BancoDeFotos, descargarFotoPexels, pexelsConfigurado } from "../render/
 import { descargarFoto, renderTarjetaLinkedin } from "../render/render"
 import { estiloDesdeConfig } from "../render/theme"
 import type { RawNews } from "@/lib/types"
-import { publicarEnBuffer, resolverCanalInstagram } from "./buffer"
+import { publicarEnBuffer, resolverCanal } from "./buffer"
 import { buildCommentary, publishText, subirImagen, type PublishResult } from "./linkedin"
 
 /**
@@ -43,7 +43,9 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
   const result =
     piece.network === "instagram"
       ? await publicarCarrusel(piece)
-      : await publicarEnLinkedin(piece)
+      : piece.network === "facebook"
+        ? await publicarEnFacebook(piece)
+        : await publicarEnLinkedin(piece)
 
   if (result.ok) {
     await supabase
@@ -114,21 +116,53 @@ async function publicarCarrusel(piece: ContentPiece): Promise<PublishResult> {
     return { ok: false, error: "El carrusel no tiene imagenes." }
   }
 
-  const channelId = await resolverCanalInstagram(piece.account_id)
-  if (!channelId) {
-    return {
-      ok: false,
-      error:
-        "Esta cuenta no tiene canal de Instagram configurado. Ponlo en " +
-        "/contenido/config, con el id que aparece en la URL del canal en Buffer.",
-    }
-  }
+  const channelId = await resolverCanal(piece.account_id, "instagram")
+  if (!channelId) return { ok: false, error: sinCanal("Instagram") }
 
   const texto = [payload.caption, (payload.hashtags ?? []).join(" ")]
     .filter((parte) => parte && parte.trim().length > 0)
     .join("\n\n")
 
-  const resultado = await publicarEnBuffer({ channelId, texto, imagenes })
+  const resultado = await publicarEnBuffer({ channelId, red: "instagram", texto, imagenes })
+
+  return resultado.ok
+    ? { ok: true, urn: resultado.postId }
+    : { ok: false, error: resultado.error }
+}
+
+function sinCanal(red: string): string {
+  return (
+    `Esta cuenta no tiene canal de ${red} configurado. Ponlo en /contenido/config, ` +
+    "con el id que aparece en la URL del canal en Buffer."
+  )
+}
+
+/**
+ * Facebook: la portada del carrusel y el texto largo, por Buffer.
+ *
+ * La pieza ya nacio con la forma de Facebook (ver `render/facebook.ts`): aqui
+ * solo se junta el texto como lo haria LinkedIn y se manda con una imagen.
+ */
+async function publicarEnFacebook(piece: ContentPiece): Promise<PublishResult> {
+  const imagen = piece.payload?.image
+  if (!imagen) {
+    return { ok: false, error: "La pieza de Facebook no tiene imagen." }
+  }
+
+  const texto = buildCommentary(piece.payload)
+  if (!texto.trim()) {
+    return { ok: false, error: "La pieza no tiene texto que publicar." }
+  }
+
+  const channelId = await resolverCanal(piece.account_id, "facebook")
+  if (!channelId) return { ok: false, error: sinCanal("Facebook") }
+
+  const resultado = await publicarEnBuffer({
+    channelId,
+    red: "facebook",
+    texto,
+    imagenes: [imagen],
+  })
 
   return resultado.ok
     ? { ok: true, urn: resultado.postId }

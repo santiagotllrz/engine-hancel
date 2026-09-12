@@ -681,3 +681,32 @@ alter table public.engine_settings add column if not exists last_ingest_at times
 
 comment on column public.engine_settings.last_ingest_at is
   'Cuando corrio la ultima ingesta. Impide repetirla dentro de la misma hora.';
+
+-- =========================================================================
+-- Facebook
+-- =========================================================================
+--
+-- Facebook no tiene rutina propia: cada carrusel de Instagram produce tambien su
+-- version para Facebook —la portada como imagen y el texto de las laminas como
+-- descripcion— siempre que la cuenta tenga pagina configurada. Se publica por
+-- Buffer, como Instagram, en el canal que se pone desde la interfaz.
+
+alter table public.accounts rename column buffer_channel_id to buffer_instagram_channel_id;
+alter table public.accounts add column if not exists buffer_facebook_channel_id text;
+
+comment on column public.accounts.buffer_instagram_channel_id is 'Canal de Instagram en Buffer. Se pone desde la interfaz.';
+comment on column public.accounts.buffer_facebook_channel_id  is 'Canal (pagina) de Facebook en Buffer. Se pone desde la interfaz.';
+
+alter table public.content_pieces drop constraint if exists content_pieces_network_check;
+alter table public.content_pieces
+  add constraint content_pieces_network_check check (network in ('linkedin', 'instagram', 'facebook'));
+
+alter table public.publish_schedule drop constraint if exists publish_schedule_network_check;
+alter table public.publish_schedule
+  add constraint publish_schedule_network_check check (network in ('linkedin', 'instagram', 'facebook'));
+
+-- Cada cuenta tiene su fila de horario para Facebook, apagada hasta que alguien
+-- la encienda: nace sin horas y sin publicar, igual que las otras redes nuevas.
+insert into public.publish_schedule (account_id, network)
+select id, 'facebook' from public.accounts
+on conflict (account_id, network) do nothing;

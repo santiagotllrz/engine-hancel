@@ -30,7 +30,7 @@ export async function cuentasDelUsuario(): Promise<Cuenta[]> {
   // tienen RLS sin politicas, asi que el filtro lo pone el codigo.
   const { data, error } = await supabaseAdmin()
     .from("account_members")
-    .select("accounts (id, name, slug, buffer_channel_id)")
+    .select("accounts (id, name, slug, buffer_instagram_channel_id, buffer_facebook_channel_id)")
     .eq("user_id", usuario.id)
 
   if (error) throw new Error(`No se pudieron leer las cuentas: ${error.message}`)

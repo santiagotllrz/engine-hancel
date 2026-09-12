@@ -1,6 +1,6 @@
 import { CarouselStyleEditor } from "@/components/contenido/carousel-style-editor"
 import { GenerationConfigEditor } from "@/components/contenido/generation-config-editor"
-import { InstagramChannel } from "@/components/contenido/instagram-channel"
+import { BufferChannel } from "@/components/contenido/buffer-channel"
 import { LinkedinConnection } from "@/components/contenido/linkedin-connection"
 import { PublishScheduleEditor } from "@/components/contenido/publish-schedule-editor"
 import { DashboardShell } from "@/components/dashboard-shell"
@@ -55,7 +55,16 @@ export default async function ContenidoConfigPage({
           resultado={first("linkedin")}
           motivo={first("motivo") ?? first("cuenta")}
         />
-        <InstagramChannel canal={cuenta.buffer_channel_id} nombreCuenta={cuenta.name} />
+        <BufferChannel
+          red="instagram"
+          canal={cuenta.buffer_instagram_channel_id}
+          nombreCuenta={cuenta.name}
+        />
+        <BufferChannel
+          red="facebook"
+          canal={cuenta.buffer_facebook_channel_id}
+          nombreCuenta={cuenta.name}
+        />
       </div>
 
       <GenerationConfigEditor config={config} distribution={distribution} />
@@ -68,6 +77,10 @@ export default async function ContenidoConfigPage({
           proximas={proximas}
           disponibles={disponibles}
           linkedinConectado={linkedin.connected && !linkedin.expired}
+          canales={{
+            instagram: Boolean(cuenta.buffer_instagram_channel_id),
+            facebook: Boolean(cuenta.buffer_facebook_channel_id),
+          }}
         />
 
         <CarouselStyleEditor

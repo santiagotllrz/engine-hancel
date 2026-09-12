@@ -78,11 +78,15 @@ export type BufferResult =
   | { ok: false; error: string }
 
 /**
- * Manda el carrusel a Buffer.
+ * Manda una publicacion con imagenes a Buffer.
  *
  * El carrusel no se declara: se infiere de mandar varias imagenes. Instagram
  * rechaza `type: "carousel"` explicitamente ("Valid types are post, story, or
- * reel"), asi que va como `post` con varios assets.
+ * reel"), asi que va como `post` con varios assets. Facebook recibe una sola
+ * imagen y el texto largo, que es su formato natural.
+ *
+ * `red` decide el bloque de `metadata`: Buffer exige el de la red del canal, y
+ * mandarle el de Instagram a una pagina de Facebook es un error de validacion.
  *
  * `shareNow` publica en el momento; `addToQueue` lo deja en la cola de Buffer
  * para su siguiente hueco.
@@ -91,15 +95,23 @@ export type BufferResult =
  */
 export async function publicarEnBuffer(opciones: {
   channelId: string
+  red: RedBuffer
   texto: string
   imagenes: string[]
   ahora?: boolean
 }): Promise<BufferResult> {
-  const { channelId, texto, imagenes, ahora = true } = opciones
+  const { channelId, red, texto, imagenes, ahora = true } = opciones
 
   if (imagenes.length === 0) {
-    return { ok: false, error: "El carrusel no tiene imagenes que publicar." }
+    return { ok: false, error: "La publicacion no tiene imagenes." }
   }
+
+  // Verificado por introspeccion del esquema de Buffer: `type` es obligatorio en
+  // los dos y en Facebook admite post, reel o story.
+  const metadata =
+    red === "instagram"
+      ? { instagram: { type: "post", shouldShareToFeed: true } }
+      : { facebook: { type: "post" } }
 
   try {
     const data = await consultar<{
@@ -120,7 +132,7 @@ export async function publicarEnBuffer(opciones: {
           mode: ahora ? "shareNow" : "addToQueue",
           schedulingType: "automatic",
           needsApproval: false,
-          metadata: { instagram: { type: "post", shouldShareToFeed: true } },
+          metadata,
         },
       }
     )
@@ -143,24 +155,28 @@ export async function publicarEnBuffer(opciones: {
   }
 }
 
+export type RedBuffer = "instagram" | "facebook"
+
 /**
- * El canal en el que publica una cuenta.
+ * El canal en el que publica una cuenta en cada red.
  *
- * Vive en `accounts.buffer_channel_id` y se pone desde la interfaz. Antes era
- * una variable de entorno, que funcionaba mientras hubo una sola cuenta y dejo
- * de servir en cuanto hubo dos: una variable no distingue cuentas, y el error
- * seria publicar el contenido de una en el Instagram de la otra.
+ * Viven en `accounts` y se ponen desde la interfaz. Antes era una variable de
+ * entorno, que funcionaba mientras hubo una sola cuenta y dejo de servir en
+ * cuanto hubo dos: una variable no distingue cuentas, y el error seria publicar
+ * el contenido de una en las redes de la otra.
  *
  * Es el id que aparece en la URL del canal en Buffer:
  *
  *   https://publish.buffer.com/channels/<id>/schedule
  *
- * Sin configurar devuelve `null` y no se publica. No cae al primer canal de
- * Instagram que haya a proposito: adivinar la cuenta ajena es peor que parar.
+ * Sin configurar devuelve `null` y no se publica. No cae al primer canal que
+ * haya a proposito: adivinar la cuenta ajena es peor que parar.
  */
-export async function resolverCanalInstagram(accountId: string): Promise<string | null> {
+export async function resolverCanal(accountId: string, red: RedBuffer): Promise<string | null> {
   const { cuentaPorId } = await import("../accounts")
   const cuenta = await cuentaPorId(accountId)
-  const canal = cuenta?.buffer_channel_id?.trim()
+  const canal = (
+    red === "instagram" ? cuenta?.buffer_instagram_channel_id : cuenta?.buffer_facebook_channel_id
+  )?.trim()
   return canal && canal.length > 0 ? canal : null
 }

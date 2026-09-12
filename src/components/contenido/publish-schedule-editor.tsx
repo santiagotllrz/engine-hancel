@@ -25,6 +25,7 @@ export function PublishScheduleEditor({
   proximas,
   disponibles,
   linkedinConectado,
+  canales,
 }: {
   schedules: PublishSchedule[]
   timezone: string
@@ -34,6 +35,8 @@ export function PublishScheduleEditor({
   /** Piezas listas para publicar por red, para que el numero no sea abstracto. */
   disponibles: Record<string, number>
   linkedinConectado: boolean
+  /** Que canales de Buffer tiene puestos la cuenta: sin canal no hay a donde publicar. */
+  canales: { instagram: boolean; facebook: boolean }
 }) {
   return (
     <Card>
@@ -57,11 +60,13 @@ export function PublishScheduleEditor({
             proximas={proximas[schedule.network] ?? []}
             disponibles={disponibles[schedule.network] ?? 0}
             aviso={
-              schedule.network === "instagram"
-                ? "Publicar en Instagram aun no esta construido: el horario se guarda, pero no publicara nada todavia."
-                : !linkedinConectado
-                  ? "No hay ninguna cuenta de LinkedIn conectada, asi que no se publicara nada."
-                  : null
+              schedule.network === "instagram" && !canales.instagram
+                ? "Esta cuenta no tiene canal de Instagram: el horario se guarda, pero no publicara nada hasta que lo pongas arriba."
+                : schedule.network === "facebook" && !canales.facebook
+                  ? "Esta cuenta no tiene canal de Facebook: el horario se guarda, pero no publicara nada hasta que lo pongas arriba."
+                  : schedule.network === "linkedin" && !linkedinConectado
+                    ? "No hay ninguna cuenta de LinkedIn conectada, asi que no se publicara nada."
+                    : null
             }
           />
         ))}

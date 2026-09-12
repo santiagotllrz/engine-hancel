@@ -20,11 +20,12 @@ export type Cuenta = {
   id: string
   name: string
   slug: string
-  /** Canal de Instagram en Buffer. `null` mientras nadie lo haya configurado. */
-  buffer_channel_id: string | null
+  /** Canales en Buffer. `null` mientras nadie los haya configurado. */
+  buffer_instagram_channel_id: string | null
+  buffer_facebook_channel_id: string | null
 }
 
-const CAMPOS = "id, name, slug, buffer_channel_id"
+const CAMPOS = "id, name, slug, buffer_instagram_channel_id, buffer_facebook_channel_id"
 
 /** Todas las cuentas, en orden de creacion. Es sobre lo que itera el motor. */
 export async function todasLasCuentas(): Promise<Cuenta[]> {

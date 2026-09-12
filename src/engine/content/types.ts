@@ -21,9 +21,19 @@ export type JobStatus = "pending" | "processing" | "done" | "failed"
 export const REDES = ["linkedin", "instagram"] as const
 export type Red = (typeof REDES)[number]
 
-export const NOMBRE_DE_RED: Record<Red, string> = {
+/**
+ * Las redes en las que se publica. Son mas que las que se generan: Facebook no
+ * tiene rutina propia, nace de cada carrusel de Instagram —la portada como
+ * imagen y el texto de las laminas como descripcion— y por eso no esta en
+ * `REDES`, que es lo que se ofrece al elegir que generar.
+ */
+export const REDES_PUBLICACION = ["linkedin", "instagram", "facebook"] as const
+export type RedPublicacion = (typeof REDES_PUBLICACION)[number]
+
+export const NOMBRE_DE_RED: Record<RedPublicacion, string> = {
   linkedin: "LinkedIn",
   instagram: "Instagram",
+  facebook: "Facebook",
 }
 
 /** Fila de `public.jobs_angle`, tal cual la devuelve Postgres. */
@@ -197,4 +207,10 @@ export type PiecePayload = {
   hashtags: string[]
   cta: string | null
   notas: string | null
+  /**
+   * Solo Facebook: la portada del carrusel del que salio la pieza. El resto del
+   * payload es el mismo texto que LinkedIn —hook, cuerpo, hashtags— para que la
+   * misma pantalla lo enseñe y lo edite sin un caso aparte.
+   */
+  image?: string | null
 }

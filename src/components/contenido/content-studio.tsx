@@ -274,7 +274,7 @@ function PieceCard({
             <Badge variant="outline" className="capitalize">
               {piece.network}
             </Badge>
-            {piece.linkedin_urn ? (
+            {piece.network === "linkedin" && piece.linkedin_urn ? (
               <a
                 href={`https://www.linkedin.com/feed/update/${piece.linkedin_urn}/`}
                 target="_blank"
@@ -363,6 +363,20 @@ function PieceCard({
           </div>
         ) : (
           <div className="flex flex-col gap-2">
+            {/* Facebook: la portada del carrusel del que salio, encima del texto,
+                que es como se ve en el feed. LinkedIn no la lleva aqui porque su
+                tarjeta se dibuja al publicar. */}
+            {payload.image ? (
+              <a href={payload.image} target="_blank" rel="noreferrer" className="w-fit">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={payload.image}
+                  alt="Imagen de la publicacion"
+                  className="h-48 w-auto rounded-md border object-cover"
+                  loading="lazy"
+                />
+              </a>
+            ) : null}
             {payload.hook ? <p className="text-sm font-medium">{payload.hook}</p> : null}
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{payload.body}</p>
             {(payload.hashtags ?? []).length > 0 ? (

@@ -30,18 +30,25 @@ export async function cambiarCuenta(slug: string): Promise<void> {
 }
 
 /**
- * El canal de Instagram de la cuenta.
+ * El canal de Buffer de la cuenta en una red.
  *
  * Antes era `BUFFER_CHANNEL_ID` en el entorno. Con una sola cuenta funcionaba;
  * con dos deja de servir, porque una variable no distingue cuentas y el fallo
- * seria publicar el contenido de una en el Instagram de la otra.
+ * seria publicar el contenido de una en las redes de la otra.
  *
  * Es el id que aparece en la URL del canal en Buffer:
  *   https://publish.buffer.com/channels/<id>/schedule
  */
-export async function guardarCanalInstagram(
+export async function guardarCanalBuffer(
+  red: "instagram" | "facebook",
   canal: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  // La red se valida contra la lista y no se confia en lo que llegue: es una
+  // accion de servidor y el nombre de columna se arma con ella.
+  if (red !== "instagram" && red !== "facebook") {
+    return { ok: false, error: "Red desconocida." }
+  }
+
   const limpio = canal.trim()
 
   // Buffer usa ids hexadecimales de 24 caracteres. Validar la forma aqui evita
@@ -60,7 +67,10 @@ export async function guardarCanalInstagram(
 
   const { error } = await supabaseAdmin()
     .from("accounts")
-    .update({ buffer_channel_id: limpio || null, updated_at: new Date().toISOString() })
+    .update({
+      [`buffer_${red}_channel_id`]: limpio || null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", await idDeCuentaActual())
 
   if (error) return { ok: false, error: error.message }
