@@ -24,7 +24,7 @@ import {
 import { ContentLog } from "./log"
 import { parseAngleResponse, parseLinkedinResponse } from "./parse"
 import { fireAngleRoutine, fireInstagramRoutine, fireLinkedinRoutine } from "./routines"
-import type { ContentAngle, JobAngle, JobLinkedin, Variables } from "./types"
+import type { ContentAngle, DestinoCarrusel, JobAngle, JobLinkedin, Variables } from "./types"
 
 /**
  * Una pasada del pipeline de contenido.
@@ -202,23 +202,36 @@ export async function runContentTick(
       if (news) {
         let algunaEncolada = false
 
-        for (const red of config.auto_networks) {
+        if (config.auto_networks.includes("linkedin")) {
           try {
-            if (red === "linkedin") {
-              await enqueueLinkedinJob(primero, news, config.variables)
-              linkedinQueued++
-              log.emit("content.linkedin.queued", "Post encolado en automatico", {
-                accountId: job.account_id,
-                angleId: primero.id,
-              })
-            } else {
-              await enqueueInstagramJob(primero, news, config.variables)
-              log.emit("content.instagram.queued", "Carrusel encolado en automatico", {
-                accountId: job.account_id,
-                angleId: primero.id,
-              })
-            }
+            await enqueueLinkedinJob(primero, news, config.variables)
+            linkedinQueued++
             algunaEncolada = true
+            log.emit("content.linkedin.queued", "Post encolado en automatico", {
+              accountId: job.account_id,
+              angleId: primero.id,
+            })
+          } catch (error) {
+            errors.push(error instanceof Error ? error.message : String(error))
+          }
+        }
+
+        // Instagram y Facebook comparten trabajo: la rutina escribe un guion y
+        // de el salen las piezas de las redes elegidas. Un solo encolado con
+        // los destinos, en vez de uno por red, que pediria el mismo guion dos
+        // veces.
+        const destinos = config.auto_networks.filter(
+          (red): red is DestinoCarrusel => red === "instagram" || red === "facebook"
+        )
+        if (destinos.length > 0) {
+          try {
+            await enqueueInstagramJob(primero, news, config.variables, null, destinos)
+            algunaEncolada = true
+            log.emit("content.instagram.queued", "Carrusel encolado en automatico", {
+              accountId: job.account_id,
+              angleId: primero.id,
+              destinos,
+            })
           } catch (error) {
             errors.push(error instanceof Error ? error.message : String(error))
           }
@@ -340,32 +353,36 @@ export async function runContentTick(
         await nichosDe(job.account_id)
       )
 
-      const { error } = await supabase.from("content_pieces").insert({
-        account_id: job.account_id,
-        content_angle_id: job.content_angle_id,
-        raw_news_id: news?.id ?? null,
-        job_instagram_id: job.id,
-        network: "instagram",
-        payload: carrusel,
-        status: "generated",
-        variables_usadas: (job.input?.variables ?? null) as Variables | null,
-        generated_at: new Date().toISOString(),
-      })
+      // Un trabajo viejo no trae destinos: era solo Instagram.
+      const destinos = job.input?.destinos ?? ["instagram"]
 
-      if (error) throw new Error(error.message)
+      if (destinos.includes("instagram")) {
+        const { error } = await supabase.from("content_pieces").insert({
+          account_id: job.account_id,
+          content_angle_id: job.content_angle_id,
+          raw_news_id: news?.id ?? null,
+          job_instagram_id: job.id,
+          network: "instagram",
+          payload: carrusel,
+          status: "generated",
+          variables_usadas: (job.input?.variables ?? null) as Variables | null,
+          generated_at: new Date().toISOString(),
+        })
 
-      carouselsCreated++
+        if (error) throw new Error(error.message)
+        carouselsCreated++
+      }
+
       await supabase
         .from("content_angles")
         .update({ status: "generated" })
         .eq("id", job.content_angle_id)
 
-      // Facebook sale del mismo carrusel, si la cuenta tiene pagina: la portada
-      // como imagen y el texto de las laminas como descripcion. Se gatea por el
-      // canal y no por una casilla aparte porque sin pagina la pieza no tendria
-      // donde ir, y con pagina no hay motivo para no hacerla.
-      const cuentaDelJob = cuentas.find((c) => c.id === job.account_id)
-      if (cuentaDelJob?.buffer_facebook_channel_id && carrusel.images[0]) {
+      // Facebook sale del mismo guion: la portada como imagen y el texto de las
+      // laminas como descripcion. Las imagenes ya estan dibujadas y subidas
+      // aunque Instagram no fuera destino; a Facebook solo le hace falta la
+      // primera.
+      if (destinos.includes("facebook") && carrusel.images[0]) {
         const { caption, hashtags, slides } = parseInstagramResponse(job.respuesta)
         const { error: errorFacebook } = await supabase.from("content_pieces").insert({
           account_id: job.account_id,

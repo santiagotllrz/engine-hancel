@@ -27,6 +27,7 @@ import {
   ExternalLinkIcon,
   FileTextIcon,
   DownloadIcon,
+  ImageIcon,
   ImagesIcon,
   RefreshCwIcon,
   SendIcon,
@@ -186,7 +187,13 @@ function AngleCard({ angle }: { angle: AngleView }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {(["linkedin", "instagram"] as const).map((network) => {
+          {(
+            [
+              { network: "linkedin", icono: <FileTextIcon />, hacer: "Generar post", hecho: "Post hecho" },
+              { network: "instagram", icono: <ImagesIcon />, hacer: "Generar carrusel", hecho: "Carrusel hecho" },
+              { network: "facebook", icono: <ImageIcon />, hacer: "Generar Facebook", hecho: "Facebook hecho" },
+            ] as const
+          ).map(({ network, icono, hacer, hecho }) => {
             const hecha = generada(network)
             return (
               <Button
@@ -194,16 +201,15 @@ function AngleCard({ angle }: { angle: AngleView }) {
                 size="sm"
                 variant={network === "linkedin" ? "default" : "secondary"}
                 disabled={pending || hecha}
+                title={
+                  network === "facebook"
+                    ? "Sale del guion del carrusel: si ya hay carrusel, es inmediato"
+                    : undefined
+                }
                 onClick={() => run(() => generateFromAngle(angle.id, network))}
               >
-                {network === "linkedin" ? <FileTextIcon /> : <ImagesIcon />}
-                {hecha
-                  ? network === "linkedin"
-                    ? "Post hecho"
-                    : "Carrusel hecho"
-                  : network === "linkedin"
-                    ? "Generar post"
-                    : "Generar carrusel"}
+                {icono}
+                {hecha ? hecho : hacer}
               </Button>
             )
           })}

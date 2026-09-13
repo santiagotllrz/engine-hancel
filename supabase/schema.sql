@@ -710,3 +710,11 @@ alter table public.publish_schedule
 insert into public.publish_schedule (account_id, network)
 select id, 'facebook' from public.accounts
 on conflict (account_id, network) do nothing;
+
+-- Facebook se elige como cualquier otra red al generar. No tiene rutina propia:
+-- sale del guion del carrusel de Instagram, y el trabajo del buzon lleva en
+-- `input.destinos` que piezas producir.
+alter table public.generation_config drop constraint if exists generation_config_auto_networks_check;
+alter table public.generation_config
+  add constraint generation_config_auto_networks_check
+  check (auto_networks <@ array['linkedin', 'instagram', 'facebook']::text[]);

@@ -2,7 +2,7 @@ import type { RawNews } from "@/lib/types"
 
 import { supabaseAdmin } from "../supabase-admin"
 import { mergeVariables, parseVariables } from "./variables"
-import { REDES } from "./types"
+import { REDES, type DestinoCarrusel } from "./types"
 import type {
   AngleJobInput,
   ContentAngle,
@@ -234,14 +234,15 @@ export async function enqueueInstagramJob(
   angle: ContentAngle,
   news: RawNews,
   variables: Variables,
-  override?: Partial<Variables> | null
+  override?: Partial<Variables> | null,
+  destinos: DestinoCarrusel[] = ["instagram"]
 ): Promise<string> {
   const { data, error } = await supabaseAdmin()
     .from("jobs_instagram")
     .insert({
       account_id: angle.account_id,
       content_angle_id: angle.id,
-      input: buildLinkedinInput(angle, news, mergeVariables(variables, override)),
+      input: { ...buildLinkedinInput(angle, news, mergeVariables(variables, override)), destinos },
     })
     .select("id")
     .single()

@@ -18,17 +18,21 @@ export type JobStatus = "pending" | "processing" | "done" | "failed"
  * toca la base, asi que la interfaz puede importar la lista y ofrecer justo lo
  * que el servidor acepta.
  */
-export const REDES = ["linkedin", "instagram"] as const
+/**
+ * Facebook se elige como cualquier otra red, pero no tiene rutina propia: nace
+ * del guion del carrusel de Instagram —la portada como imagen y el texto de las
+ * laminas como descripcion—. Elegirla encola el mismo buzon que Instagram con
+ * Facebook como destino; si tambien se eligio Instagram, un solo trabajo de la
+ * rutina produce las dos piezas.
+ */
+export const REDES = ["linkedin", "instagram", "facebook"] as const
 export type Red = (typeof REDES)[number]
 
-/**
- * Las redes en las que se publica. Son mas que las que se generan: Facebook no
- * tiene rutina propia, nace de cada carrusel de Instagram —la portada como
- * imagen y el texto de las laminas como descripcion— y por eso no esta en
- * `REDES`, que es lo que se ofrece al elegir que generar.
- */
-export const REDES_PUBLICACION = ["linkedin", "instagram", "facebook"] as const
-export type RedPublicacion = (typeof REDES_PUBLICACION)[number]
+export const REDES_PUBLICACION = REDES
+export type RedPublicacion = Red
+
+/** Lo que un trabajo del buzon de Instagram tiene que producir. */
+export type DestinoCarrusel = "instagram" | "facebook"
 
 export const NOMBRE_DE_RED: Record<RedPublicacion, string> = {
   linkedin: "LinkedIn",
@@ -70,7 +74,11 @@ export type JobInstagram = {
   id: string
   account_id: string
   content_angle_id: string
-  input: LinkedinJobInput
+  /**
+   * `destinos` dice que piezas salen de la respuesta. Un trabajo viejo no lo
+   * trae y se toma como solo Instagram.
+   */
+  input: LinkedinJobInput & { destinos?: DestinoCarrusel[] }
   status: JobStatus
   respuesta: unknown
   error: string | null

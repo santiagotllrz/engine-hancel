@@ -217,19 +217,26 @@ export function GenerationConfigEditor({
                   Sin ninguna red: el automatico saca los angulos y los deja esperando. Nada se
                   genera hasta que tu elijas.
                 </>
-              ) : redes.length === REDES.length ? (
-                <>
-                  Cada noticia que supere el umbral produce <strong>{redes.length} piezas</strong>,
-                  una por red, todas desde el mismo angulo. Es lo que hace que las dos cuenten lo
-                  mismo con distinta forma.
-                </>
-              ) : (
+              ) : redes.length === 1 ? (
                 <>
                   Cada noticia que supere el umbral produce una sola pieza, para{" "}
                   {NOMBRE_DE_RED[redes[0]]}. El envio manual sigue pudiendo generar para
-                  cualquiera de las dos.
+                  cualquiera de las redes.
+                </>
+              ) : (
+                <>
+                  Cada noticia que supere el umbral produce <strong>{redes.length} piezas</strong>,
+                  una por red, todas desde el mismo angulo. Es lo que hace que cuenten lo mismo
+                  con distinta forma.
                 </>
               )}
+              {redes.includes("facebook") ? (
+                <>
+                  {" "}
+                  Facebook sale del guion del carrusel: la portada como imagen y el texto de las
+                  laminas como descripcion.
+                </>
+              ) : null}
             </p>
           </div>
 

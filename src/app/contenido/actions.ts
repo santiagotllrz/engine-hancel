@@ -16,7 +16,7 @@ import {
 } from "@/engine/content/routines"
 import { runContentTick } from "@/engine/content/tick"
 import { REDES } from "@/engine/content/types"
-import type { ContentAngle, Red, Variables } from "@/engine/content/types"
+import type { ContentAngle, ContentPiece, Red, Variables } from "@/engine/content/types"
 import { parseVariables, validateVariables } from "@/engine/content/variables"
 import { disconnectLinkedin } from "@/engine/publish/linkedin"
 import { publishPiece } from "@/engine/publish/publish-piece"
@@ -94,7 +94,7 @@ function avisoSiFaltaRutina(cual: "angle" | Network): string | undefined {
       "(LINKEDIN_ROUTINE_URL / LINKEDIN_ROUTINE_TOKEN): se quedara pendiente."
     )
   }
-  if (cual === "instagram" && instagramRoutineConfig() === null) {
+  if ((cual === "instagram" || cual === "facebook") && instagramRoutineConfig() === null) {
     return (
       "Encolado, pero la rutina de Instagram no esta configurada " +
       "(INSTAGRAM_ROUTINE_URL / INSTAGRAM_ROUTINE_TOKEN): se quedara pendiente."
@@ -174,7 +174,7 @@ export async function generateFromAngle(
   form?: FormData
 ): Promise<ActionResult> {
   if (!angleId) return { ok: false, error: "Falta el id del angulo." }
-  if (network !== "linkedin" && network !== "instagram") {
+  if (network !== "linkedin" && network !== "instagram" && network !== "facebook") {
     return { ok: false, error: "Red no soportada." }
   }
 
@@ -196,9 +196,19 @@ export async function generateFromAngle(
 
     const [news, config] = await Promise.all([loadNews(angle.raw_news_id), configuracionDeGeneracion()])
 
-    // El mismo angulo alimenta las dos redes: esa es la razon de que el angulo
-    // se decida una sola vez y por separado.
-    if (network === "instagram") {
+    // El mismo angulo alimenta todas las redes: esa es la razon de que el
+    // angulo se decida una sola vez y por separado.
+    if (network === "facebook") {
+      // Si ya hay carrusel de este angulo, Facebook sale de el ahora mismo, sin
+      // pedirle otro guion a la rutina. Si no, se encola el buzon de Instagram
+      // con Facebook como unico destino.
+      const hecha = await facebookDesdeCarruselExistente(angle.id)
+      if (hecha) {
+        refresh()
+        return { ok: true }
+      }
+      await enqueueInstagramJob(angle, news, config.variables, override, ["facebook"])
+    } else if (network === "instagram") {
       await enqueueInstagramJob(angle, news, config.variables, override)
     } else {
       await enqueueLinkedinJob(angle, news, config.variables, override)
@@ -662,4 +672,69 @@ export async function updateGenerationConfig(form: FormData): Promise<ActionResu
   } catch (error) {
     return fail(error, "No se pudo guardar la configuracion.")
   }
+}
+
+/**
+ * Crea la pieza de Facebook a partir del carrusel que ya exista para el angulo.
+ *
+ * Devuelve `false` si no hay carrusel del que sacarla, y entonces toca encolar.
+ * Si ya habia pieza de Facebook no crea otra: dos iguales en la cola solo
+ * confunden.
+ */
+async function facebookDesdeCarruselExistente(angleId: string): Promise<boolean> {
+  const supabase = supabaseAdmin()
+  const accountId = await idDeCuentaActual()
+
+  const { data: existente } = await supabase
+    .from("content_pieces")
+    .select("id")
+    .eq("content_angle_id", angleId)
+    .eq("account_id", accountId)
+    .eq("network", "facebook")
+    .limit(1)
+    .maybeSingle()
+  if (existente) return true
+
+  const { data: carrusel } = await supabase
+    .from("content_pieces")
+    .select("*")
+    .eq("content_angle_id", angleId)
+    .eq("account_id", accountId)
+    .eq("network", "instagram")
+    .not("job_instagram_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!carrusel) return false
+
+  const pieza = carrusel as ContentPiece & { job_instagram_id: string; raw_news_id: string | null }
+  const imagenes = (pieza.payload as unknown as { images?: string[] }).images ?? []
+  if (imagenes.length === 0) return false
+
+  const { data: job } = await supabase
+    .from("jobs_instagram")
+    .select("respuesta, input")
+    .eq("id", pieza.job_instagram_id)
+    .single()
+  if (!job) return false
+
+  const { parseInstagramResponse } = await import("@/engine/render/carousel")
+  const { armarPublicacionFacebook } = await import("@/engine/render/facebook")
+  const { caption, hashtags, slides } = parseInstagramResponse(
+    (job as { respuesta: unknown }).respuesta
+  )
+
+  const { error } = await supabase.from("content_pieces").insert({
+    account_id: accountId,
+    content_angle_id: angleId,
+    raw_news_id: pieza.raw_news_id,
+    job_instagram_id: pieza.job_instagram_id,
+    network: "facebook",
+    payload: armarPublicacionFacebook({ slides, caption, hashtags, portada: imagenes[0] }),
+    status: "generated",
+    variables_usadas: ((job as { input?: { variables?: unknown } }).input?.variables ?? null) as Variables | null,
+    generated_at: new Date().toISOString(),
+  })
+  if (error) throw new Error(error.message)
+  return true
 }
