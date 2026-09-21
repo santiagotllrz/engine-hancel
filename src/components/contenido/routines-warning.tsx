@@ -1,29 +1,16 @@
 import { Card, CardContent } from "@/components/ui/card"
-import type { RoutinesStatus } from "@/lib/content-data"
+import type { EstadoIA } from "@/lib/content-data"
 import { AlertTriangleIcon } from "lucide-react"
 
 /**
- * Avisa de las rutinas que faltan.
+ * Avisa si falta el token de Claude.
  *
- * Sin este aviso el sistema falla en silencio: los trabajos se encolan bien, la
- * interfaz no protesta, y se quedan en 'pending' para siempre porque no hay
- * nadie al otro lado que los recoja.
- *
- * El pipeline arranca por el angulo, asi que sin esa rutina no se genera nada,
- * por mucho que la de LinkedIn este montada.
+ * Sin token, el motor no puede analizar ni escribir nada: los trabajos se
+ * encolan bien pero se quedan en 'pending' porque no hay con que procesarlos.
+ * El aviso evita que el sistema falle en silencio.
  */
-export function RoutinesWarning({ status }: { status: RoutinesStatus }) {
-  if (status.angle && status.linkedin && status.instagram) return null
-
-  const faltan = [
-    !status.angle ? { nombre: "angulo", vars: "ANGLE_ROUTINE_URL / ANGLE_ROUTINE_TOKEN" } : null,
-    !status.linkedin
-      ? { nombre: "LinkedIn", vars: "LINKEDIN_ROUTINE_URL / LINKEDIN_ROUTINE_TOKEN" }
-      : null,
-    !status.instagram
-      ? { nombre: "Instagram", vars: "INSTAGRAM_ROUTINE_URL / INSTAGRAM_ROUTINE_TOKEN" }
-      : null,
-  ].filter((item) => item !== null)
+export function RoutinesWarning({ status }: { status: EstadoIA }) {
+  if (status.tokenConfigurado) return null
 
   return (
     <Card className="border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30">
@@ -31,32 +18,12 @@ export function RoutinesWarning({ status }: { status: RoutinesStatus }) {
         <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-amber-600" />
         <div className="min-w-0 text-sm">
           <p className="font-medium text-amber-900 dark:text-amber-200">
-            {faltan.length === 3
-              ? "No hay ninguna rutina configurada"
-              : faltan.length > 1
-                ? `Faltan ${faltan.length} rutinas`
-                : `Falta la rutina de ${faltan[0].nombre}`}
+            Falta conectar Claude
           </p>
           <p className="mt-1 text-amber-800 dark:text-amber-300/90">
-            {!status.angle ? (
-              <>
-                El pipeline arranca por el angulo, asi que lo que envies se quedara encolado sin
-                procesar aunque la rutina de LinkedIn este lista.{" "}
-              </>
-            ) : (
-              <>
-                Los angulos se crearan, pero no se podra generar contenido para{" "}
-                {faltan.map((f) => f.nombre).join(" ni ")}.{" "}
-              </>
-            )}
-            Define en el entorno:{" "}
-            {faltan.map((item, index) => (
-              <span key={item.vars}>
-                {index > 0 ? " y " : ""}
-                <code className="text-xs">{item.vars}</code>
-              </span>
-            ))}
-            .
+            Sin token de Claude no se analiza ni se genera contenido: lo que envies se queda
+            encolado. Pegalo en la tarjeta <strong>Conexion con Claude</strong> de la pantalla de
+            configuracion.
           </p>
         </div>
       </CardContent>

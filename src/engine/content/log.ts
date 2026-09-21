@@ -25,8 +25,8 @@ export type ContentEventKind =
   | "content.instagram.failed"
   | "content.piece.published"
   | "content.publish.failed"
-  | "content.routine.called"
-  | "content.routine.failed"
+  | "content.analisis"
+  | "content.jobs.procesados"
   | "content.tick.completed"
 
 export type ContentEvent = {

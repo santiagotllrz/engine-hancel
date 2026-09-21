@@ -1,5 +1,6 @@
 import { CarouselStyleEditor } from "@/components/contenido/carousel-style-editor"
 import { ClaudeConnection } from "@/components/contenido/claude-connection"
+import { ClaudeModels } from "@/components/contenido/claude-models"
 import { GenerationConfigEditor } from "@/components/contenido/generation-config-editor"
 import { BufferChannel } from "@/components/contenido/buffer-channel"
 import { LinkedinConnection } from "@/components/contenido/linkedin-connection"
@@ -12,6 +13,7 @@ import { getPublishSchedules, proximasTandas } from "@/engine/publish/schedule"
 import { pendingToPublish } from "@/engine/publish/publish-piece"
 import { getSettings, hourIn } from "@/engine/schedule"
 import { estadoTokenClaude } from "@/app/cuenta/actions"
+import { modelosClaude } from "@/engine/claude/modelos"
 import { cuentaActual } from "@/lib/accounts"
 import { configuracionDeGeneracion, getScoreDistribution } from "@/lib/content-data"
 
@@ -33,14 +35,16 @@ export default async function ContenidoConfigPage({
   }
 
   const cuenta = await cuentaActual()
-  const [config, distribution, linkedin, schedules, ajustes, tokenClaude] = await Promise.all([
-    configuracionDeGeneracion(),
-    getScoreDistribution(),
-    getLinkedinStatus(cuenta.id),
-    getPublishSchedules(cuenta.id),
-    getSettings(cuenta.id),
-    estadoTokenClaude(),
-  ])
+  const [config, distribution, linkedin, schedules, ajustes, tokenClaude, modelos] =
+    await Promise.all([
+      configuracionDeGeneracion(),
+      getScoreDistribution(),
+      getLinkedinStatus(cuenta.id),
+      getPublishSchedules(cuenta.id),
+      getSettings(cuenta.id),
+      estadoTokenClaude(),
+      modelosClaude(),
+    ])
 
   const ahora = new Date()
   const proximas: Record<string, string[]> = {}
@@ -54,6 +58,7 @@ export default async function ContenidoConfigPage({
     <DashboardShell title="Variables">
       <div className="flex max-w-3xl flex-col gap-4">
         <ClaudeConnection estado={tokenClaude} />
+        <ClaudeModels modelos={modelos} />
         <LinkedinConnection
           status={linkedin}
           resultado={first("linkedin")}

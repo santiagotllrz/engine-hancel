@@ -739,3 +739,10 @@ create table if not exists public.engine_secrets (
 alter table public.engine_secrets enable row level security;
 
 insert into public.engine_secrets (id) values (true) on conflict (id) do nothing;
+
+-- Modelo por paso de IA (analisis, angulo, LinkedIn, Instagram), global y
+-- editable desde la interfaz. Reemplaza el modelo fijo que tenia cada rutina.
+alter table public.engine_secrets add column if not exists model_analisis  text not null default 'claude-haiku-4-5-20251001';
+alter table public.engine_secrets add column if not exists model_angulo    text not null default 'claude-sonnet-5';
+alter table public.engine_secrets add column if not exists model_linkedin  text not null default 'claude-sonnet-5';
+alter table public.engine_secrets add column if not exists model_instagram text not null default 'claude-sonnet-5';

@@ -1,4 +1,4 @@
-import { expirarPendientesViejas, fireAnalysisRoutine } from "./analysis-routine"
+import { expirarPendientesViejas } from "./content/expiry"
 import { DEDUPE_FETCH_LIMIT, type SearchSpec } from "./config"
 import { findDuplicateIds, type DedupeCandidate } from "./dedupe"
 import { EventRecorder, type EventSink } from "./events"
@@ -141,7 +141,6 @@ export async function runIngestion(options: RunOptions): Promise<IngestionSummar
     // equivalente al Prefer: resolution=ignore-duplicates de n8n. El .select()
     // devuelve solo las filas realmente insertadas, que es como contamos.
     let inserted = 0
-    const insertedIds: string[] = []
     for (const batch of chunk(candidates, 500)) {
       const { data, error } = await supabase
         .from("raw_news")
@@ -153,7 +152,6 @@ export async function runIngestion(options: RunOptions): Promise<IngestionSummar
 
       if (error) throw new Error(`Fallo al insertar noticias: ${error.message}`)
       inserted += data?.length ?? 0
-      for (const row of data ?? []) insertedIds.push((row as { id: string }).id)
     }
     recorder.emit("insert.done", `${inserted} noticias nuevas guardadas`, { inserted })
 
@@ -186,48 +184,17 @@ export async function runIngestion(options: RunOptions): Promise<IngestionSummar
       removed: duplicatesRemoved,
     })
 
-    // --- Analisis inmediato ---
-    // Las noticias ya estan en `pending_analysis`; se dispara la rutina para que
-    // arranque sin esperar a nadie. Los ids borrados por duplicado se excluyen
-    // del conteo para no anunciar trabajo que ya no existe.
-    const removed = new Set(duplicateIds)
-    const toAnalyze = insertedIds.filter((id) => !removed.has(id))
+    // --- Analisis ---
+    // La ingesta ya no analiza: solo deja las noticias en `pending_analysis` y
+    // saca de la cola lo caducado. El analisis lo hace el tick, que pasa cada
+    // cinco minutos y las investiga y puntua en tandas cortas con Claude.
     const routines: RoutineCallResult[] = []
 
-    // Lo que lleve dias esperando sale de la cola antes de avisar a la rutina:
-    // analiza por orden de llegada, y si no, las recien llegadas esperarian
-    // detras de prensa caducada.
     const caducadas = await expirarPendientesViejas(accountId)
     if (caducadas > 0) {
       recorder.emit("dedupe.removed", `${caducadas} pendientes caducadas sacadas de la cola`, {
         expired: caducadas,
       })
-    }
-
-    if (options.skipRoutines) {
-      recorder.emit("routine.skipped", "Analisis omitido por configuracion de la corrida")
-    } else if (toAnalyze.length === 0) {
-      // Sin noticias nuevas el disparo solo gastaria una ejecucion de la rutina
-      // para que no encuentre nada que analizar.
-      recorder.emit("routine.skipped", "Sin noticias nuevas: no se dispara el analisis")
-    } else {
-      const result = await fireAnalysisRoutine(
-        `Han llegado ${toAnalyze.length} noticias nuevas en la corrida ${runId}. ` +
-          `Analizalas siguiendo las instrucciones de la rutina.`,
-        options.signal
-      )
-      routines.push(result)
-
-      if (result.ok) {
-        recorder.emit("routine.called", "Rutina de analisis disparada", {
-          count: toAnalyze.length,
-          status: result.status,
-        })
-      } else {
-        recorder.emit("routine.failed", "La rutina de analisis fallo", {
-          error: result.error,
-        })
-      }
     }
 
     const ended = new Date()

@@ -167,3 +167,18 @@ export async function probarConexionClaude(): Promise<
   })
   return r.ok ? { ok: true, modelo } : { ok: false, error: r.error }
 }
+
+/** Cambia el modelo de un paso de IA (analisis, angulo, LinkedIn, Instagram). */
+export async function guardarModeloIA(
+  paso: import("@/lib/modelos-ia").PasoIA,
+  modelo: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const { guardarModelo } = await import("@/engine/claude/modelos")
+    await guardarModelo(paso, modelo)
+    revalidatePath("/", "layout")
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}

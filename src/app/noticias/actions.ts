@@ -2,50 +2,37 @@
 
 import { revalidatePath } from "next/cache"
 
-import { fireAnalysisRoutine } from "@/engine/analysis-routine"
+import { analizarPendientes } from "@/engine/content/analisis"
 import { idDeCuentaActual } from "@/lib/accounts"
 import { supabaseAdmin } from "@/engine/supabase-admin"
 
 export type AnalyzeAllResult =
-  | { ok: true; pending: number }
+  | { ok: true; analizadas: number; pendientes: number }
   | { ok: false; error: string }
 
 /**
- * Dispara la rutina de analisis a mano, sin lanzar una ingesta.
+ * Analiza a mano una tanda de pendientes, sin esperar al tick.
  *
- * Es el mismo gatillo que corre al final de cada corrida: la rutina ya sabe que
- * noticias le tocan y como analizarlas. El conteo de pendientes se calcula solo
- * para el mensaje de la interfaz.
+ * Antes disparaba la rutina externa; ahora el motor investiga y puntua aqui
+ * mismo con Claude. Procesa una tanda (no todas de golpe, para no colgar la
+ * accion) y devuelve cuantas hizo y cuantas quedan; el tick sigue con el resto.
  */
 export async function analyzeAllNews(): Promise<AnalyzeAllResult> {
   try {
-    const { count, error } = await supabaseAdmin()
+    const accountId = await idDeCuentaActual()
+
+    const res = await analizarPendientes(accountId, 8)
+
+    const { count } = await supabaseAdmin()
       .from("raw_news")
       .select("id", { count: "exact", head: true })
-      .eq("account_id", await idDeCuentaActual())
+      .eq("account_id", accountId)
       .eq("status", "pending_analysis")
 
-    if (error) throw new Error(error.message)
-    const pending = count ?? 0
-
-    const result = await fireAnalysisRoutine(
-      `Disparo manual desde el dashboard: hay ${pending} noticias pendientes de analisis. ` +
-        `Analizalas siguiendo las instrucciones de la rutina.`
-    )
-
-    if (!result.ok) {
-      return {
-        ok: false,
-        error: result.error ?? `La rutina respondio ${result.status}.`,
-      }
-    }
-
-    // El analisis ocurre fuera de esta app y tarda; el revalidate solo refresca
-    // lo que ya hubiera cambiado, no espera a que la rutina termine.
     revalidatePath("/noticias")
-    return { ok: true, pending }
+    return { ok: true, analizadas: res.analizadas, pendientes: count ?? 0 }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    return { ok: false, error: message || "No se pudo disparar la rutina." }
+    return { ok: false, error: message || "No se pudo analizar." }
   }
 }

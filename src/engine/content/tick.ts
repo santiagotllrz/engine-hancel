@@ -1,7 +1,7 @@
 import type { RawNews } from "@/lib/types"
 
 import { todasLasCuentas } from "../accounts"
-import { reanudarAnalisisSiHaceFalta } from "../analysis-routine"
+import { expirarPendientesViejas } from "./expiry"
 import { publishPiece, pendingToPublish } from "../publish/publish-piece"
 import { decidirTanda, getPublishSchedules, marcarTanda } from "../publish/schedule"
 import { generarCarrusel, nichosConocidos, noticiaDelAngulo, parseInstagramResponse } from "../render/carousel"
@@ -13,7 +13,6 @@ import {
   claimAngleJobs,
   claimInstagramJobs,
   claimLinkedinJobs,
-  countPending,
   enqueueAngleJob,
   enqueueInstagramJob,
   enqueueLinkedinJob,
@@ -21,9 +20,10 @@ import {
   markJobUnreadable,
   MAX_DRENAJE_POR_TICK,
 } from "./jobs"
+import { analizarPendientes } from "./analisis"
+import { procesarBuzones } from "./procesar"
 import { ContentLog } from "./log"
 import { parseAngleResponse, parseLinkedinResponse } from "./parse"
-import { fireAngleRoutine, fireInstagramRoutine, fireLinkedinRoutine } from "./routines"
 import type { ContentAngle, DestinoCarrusel, JobAngle, JobLinkedin, Variables } from "./types"
 
 /**
@@ -70,6 +70,7 @@ export type TickSummary = {
   facebookCreated: number
   piecesPublished: number
   failedJobs: number
+  noticiasAnalizadas: number
   routines: RoutineCallResult[]
   errors: string[]
 }
@@ -101,6 +102,7 @@ export async function runContentTick(
   let facebookCreated = 0
   let piecesPublished = 0
   let failedJobs = 0
+  let noticiasAnalizadas = 0
 
   const supabase = supabaseAdmin()
   log.emit("content.tick.started", "Revision de la cola de contenido", { trigger })
@@ -128,6 +130,47 @@ export async function runContentTick(
   }
 
   const cuentas = await todasLasCuentas()
+  const esManual = trigger === "manual"
+
+  // --------------------------------------------------------------- analisis
+  //
+  // Antes lo hacia una rutina externa; ahora el motor investiga cada noticia con
+  // busqueda web y la puntua, en tandas cortas. Va primero para que la seleccion
+  // automatica de esta misma pasada pueda usar lo recien analizado. Cada cuenta
+  // en su try: que una falle no frena a las demas.
+  //
+  // En un disparo manual (el usuario le da a "Generar" desde la interfaz) se
+  // salta: solo quiere materializar lo que acaba de encolar, no arrancar un
+  // analisis con busqueda web de todas las cuentas.
+  if (!esManual) {
+    for (const cuenta of cuentas) {
+      try {
+        await expirarPendientesViejas(cuenta.id)
+        const res = await analizarPendientes(cuenta.id)
+        noticiasAnalizadas += res.analizadas
+        if (res.analizadas > 0 || res.fallidas > 0) {
+          log.emit("content.analisis", `${res.analizadas} noticias analizadas`, {
+            accountId: cuenta.id,
+            analizadas: res.analizadas,
+            fallidas: res.fallidas,
+          })
+        }
+        for (const e of res.errores) errors.push(`[${cuenta.slug}] analisis: ${e}`)
+      } catch (error) {
+        errors.push(`[${cuenta.slug}] ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+  }
+
+  // En manual se procesa antes de drenar, para que lo recien encolado (un post o
+  // un carrusel de un angulo ya hecho) quede materializado en la misma pasada.
+  if (esManual) {
+    try {
+      await procesarBuzones()
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error))
+    }
+  }
 
   // ------------------------------------------------------------ angulos hechos
   const angleJobs = await claimAngleJobs()
@@ -533,39 +576,21 @@ export async function runContentTick(
     }
   }
 
-  // ------------------------------------------------------------------- avisos
+  // --------------------------------------------------------- procesar buzones
   //
-  // Un aviso por rutina y por pasada, y solo si hay algo esperando: el webhook
-  // es "revisa la cola", asi que dispararlo dos veces seguidas no aporta nada.
-  for (const [tabla, disparar] of [
-    ["jobs_angle", fireAngleRoutine],
-    ["jobs_linkedin", fireLinkedinRoutine],
-    ["jobs_instagram", fireInstagramRoutine],
-  ] as const) {
-    try {
-      const pendientes = await countPending(tabla)
-      if (pendientes === 0) continue
-
-      const result = await disparar(pendientes, options.signal)
-      routines.push(result)
-      if (result.ok) {
-        log.emit("content.routine.called", `${result.routine} disparada`, { pendientes })
-      } else {
-        log.emit("content.routine.failed", `${result.routine} fallo`, { error: result.error })
-      }
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error))
-    }
-  }
-
-  // ------------------------------------------------------- analisis pendiente
-  //
-  // La rutina de analisis se dispara al ingerir, pero va en tandas cortas y una
-  // cola grande no se vacia con tres disparos al dia. El tick insiste mientras
-  // quede cola, con una hora entre disparos.
+  // Los agentes de angulo, LinkedIn e Instagram: lo que antes disparaba una
+  // rutina externa ahora lo hace el motor con una llamada directa a Claude.
+  // Llena `respuesta` en los buzones; el drenaje de la proxima pasada lo
+  // materializa igual que antes.
   try {
-    const reanudado = await reanudarAnalisisSiHaceFalta(options.signal)
-    if (reanudado) routines.push(reanudado)
+    const res = await procesarBuzones()
+    if (res.procesadas > 0 || res.fallidas > 0) {
+      log.emit("content.jobs.procesados", `${res.procesadas} trabajos procesados`, {
+        procesadas: res.procesadas,
+        fallidas: res.fallidas,
+      })
+    }
+    for (const e of res.errores) errors.push(e)
   } catch (error) {
     errors.push(error instanceof Error ? error.message : String(error))
   }
@@ -596,6 +621,7 @@ export async function runContentTick(
     facebookCreated,
     piecesPublished,
     failedJobs,
+    noticiasAnalizadas,
     routines,
     errors,
   }

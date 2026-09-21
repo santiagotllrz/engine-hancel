@@ -9,11 +9,7 @@ import {
 } from "@/engine/content/jobs"
 import { configuracionDeGeneracion } from "@/lib/content-data"
 import { idDeCuentaActual } from "@/lib/accounts"
-import {
-  angleRoutineConfig,
-  instagramRoutineConfig,
-  linkedinRoutineConfig,
-} from "@/engine/content/routines"
+import { tokenClaude } from "@/engine/claude/messages"
 import { runContentTick } from "@/engine/content/tick"
 import { REDES } from "@/engine/content/types"
 import type { ContentAngle, ContentPiece, Red, Variables } from "@/engine/content/types"
@@ -80,24 +76,12 @@ function overrideFromForm(form: FormData): Partial<Variables> | null {
   return Object.keys(override).length > 0 ? override : null
 }
 
-/** El aviso de que nadie va a recoger lo que se acaba de encolar. */
-function avisoSiFaltaRutina(cual: "angle" | Network): string | undefined {
-  if (cual === "angle" && angleRoutineConfig() === null) {
+/** El aviso de que nadie va a procesar lo que se acaba de encolar. */
+async function avisoSiFaltaToken(): Promise<string | undefined> {
+  if ((await tokenClaude()) === null) {
     return (
-      "Encolado, pero la rutina de angulo no esta configurada " +
-      "(ANGLE_ROUTINE_URL / ANGLE_ROUTINE_TOKEN): se quedara pendiente."
-    )
-  }
-  if (cual === "linkedin" && linkedinRoutineConfig() === null) {
-    return (
-      "Encolado, pero la rutina de LinkedIn no esta configurada " +
-      "(LINKEDIN_ROUTINE_URL / LINKEDIN_ROUTINE_TOKEN): se quedara pendiente."
-    )
-  }
-  if ((cual === "instagram" || cual === "facebook") && instagramRoutineConfig() === null) {
-    return (
-      "Encolado, pero la rutina de Instagram no esta configurada " +
-      "(INSTAGRAM_ROUTINE_URL / INSTAGRAM_ROUTINE_TOKEN): se quedara pendiente."
+      "Encolado, pero falta conectar Claude: pega el token en la configuracion " +
+      "o se quedara pendiente."
     )
   }
   return undefined
@@ -139,7 +123,7 @@ export async function sendToPipeline(rawNewsId: string): Promise<ActionResult> {
     // lo que ya estuviera hecho y avisa a las dos rutinas de una vez.
     await runContentTick({ trigger: "manual" })
     refresh()
-    return { ok: true, warning: avisoSiFaltaRutina("angle") }
+    return { ok: true, warning: await avisoSiFaltaToken() }
   } catch (error) {
     return fail(error, "No se pudo enviar la noticia al pipeline.")
   }
@@ -159,7 +143,7 @@ export async function sendToPipelineWithOverride(form: FormData): Promise<Action
     await enqueueAngleJob(news, config.variables, override)
     await runContentTick({ trigger: "manual" })
     refresh()
-    return { ok: true, warning: avisoSiFaltaRutina("angle") }
+    return { ok: true, warning: await avisoSiFaltaToken() }
   } catch (error) {
     return fail(error, "No se pudo enviar la noticia al pipeline.")
   }
@@ -226,7 +210,7 @@ export async function generateFromAngle(
 
     await runContentTick({ trigger: "manual" })
     refresh()
-    return { ok: true, warning: avisoSiFaltaRutina(network) }
+    return { ok: true, warning: await avisoSiFaltaToken() }
   } catch (error) {
     return fail(error, "No se pudo generar el contenido.")
   }

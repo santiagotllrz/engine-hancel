@@ -32,9 +32,11 @@ export function AnalyzeAllButton() {
         {result === null
           ? null
           : result.ok
-            ? result.pending > 0
-              ? `Rutina disparada sobre ${formatNumber(result.pending)} noticias pendientes.`
-              : "Rutina disparada (no habia noticias pendientes)."
+            ? result.analizadas > 0
+              ? `${formatNumber(result.analizadas)} analizadas. Quedan ${formatNumber(result.pendientes)}.`
+              : result.pendientes > 0
+                ? `Quedan ${formatNumber(result.pendientes)} en cola; el motor sigue.`
+                : "No habia noticias pendientes."
             : result.error}
       </p>
 

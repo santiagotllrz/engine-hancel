@@ -2,11 +2,7 @@ import "server-only"
 
 import { idDeCuentaActual } from "@/lib/accounts"
 import { getGenerationConfig } from "@/engine/content/jobs"
-import {
-  angleRoutineConfig,
-  instagramRoutineConfig,
-  linkedinRoutineConfig,
-} from "@/engine/content/routines"
+import { tokenClaude } from "@/engine/claude/messages"
 import type {
   ContentAngle,
   ContentPiece,
@@ -60,18 +56,13 @@ export type PieceView = ContentPiece & {
  * del servidor. Sirve para que la interfaz avise en vez de dejar trabajos
  * encolados que nadie va a recoger.
  */
-export type RoutinesStatus = {
-  angle: boolean
-  linkedin: boolean
-  instagram: boolean
+export type EstadoIA = {
+  /** Si hay token de Claude guardado. Sin el, nada de IA se procesa. */
+  tokenConfigurado: boolean
 }
 
-export function getRoutinesStatus(): RoutinesStatus {
-  return {
-    angle: angleRoutineConfig() !== null,
-    linkedin: linkedinRoutineConfig() !== null,
-    instagram: instagramRoutineConfig() !== null,
-  }
+export async function getEstadoIA(): Promise<EstadoIA> {
+  return { tokenConfigurado: (await tokenClaude()) !== null }
 }
 
 export type ContentCounts = {

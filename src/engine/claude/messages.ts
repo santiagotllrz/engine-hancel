@@ -38,6 +38,14 @@ export type LlamadaClaude = {
   /** El contenido concreto sobre el que trabajar (la noticia, el angulo...). */
   prompt: string
   maxTokens: number
+  /**
+   * Activa la busqueda web del lado servidor. Anthropic corre las busquedas
+   * dentro de la misma llamada y devuelve la respuesta ya con las fuentes: es lo
+   * que reemplaza al research que hacia la rutina de analisis, sin agente.
+   */
+  buscarWeb?: boolean
+  /** Tope de busquedas cuando `buscarWeb` esta activo. */
+  maxBusquedas?: number
 }
 
 export type ResultadoClaude =
@@ -96,15 +104,22 @@ export async function llamarClaude(opciones: LlamadaClaude): Promise<ResultadoCl
       ]
 
   try {
+    const body: Record<string, unknown> = {
+      model: opciones.model,
+      max_tokens: opciones.maxTokens,
+      system,
+      messages: [{ role: "user", content: opciones.prompt }],
+    }
+    if (opciones.buscarWeb) {
+      body.tools = [
+        { type: "web_search_20250305", name: "web_search", max_uses: opciones.maxBusquedas ?? 4 },
+      ]
+    }
+
     const response = await fetch(MESSAGES_URL, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        model: opciones.model,
-        max_tokens: opciones.maxTokens,
-        system,
-        messages: [{ role: "user", content: opciones.prompt }],
-      }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
 
@@ -128,6 +143,45 @@ export async function llamarClaude(opciones: LlamadaClaude): Promise<ResultadoCl
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return { ok: false, error: message }
+  }
+}
+
+/**
+ * Extrae el JSON de la respuesta de Claude.
+ *
+ * El modelo suele envolver el JSON en una valla ```json, y con busqueda web
+ * mete etiquetas <cite index="..."> dentro del texto. Se limpian las dos cosas
+ * antes de parsear. Lanza con un recorte del texto crudo si no cuadra, para que
+ * quien llama guarde el motivo y no se pierda lo que dijo el modelo.
+ */
+export function parsearJSONDeClaude(texto: string): unknown {
+  let limpio = texto.trim()
+
+  // Quita las etiquetas de cita de la busqueda web, dejando el contenido.
+  limpio = limpio.replace(/<\/?cite[^>]*>/g, "")
+
+  // Si viene en una valla de codigo, saca lo de dentro.
+  const valla = limpio.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (valla) limpio = valla[1].trim()
+
+  // Ultimo recurso: recorta a las llaves exteriores.
+  if (!limpio.startsWith("{") && !limpio.startsWith("[")) {
+    const desde = limpio.search(/[[{]/)
+    const hasta = Math.max(limpio.lastIndexOf("}"), limpio.lastIndexOf("]"))
+    if (desde >= 0 && hasta > desde) limpio = limpio.slice(desde, hasta + 1)
+  }
+
+  try {
+    return JSON.parse(limpio)
+  } catch {
+    // Red de seguridad: si un salto de linea se colo dentro de una cadena, el
+    // parseo falla. Cambiarlos por espacios rescata la respuesta; entre tokens
+    // el JSON ignora los espacios, asi que no rompe nada.
+    try {
+      return JSON.parse(limpio.replace(/[\n\r\t]+/g, " "))
+    } catch {
+      throw new Error(`La respuesta de Claude no es JSON valido. Empezaba: ${texto.slice(0, 200)}`)
+    }
   }
 }
 
