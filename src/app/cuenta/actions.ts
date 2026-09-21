@@ -78,3 +78,92 @@ export async function guardarCanalBuffer(
   revalidatePath("/", "layout")
   return { ok: true }
 }
+
+/**
+ * El token de Claude que corre todos los pasos de IA.
+ *
+ * Global, no por cuenta: es una unica cuenta de Claude la que mueve el motor.
+ * Vive en `engine_secrets` y solo lo lee la service role. La interfaz nunca
+ * recibe el valor entero de vuelta —solo una vista enmascarada—, porque es un
+ * secreto: mostrarlo seria filtrarlo a cualquiera que abra el panel.
+ */
+export type EstadoTokenClaude = {
+  configurado: boolean
+  /** Algo como `sk-ant-oat01…fQAA`, para reconocerlo sin exponerlo. */
+  vistaPrevia: string | null
+  actualizado: string | null
+}
+
+export async function estadoTokenClaude(): Promise<EstadoTokenClaude> {
+  const { supabaseAdmin } = await import("@/engine/supabase-admin")
+  const { data } = await supabaseAdmin()
+    .from("engine_secrets")
+    .select("claude_oauth_token, claude_token_updated_at")
+    .eq("id", true)
+    .maybeSingle()
+
+  const fila = data as
+    | { claude_oauth_token: string | null; claude_token_updated_at: string | null }
+    | null
+  const valor = fila?.claude_oauth_token
+  if (!valor) return { configurado: false, vistaPrevia: null, actualizado: null }
+
+  const vista = valor.length > 16 ? `${valor.slice(0, 14)}…${valor.slice(-4)}` : "••••"
+  return { configurado: true, vistaPrevia: vista, actualizado: fila?.claude_token_updated_at ?? null }
+}
+
+export async function guardarTokenClaude(
+  token: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const limpio = token.trim()
+  const { supabaseAdmin } = await import("@/engine/supabase-admin")
+
+  // Vacio = desconectar. Util para quitar un token revocado a proposito.
+  if (limpio.length === 0) {
+    const { error } = await supabaseAdmin()
+      .from("engine_secrets")
+      .update({ claude_oauth_token: null, claude_token_updated_at: null, updated_at: new Date().toISOString() })
+      .eq("id", true)
+    if (error) return { ok: false, error: error.message }
+    revalidatePath("/", "layout")
+    return { ok: true }
+  }
+
+  // Se acepta el token de suscripcion (setup-token) y la API key de consola.
+  if (!/^sk-ant-(oat01|api03)/.test(limpio)) {
+    return {
+      ok: false,
+      error:
+        "El token debe empezar por sk-ant-oat01 (el de `claude setup-token`) o sk-ant-api03. " +
+        "El de las rutinas viejas no sirve.",
+    }
+  }
+
+  const { error } = await supabaseAdmin()
+    .from("engine_secrets")
+    .update({
+      claude_oauth_token: limpio,
+      claude_token_updated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", true)
+
+  if (error) return { ok: false, error: error.message }
+  revalidatePath("/", "layout")
+  return { ok: true }
+}
+
+/** Hace una llamada real y minima para ver si el token funciona de verdad. */
+export async function probarConexionClaude(): Promise<
+  { ok: true; modelo: string } | { ok: false; error: string }
+> {
+  const { llamarClaude } = await import("@/engine/claude/messages")
+  const modelo = "claude-haiku-4-5-20251001"
+  const r = await llamarClaude({
+    model: modelo,
+    system: "Responde de la forma mas breve posible.",
+    prompt: "Responde solo con la palabra: ok",
+    maxTokens: 16,
+  })
+  return r.ok ? { ok: true, modelo } : { ok: false, error: r.error }
+}

@@ -718,3 +718,24 @@ alter table public.generation_config drop constraint if exists generation_config
 alter table public.generation_config
   add constraint generation_config_auto_networks_check
   check (auto_networks <@ array['linkedin', 'instagram', 'facebook']::text[]);
+
+-- =========================================================================
+-- Secretos del motor (no cuelgan de una cuenta)
+-- =========================================================================
+--
+-- El token de Claude que corre toda la IA: uno solo para todas las cuentas y
+-- los cuatro pasos, porque es una unica cuenta de Claude la que mueve el motor.
+-- Sustituye a los tokens de las rutinas. Tiene que ser el de `claude
+-- setup-token` (scope de inferencia); el de las rutinas viejas no sirve.
+-- Tabla de una fila; RLS activo y sin politicas: solo la service role la lee.
+create table if not exists public.engine_secrets (
+  id                       boolean primary key default true,
+  claude_oauth_token       text,
+  claude_token_updated_at  timestamptz,
+  updated_at               timestamptz not null default now(),
+  constraint engine_secrets_singleton check (id)
+);
+
+alter table public.engine_secrets enable row level security;
+
+insert into public.engine_secrets (id) values (true) on conflict (id) do nothing;

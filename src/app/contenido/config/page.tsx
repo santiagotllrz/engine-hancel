@@ -1,4 +1,5 @@
 import { CarouselStyleEditor } from "@/components/contenido/carousel-style-editor"
+import { ClaudeConnection } from "@/components/contenido/claude-connection"
 import { GenerationConfigEditor } from "@/components/contenido/generation-config-editor"
 import { BufferChannel } from "@/components/contenido/buffer-channel"
 import { LinkedinConnection } from "@/components/contenido/linkedin-connection"
@@ -10,6 +11,7 @@ import { getLinkedinStatus } from "@/engine/publish/linkedin"
 import { getPublishSchedules, proximasTandas } from "@/engine/publish/schedule"
 import { pendingToPublish } from "@/engine/publish/publish-piece"
 import { getSettings, hourIn } from "@/engine/schedule"
+import { estadoTokenClaude } from "@/app/cuenta/actions"
 import { cuentaActual } from "@/lib/accounts"
 import { configuracionDeGeneracion, getScoreDistribution } from "@/lib/content-data"
 
@@ -31,12 +33,13 @@ export default async function ContenidoConfigPage({
   }
 
   const cuenta = await cuentaActual()
-  const [config, distribution, linkedin, schedules, ajustes] = await Promise.all([
+  const [config, distribution, linkedin, schedules, ajustes, tokenClaude] = await Promise.all([
     configuracionDeGeneracion(),
     getScoreDistribution(),
     getLinkedinStatus(cuenta.id),
     getPublishSchedules(cuenta.id),
     getSettings(cuenta.id),
+    estadoTokenClaude(),
   ])
 
   const ahora = new Date()
@@ -50,6 +53,7 @@ export default async function ContenidoConfigPage({
   return (
     <DashboardShell title="Variables">
       <div className="flex max-w-3xl flex-col gap-4">
+        <ClaudeConnection estado={tokenClaude} />
         <LinkedinConnection
           status={linkedin}
           resultado={first("linkedin")}
