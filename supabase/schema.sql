@@ -746,3 +746,5 @@ alter table public.engine_secrets add column if not exists model_analisis  text 
 alter table public.engine_secrets add column if not exists model_angulo    text not null default 'claude-sonnet-5';
 alter table public.engine_secrets add column if not exists model_linkedin  text not null default 'claude-sonnet-5';
 alter table public.engine_secrets add column if not exists model_instagram text not null default 'claude-sonnet-5';
+alter table public.engine_secrets add column if not exists gemini_api_key  text;
+alter table public.generation_config add column if not exists ai_config jsonb not null default '{}'::jsonb;

@@ -35,11 +35,17 @@ export async function modelosClaude(): Promise<ModelosPorPaso> {
     .maybeSingle()
 
   const fila = (data ?? {}) as Partial<Record<string, string>>
+  
+  const normalize = (val: string | undefined, def: string) => {
+    const v = val || def
+    return v.includes("/") ? v : `claude/${v}`
+  }
+
   return {
-    analisis: fila.model_analisis || DEFAULTS.analisis,
-    angulo: fila.model_angulo || DEFAULTS.angulo,
-    linkedin: fila.model_linkedin || DEFAULTS.linkedin,
-    instagram: fila.model_instagram || DEFAULTS.instagram,
+    analisis: normalize(fila.model_analisis, DEFAULTS.analisis),
+    angulo: normalize(fila.model_angulo, DEFAULTS.angulo),
+    linkedin: normalize(fila.model_linkedin, DEFAULTS.linkedin),
+    instagram: normalize(fila.model_instagram, DEFAULTS.instagram),
   }
 }
 

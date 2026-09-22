@@ -21,7 +21,6 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import {
-  ActivityIcon,
   BookOpenIcon,
   CpuIcon,
   DatabaseIcon,
@@ -58,7 +57,6 @@ export function AppSidebar({
         { title: "En vivo", url: "/engine", isActive: pathname === "/engine" },
         { title: "Taxonomia", url: "/engine/config", isActive: pathname === "/engine/config" },
         { title: "Horario", url: "/engine/schedule", isActive: pathname === "/engine/schedule" },
-        { title: "Rutinas", url: "/engine/routines", isActive: pathname === "/engine/routines" },
         { title: "Grafo", url: "/engine/graph", isActive: pathname === "/engine/graph" },
       ],
     },
@@ -83,12 +81,6 @@ export function AppSidebar({
         { title: "Variables", url: "/contenido/config", isActive: pathname === "/contenido/config" },
         { title: "Cola", url: "/contenido/cola", isActive: pathname === "/contenido/cola" },
       ],
-    },
-    {
-      title: "Pipeline",
-      url: "/pipeline",
-      icon: <ActivityIcon />,
-      isActive: pathname === "/pipeline",
     },
   ]
 

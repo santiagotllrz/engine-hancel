@@ -108,12 +108,12 @@ async function loadNews(id: string): Promise<RawNews> {
 // -------------------------------------------------------------- envio manual
 
 /**
- * Manda una noticia al pipeline.
+ * Manda una noticia a la cola de generación.
  *
  * Disponible siempre, en cualquier modo y sin importar el umbral: es una accion
  * del usuario, no de la seleccion automatica.
  */
-export async function sendToPipeline(rawNewsId: string): Promise<ActionResult> {
+export async function encolarContenido(rawNewsId: string): Promise<ActionResult> {
   if (!rawNewsId) return { ok: false, error: "Falta el id de la noticia." }
 
   try {
@@ -125,12 +125,12 @@ export async function sendToPipeline(rawNewsId: string): Promise<ActionResult> {
     refresh()
     return { ok: true, warning: await avisoSiFaltaToken() }
   } catch (error) {
-    return fail(error, "No se pudo enviar la noticia al pipeline.")
+    return fail(error, "No se pudo encolar la noticia para generación.")
   }
 }
 
 /** Igual, pero con ranuras sobreescritas solo para esta generacion. */
-export async function sendToPipelineWithOverride(form: FormData): Promise<ActionResult> {
+export async function encolarContenidoConOverride(form: FormData): Promise<ActionResult> {
   const rawNewsId = text(form, "raw_news_id")
   if (!rawNewsId) return { ok: false, error: "Falta el id de la noticia." }
 
@@ -145,7 +145,7 @@ export async function sendToPipelineWithOverride(form: FormData): Promise<Action
     refresh()
     return { ok: true, warning: await avisoSiFaltaToken() }
   } catch (error) {
-    return fail(error, "No se pudo enviar la noticia al pipeline.")
+    return fail(error, "No se pudo encolar la noticia para generación.")
   }
 }
 

@@ -1,4 +1,3 @@
-import { modelosClaude } from "../claude/modelos"
 import { supabaseAdmin } from "../supabase-admin"
 import { generarAngulo, generarInstagram, generarLinkedin } from "./agentes"
 import type { AngleJobInput, LinkedinJobInput } from "./types"
@@ -98,17 +97,16 @@ export async function procesarBuzones(): Promise<{
   errores: string[]
 }> {
   await reclamarColgados()
-  const modelos = await modelosClaude()
 
   const resultados = [
     await procesarBuzon("jobs_angle", (input) =>
-      generarAngulo(input as AngleJobInput, modelos.angulo)
+      generarAngulo(input as AngleJobInput)
     ),
     await procesarBuzon("jobs_linkedin", (input) =>
-      generarLinkedin(input as LinkedinJobInput, modelos.linkedin)
+      generarLinkedin(input as LinkedinJobInput)
     ),
     await procesarBuzon("jobs_instagram", (input) =>
-      generarInstagram(input as LinkedinJobInput, modelos.instagram)
+      generarInstagram(input as LinkedinJobInput)
     ),
   ]
 

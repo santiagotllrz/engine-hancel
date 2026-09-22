@@ -2,6 +2,7 @@ import type { RawNews } from "@/lib/types"
 
 import { todasLasCuentas } from "../accounts"
 import { expirarPendientesViejas } from "./expiry"
+import { getSettings } from "../schedule"
 import { publishPiece, pendingToPublish } from "../publish/publish-piece"
 import { decidirTanda, getPublishSchedules, marcarTanda } from "../publish/schedule"
 import { generarCarrusel, nichosConocidos, noticiaDelAngulo, parseInstagramResponse } from "../render/carousel"
@@ -145,6 +146,11 @@ export async function runContentTick(
   if (!esManual) {
     for (const cuenta of cuentas) {
       try {
+        // Una cuenta con la automatizacion apagada no se analiza: no tiene
+        // sentido gastar el plan investigando noticias que no va a generar ni
+        // publicar. Al reactivarla, el analisis se reanuda solo.
+        if (!(await getSettings(cuenta.id)).enabled) continue
+
         await expirarPendientesViejas(cuenta.id)
         const res = await analizarPendientes(cuenta.id)
         noticiasAnalizadas += res.analizadas
@@ -528,7 +534,6 @@ export async function runContentTick(
   // nadie delante: el cron y los triggers pasan por esta misma pasada, y es
   // quien decide si a esta red le toca ahora.
   //
-  const { getSettings } = await import("../schedule")
 
   for (const cuenta of cuentas) {
     try {

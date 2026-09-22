@@ -1,5 +1,5 @@
-import { llamarClaude, parsearJSONDeClaude } from "../claude/messages"
-import { modelosClaude } from "../claude/modelos"
+import { parsearJSONDeClaude } from "../claude/messages"
+import { llamarIA } from "../ai/router"
 import { supabaseAdmin } from "../supabase-admin"
 
 /**
@@ -94,7 +94,6 @@ export async function analizarPendientes(
   const pendientes = (data ?? []) as Pendiente[]
   if (pendientes.length === 0) return { analizadas: 0, fallidas: 0, errores: [] }
 
-  const model = (await modelosClaude()).analisis
   let analizadas = 0
   let fallidas = 0
   const errores: string[] = []
@@ -113,8 +112,8 @@ export async function analizarPendientes(
 - nicho al que pertenece (para el FIT): ${noticia.niche} / ${noticia.tema}
 - snippet: ${noticia.snippet ?? "(sin snippet)"}`
 
-          const r = await llamarClaude({
-            model,
+          const r = await llamarIA({
+            agente: "analisis",
             system: ANALISIS_SYSTEM,
             prompt,
             maxTokens: 4000,

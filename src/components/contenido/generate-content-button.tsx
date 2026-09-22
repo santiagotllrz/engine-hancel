@@ -2,12 +2,12 @@
 
 import * as React from "react"
 
-import { sendToPipeline, type ActionResult } from "@/app/contenido/actions"
+import { encolarContenido, type ActionResult } from "@/app/contenido/actions"
 import { Button } from "@/components/ui/button"
 import { Loader2Icon, PenLineIcon } from "lucide-react"
 
 /**
- * Manda una noticia al pipeline de contenido.
+ * Manda una noticia a la cola de generación de contenido.
  *
  * Disponible en cualquier noticia, en cualquier modo y sin importar el umbral:
  * es una accion del usuario, no de la seleccion automatica. Por eso vive tanto
@@ -16,7 +16,7 @@ import { Loader2Icon, PenLineIcon } from "lucide-react"
  * No espera a que la rutina trabaje, solo a que el trabajo quede encolado: el
  * angulo aparece despues, cuando la rutina responde y el tick lo materializa.
  */
-export function SendToPipelineButton({
+export function GenerateContentButton({
   rawNewsId,
   size = "sm",
   variant = "outline",
@@ -36,7 +36,7 @@ export function SendToPipelineButton({
         disabled={pending || result?.ok === true}
         onClick={() => {
           setResult(null)
-          startTransition(async () => setResult(await sendToPipeline(rawNewsId)))
+          startTransition(async () => setResult(await encolarContenido(rawNewsId)))
         }}
       >
         {pending ? <Loader2Icon className="animate-spin" /> : <PenLineIcon />}

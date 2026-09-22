@@ -1,5 +1,4 @@
 import { ContentStudio } from "@/components/contenido/content-studio"
-import { RoutinesWarning } from "@/components/contenido/routines-warning"
 import { idDeCuentaActual } from "@/lib/accounts"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,7 +8,6 @@ import {
   getContentCounts,
   configuracionDeGeneracion,
   getPieces,
-  getEstadoIA,
 } from "@/lib/content-data"
 import { bufferConfigurado } from "@/engine/publish/buffer"
 import { getLinkedinStatus } from "@/engine/publish/linkedin"
@@ -49,7 +47,6 @@ export default async function ContenidoPage() {
 
   return (
     <DashboardShell title="Contenido">
-      <RoutinesWarning status={await getEstadoIA()} />
 
       <div className="grid auto-rows-min gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Candidatas" value={formatNumber(counts.candidatas)} />

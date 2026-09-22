@@ -13,7 +13,7 @@ import {
   type ActionResult,
   type Network,
 } from "@/app/contenido/actions"
-import { SendToPipelineButton } from "@/components/contenido/send-to-pipeline-button"
+import { GenerateContentButton } from "@/components/contenido/generate-content-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -87,8 +87,8 @@ export function ContentStudio({
         {!hasThreshold ? (
           <Vacio>
             No hay umbral de score definido todavia. Ponlo en Variables para que aparezcan
-            candidatas aqui — o manda cualquier noticia al pipeline desde Noticias, que eso
-            funciona siempre.
+            candidatas aqui — o genera contenido de cualquier noticia desde Noticias, que eso
+            ignora el umbral y siempre funciona.
           </Vacio>
         ) : candidates.length === 0 ? (
           <Vacio>Ninguna noticia analizada supera el umbral y esta sin procesar.</Vacio>
@@ -106,7 +106,7 @@ export function ContentStudio({
                   <Badge variant="secondary" className="font-mono">
                     {news.relevance_score ?? "—"}
                   </Badge>
-                  <SendToPipelineButton rawNewsId={news.id} />
+                  <GenerateContentButton rawNewsId={news.id} />
                 </CardContent>
               </Card>
             ))}
@@ -118,8 +118,8 @@ export function ContentStudio({
         <h2 className="text-base font-semibold">Angulos</h2>
         {angles.length === 0 ? (
           <Vacio>
-            Todavia no hay angulos. Manda una noticia al pipeline y apareceran cuando la rutina
-            responda.
+            Todavia no hay angulos. Genera contenido de una noticia y apareceran cuando la IA
+            responda con los enfoques editoriales.
           </Vacio>
         ) : (
           <div className="flex flex-col gap-2">

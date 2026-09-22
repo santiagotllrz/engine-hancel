@@ -52,11 +52,20 @@ export function ClaudeModels({ modelos }: { modelos: ModelosPorPaso }) {
               disabled={pending}
               onChange={(e) => cambiar(paso, e.target.value)}
             >
-              {MODELOS_DISPONIBLES.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nombre}
-                </option>
-              ))}
+              <optgroup label="Claude (Anthropic)">
+                {MODELOS_DISPONIBLES.filter(m => m.provider === "claude").map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nombre}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Gemini (Google)">
+                {MODELOS_DISPONIBLES.filter(m => m.provider === "gemini").map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nombre}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
         ))}

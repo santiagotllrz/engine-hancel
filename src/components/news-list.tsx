@@ -8,7 +8,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
-import { SendToPipelineButton } from "@/components/contenido/send-to-pipeline-button"
+import { GenerateContentButton } from "@/components/contenido/generate-content-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -222,7 +222,7 @@ export function NewsList({ items }: { items: RawNews[] }) {
                         <ExternalLinkIcon />
                         Abrir original
                       </Button>
-                      <SendToPipelineButton rawNewsId={item.id} />
+                      <GenerateContentButton rawNewsId={item.id} />
                     </div>
                   </div>
                 </AccordionContent>
