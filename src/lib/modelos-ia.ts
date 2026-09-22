@@ -22,8 +22,8 @@ export const MODELOS_DISPONIBLES: { id: string; nombre: string; provider?: "clau
   { id: "claude/claude-opus-5", nombre: "Claude Opus 5", provider: "claude" },
   
   // Gemini models
-  { id: "gemini/gemini-1.5-flash", nombre: "Gemini 1.5 Flash (rápido, gratis)", provider: "gemini" },
-  { id: "gemini/gemini-1.5-pro", nombre: "Gemini 1.5 Pro (alta capacidad)", provider: "gemini" },
+  { id: "gemini/gemini-2.5-flash", nombre: "Gemini 2.5 Flash (rápido, gratis)", provider: "gemini" },
+  { id: "gemini/gemini-2.5-pro", nombre: "Gemini 2.5 Pro (alta capacidad)", provider: "gemini" },
 ]
 
 export type ModelosPorPaso = Record<PasoIA, string>
