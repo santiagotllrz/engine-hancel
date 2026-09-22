@@ -39,7 +39,10 @@ export async function llamarGemini(opciones: LlamadaGemini): Promise<ResultadoGe
   }
 
   try {
-    const url = `${GEMINI_API_URL}${opciones.model}:generateContent?key=${token}`
+    const isOAuth = token.startsWith("ya29.") || token.startsWith("AQ.");
+    const url = isOAuth 
+      ? `${GEMINI_API_URL}${opciones.model}:generateContent`
+      : `${GEMINI_API_URL}${opciones.model}:generateContent?key=${token}`;
     
     // Convertimos el formato de claude al formato de Gemini
     const body: Record<string, unknown> = {
@@ -53,9 +56,14 @@ export async function llamarGemini(opciones: LlamadaGemini): Promise<ResultadoGe
       body.tools = [{ googleSearch: {} }]
     }
 
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (isOAuth) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     })
 
