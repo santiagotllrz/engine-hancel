@@ -114,9 +114,35 @@ export async function analizarPendientes(
               if (jina.ok) {
                 fullText = await jina.text()
               }
+              
+              // FALLBACK A COMPOSIO SI JINA FALLA (paywalls, cloudflare bloqueos, o muy corto)
+              if (fullText.length < 500) {
+                console.log(`Jina extrajo muy poco (${fullText.length} chars). Intentando Composio Fallback...`);
+                const composioKey = process.env.COMPOSIO_API_KEY || "ak_Pp11FQ1q9ZDrcaa1EB4G";
+                const res = await fetch("https://backend.composio.dev/api/v3.1/tools/execute/COMPOSIO_SEARCH_FETCH_URL_CONTENT", {
+                  method: "POST",
+                  headers: {
+                    "x-api-key": composioKey,
+                    "Content-Type": "application/json"
+                  },
+                  body: JSON.stringify({
+                    connected_account_id: "default", 
+                    arguments: { url: noticia.link }
+                  })
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.successful && data.data && data.data.results && data.data.results.length > 0) {
+                    const extracted = data.data.results[0].text || data.data.results[0].markdown || "";
+                    if (extracted.length > fullText.length) {
+                       fullText = extracted;
+                    }
+                  }
+                }
+              }
             }
           } catch (e) {
-            console.error("Error al extraer con Jina Reader:", e)
+            console.error("Error al extraer contenido web:", e)
           }
 
           const prompt = `NOTICIA A CALIFICAR Y CONSOLIDAR
