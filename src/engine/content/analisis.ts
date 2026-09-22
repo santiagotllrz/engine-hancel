@@ -17,8 +17,8 @@ import { supabaseAdmin } from "../supabase-admin"
 
 const ANALISIS_SYSTEM = `Eres un analista editorial de un motor de investigacion de contenido. Enriqueces y calificas una noticia.
 
-PASO 1: INVESTIGAR
-Usa la busqueda web para investigar el hecho que describe el titulo y el snippet. Prioriza fuentes primarias (la empresa, el paper, el comunicado oficial) sobre medios que reportan sobre otros. Contrasta al menos 2 fuentes cuando sea posible. No inventes datos. Maximo 3-4 busquedas.
+PASO 1: COMPRENDER EL HECHO
+Lee el titulo, el snippet y el contenido extraido que se te proporciona. Si el contenido extraido es extenso, extrae los hechos clave. No inventes datos que no esten presentes en el texto.
 
 PASO 2: CONSOLIDAR
 Escribe un texto limpio y estructurado con toda la informacion factual recolectada. Solo hechos con su contexto, sin opiniones ni relleno, sin etiquetas de cita. Maximo 8000 caracteres.
@@ -106,19 +106,33 @@ export async function analizarPendientes(
     await Promise.all(
       grupo.map(async (noticia) => {
         try {
-          const prompt = `NOTICIA A INVESTIGAR Y CALIFICAR
+          // Extraemos el contenido de la URL usando Jina Reader (convierte HTML a Markdown)
+          let fullText = ""
+          try {
+            if (noticia.link) {
+              const jina = await fetch(`https://r.jina.ai/${noticia.link}`)
+              if (jina.ok) {
+                fullText = await jina.text()
+              }
+            }
+          } catch (e) {
+            console.error("Error al extraer con Jina Reader:", e)
+          }
+
+          const prompt = `NOTICIA A CALIFICAR Y CONSOLIDAR
 - titulo: ${noticia.title}
 - fuente: ${noticia.source ?? "desconocida"}
 - nicho al que pertenece (para el FIT): ${noticia.niche} / ${noticia.tema}
-- snippet: ${noticia.snippet ?? "(sin snippet)"}`
+- snippet original: ${noticia.snippet ?? "(sin snippet)"}
+- contenido extraido de la fuente original:
+${fullText ? fullText.slice(0, 15000) : "(no se pudo extraer el contenido, usa el snippet)"}`
 
           const r = await llamarIA({
             agente: "analisis",
             system: ANALISIS_SYSTEM,
             prompt,
             maxTokens: 4000,
-            buscarWeb: true,
-            maxBusquedas: 4,
+            buscarWeb: false, // Apagamos el Search Grounding de Google
           })
           if (!r.ok) throw new Error(r.error)
 
