@@ -1,12 +1,11 @@
-import { parsearJSONDeClaude } from "../claude/messages"
-import { llamarIA } from "../ai/router"
+import { llamarClaude, parsearJSONDeClaude } from "../claude/messages"
 import type { AngleJobInput, LinkedinJobInput, Variables } from "./types"
 
 /**
  * Los agentes de contenido: angulo, LinkedIn e Instagram.
  *
  * Son lo que antes eran rutinas de Claude Code. Ahora es una llamada directa:
- * el motor arma el prompt con los datos del buzon, Claude o Gemini devuelve el JSON, y el
+ * el motor arma el prompt con los datos del buzon, Claude devuelve el JSON, y el
  * motor lo escribe.
  *
  * Cada agente devuelve el objeto tal cual lo esperan los parsers existentes
@@ -45,7 +44,7 @@ REGLAS
 RESPONDE SOLO con este JSON, sin texto alrededor:
 {"angle":"<2-3 frases>","thesis":"<1 frase refutable>","playbook_format":"<uno de los formatos>"}`
 
-export async function generarAngulo(input: AngleJobInput): Promise<unknown> {
+export async function generarAngulo(input: AngleJobInput, model: string): Promise<unknown> {
   const n = input.raw_news
   const prompt = `NOTICIA
 - titulo: ${n.title}
@@ -58,7 +57,7 @@ export async function generarAngulo(input: AngleJobInput): Promise<unknown> {
 VARIABLES
 ${bloqueVariables(input.variables)}`
 
-  const r = await llamarIA({ agente: "angulo", system: ANGULO_SYSTEM, prompt, maxTokens: 800 })
+  const r = await llamarClaude({ model, system: ANGULO_SYSTEM, prompt, maxTokens: 800 })
   if (!r.ok) throw new Error(r.error)
   return parsearJSONDeClaude(r.texto)
 }
@@ -101,7 +100,7 @@ Antes de escribir el JSON confirma que ningun parrafo tiene un guion largo ni me
 
 type LinkedinBruto = { parrafos?: unknown; link_fuente?: unknown; notas?: unknown }
 
-export async function generarLinkedin(input: LinkedinJobInput): Promise<unknown> {
+export async function generarLinkedin(input: LinkedinJobInput, model: string): Promise<unknown> {
   const n = input.raw_news
   const prompt = `ANGULO
 - angulo: ${input.angle.angle}
@@ -117,10 +116,10 @@ NOTICIA
 VARIABLES
 ${bloqueVariables(input.variables)}`
 
-  const r = await llamarIA({ agente: "linkedin", system: LINKEDIN_SYSTEM, prompt, maxTokens: 1800 })
+  const r = await llamarClaude({ model, system: LINKEDIN_SYSTEM, prompt, maxTokens: 1800 })
   if (!r.ok) throw new Error(r.error)
 
-  // El post llega como parrafos y se arma aqui: asi la IA nunca mete saltos de
+  // El post llega como parrafos y se arma aqui: asi Claude nunca mete saltos de
   // linea dentro de una cadena JSON, que es lo que rompia el parseo.
   const bruto = parsearJSONDeClaude(r.texto) as LinkedinBruto
   const parrafos = Array.isArray(bruto.parrafos)
@@ -167,7 +166,7 @@ RESPONDE SOLO con este JSON, sin texto alrededor:
 
 El array slides va en orden: el primero siempre photo_hook, el resto text. Antes de escribir relee y confirma que no hay guiones largos y que ningun hook o titulo es un fragmento con coma. Escribe en el idioma indicado.`
 
-export async function generarInstagram(input: LinkedinJobInput): Promise<unknown> {
+export async function generarInstagram(input: LinkedinJobInput, model: string): Promise<unknown> {
   const n = input.raw_news
   const prompt = `ANGULO
 - angulo: ${input.angle.angle}
@@ -182,7 +181,7 @@ NOTICIA
 VARIABLES
 ${bloqueVariables(input.variables)}`
 
-  const r = await llamarIA({ agente: "instagram", system: INSTAGRAM_SYSTEM, prompt, maxTokens: 3600 })
+  const r = await llamarClaude({ model, system: INSTAGRAM_SYSTEM, prompt, maxTokens: 3600 })
   if (!r.ok) throw new Error(r.error)
   return parsearJSONDeClaude(r.texto)
 }

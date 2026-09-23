@@ -12,11 +12,10 @@ import { getLinkedinStatus } from "@/engine/publish/linkedin"
 import { getPublishSchedules, proximasTandas } from "@/engine/publish/schedule"
 import { pendingToPublish } from "@/engine/publish/publish-piece"
 import { getSettings, hourIn } from "@/engine/schedule"
-import { estadoTokenClaude, estadoTokenGemini } from "@/app/cuenta/actions"
+import { estadoTokenClaude } from "@/app/cuenta/actions"
 import { modelosClaude } from "@/engine/claude/modelos"
 import { cuentaActual } from "@/lib/accounts"
 import { configuracionDeGeneracion, getScoreDistribution } from "@/lib/content-data"
-import { GeminiConnection } from "@/components/contenido/gemini-connection"
 
 export const dynamic = "force-dynamic"
 
@@ -36,7 +35,7 @@ export default async function ContenidoConfigPage({
   }
 
   const cuenta = await cuentaActual()
-  const [config, distribution, linkedin, schedules, ajustes, tokenClaude, tokenGemini, modelos] =
+  const [config, distribution, linkedin, schedules, ajustes, tokenClaude, modelos] =
     await Promise.all([
       configuracionDeGeneracion(),
       getScoreDistribution(),
@@ -44,7 +43,6 @@ export default async function ContenidoConfigPage({
       getPublishSchedules(cuenta.id),
       getSettings(cuenta.id),
       estadoTokenClaude(),
-      estadoTokenGemini(),
       modelosClaude(),
     ])
 
@@ -60,7 +58,6 @@ export default async function ContenidoConfigPage({
     <DashboardShell title="Variables">
       <div className="flex max-w-3xl flex-col gap-4">
         <ClaudeConnection estado={tokenClaude} />
-        <GeminiConnection estado={tokenGemini} />
         <ClaudeModels modelos={modelos} />
         <LinkedinConnection
           status={linkedin}

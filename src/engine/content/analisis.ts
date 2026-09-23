@@ -1,39 +1,42 @@
-import { parsearJSONDeClaude } from "../claude/messages"
-import { llamarIA } from "../ai/router"
+import { llamarClaude, parsearJSONDeClaude } from "../claude/messages"
+import { modelosClaude } from "../claude/modelos"
 import { supabaseAdmin } from "../supabase-admin"
+import { buscarEnLaWeb } from "./composio"
 
 /**
- * El analisis: investiga la noticia con busqueda web y la puntua.
+ * El analisis: puntua la noticia con el material que le traen.
  *
- * Era la rutina mas pesada. Ahora es una llamada directa con la busqueda web del
- * lado servidor: Claude investiga el hecho en varias fuentes, consolida el
- * contenido y lo puntua, todo en una sola llamada. El motor lee las pendientes y
- * escribe el resultado en `raw_news`; Claude no toca Supabase.
+ * El research ya NO lo hace el modelo. Antes se le daba la herramienta de
+ * busqueda web y cada noticia arrastraba decenas de miles de tokens de
+ * resultados al contexto; ahora es Composio quien sale a la web, y el agente
+ * solo recibe ese texto ya masticado, lo consolida y lo califica. Mismo
+ * criterio, una fraccion del gasto.
+ *
+ * El modelo no toca Supabase ni internet: solo transforma el texto que se le da.
  *
  * El fit de nicho se juzga contra el nicho propio de cada noticia —que viaja en
  * el prompt—, no contra un dominio fijo: asi Agro se puntua como Agro y Hancel
  * como Hancel, con la misma vara.
  */
 
-const ANALISIS_SYSTEM = `Eres un analista editorial de un motor de investigacion de contenido. Enriqueces y calificas una noticia.
+const ANALISIS_SYSTEM = `Eres un analista editorial. Te dan una noticia y el material que otro sistema ya recolecto de la web sobre ese hecho. Tu trabajo es consolidar y calificar. NO investigas ni buscas: trabajas solo con lo que se te entrega.
 
-PASO 1: COMPRENDER EL HECHO
-Lee el titulo, el snippet y el contenido extraido que se te proporciona. Si el contenido extraido es extenso, extrae los hechos clave. No inventes datos que no esten presentes en el texto.
+PASO 1: CONSOLIDAR
+Con el titular, el snippet y el material recolectado, escribe un texto limpio y estructurado con la informacion factual del hecho: solo hechos con su contexto, sin opiniones ni relleno, sin referencias tipo [1]. Maximo 8000 caracteres. Si el material es pobre, consolida lo que haya y no inventes nada.
 
-PASO 2: CONSOLIDAR
-Escribe un texto limpio y estructurado con toda la informacion factual recolectada. Solo hechos con su contexto, sin opiniones ni relleno, sin etiquetas de cita. Maximo 8000 caracteres.
-
-PASO 3: CALIFICAR (1-10, promedio ponderado)
+PASO 2: CALIFICAR (1-10, promedio ponderado)
 1. MATERIALIDAD (30%): el hecho cambia algo concreto (capacidad, posicion competitiva, regulacion, capital, personas). Alto si altera a 2+ actores.
-2. NOVEDAD/TIMING (20%): ocurrio en las ultimas 72h o es la primera vez que se hace publico. Tema saturado puntua bajo.
+2. NOVEDAD/TIMING (20%): es reciente o es la primera vez que se hace publico. Tema saturado puntua bajo.
 3. POTENCIAL DE ANGULO (20%): hay un angulo que los medios generalistas ignoran, una tesis no obvia.
-4. CONECTIVIDAD (15%): se conecta con otros hechos recientes formando patron, convergencia o contradiccion.
-5. FIT DE NICHO (15%): es genuinamente sobre el nicho que se indica abajo. Fuera de nicho puntua 1-2.
+4. CONECTIVIDAD (15%): se conecta con otros hechos formando patron, convergencia o contradiccion.
+5. FIT DE NICHO (15%): es genuinamente sobre el nicho que se indica. Fuera de nicho puntua 1-2.
 
 FILTRO DURO: si NO es un hecho verificable (opinion, prediccion sin gatillo, listicle generico), relevance_score = 1-2 sin importar lo demas.
 
+content_fetch_status: "success" si el material recolectado era sustancioso, "partial" si apenas habia mas que el snippet, "failed" si no llego nada.
+
 RESPONDE SOLO con este JSON, sin texto alrededor, sin saltos de linea y sin comillas dobles dentro de ninguna cadena (usa comillas simples y separa ideas con espacios dentro de full_content):
-{"full_content":"<el texto consolidado del paso 2, sin etiquetas de cita, en un solo bloque sin saltos de linea>","content_fetch_status":"success|partial|failed","relevance_score":<entero 1-10>,"keywords_matched":["<4 a 6 keywords en minuscula>"],"analysis_notes":"<2-3 frases: primero el score global y por que; luego el angulo editorial mas prometedor si lo hay>"}`
+{"full_content":"<el texto consolidado, en un solo bloque sin saltos de linea>","content_fetch_status":"success|partial|failed","relevance_score":<entero 1-10>,"keywords_matched":["<4 a 6 keywords en minuscula>"],"analysis_notes":"<2-3 frases: primero el score global y por que; luego el angulo editorial mas prometedor si lo hay>"}`
 
 type ResultadoAnalisis = {
   full_content: string | null
@@ -47,7 +50,10 @@ function normaliza(bruto: unknown): ResultadoAnalisis {
   const o = (bruto ?? {}) as Record<string, unknown>
   const score = Number(o.relevance_score)
   return {
-    full_content: typeof o.full_content === "string" && o.full_content.trim() ? o.full_content.trim().slice(0, 8000) : null,
+    full_content:
+      typeof o.full_content === "string" && o.full_content.trim()
+        ? o.full_content.trim().slice(0, 8000)
+        : null,
     content_fetch_status: ["success", "partial", "failed"].includes(String(o.content_fetch_status))
       ? String(o.content_fetch_status)
       : "partial",
@@ -62,19 +68,22 @@ function normaliza(bruto: unknown): ResultadoAnalisis {
 type Pendiente = {
   id: string
   title: string
+  link: string
   snippet: string | null
   source: string | null
   niche: string
   tema: string
 }
 
+/** Tope de material web por noticia: mas que esto es pagar contexto de mas. */
+const MAX_MATERIAL = 12_000
+
 /**
  * Analiza hasta `limite` noticias pendientes de una cuenta.
  *
- * En tandas pequenas y en paralelo moderado: cada llamada trae busquedas web
- * (mas lenta), y el tick pasa cada cinco minutos, asi que no hace falta vaciar
- * todo de una. Una noticia que falla se queda pendiente y se reintenta; la
- * caducidad de 36h saca las que se atasquen de verdad.
+ * En tandas pequenas y con concurrencia moderada: el tick pasa cada cinco
+ * minutos, asi que no hace falta vaciar la cola de una. Una noticia que falla se
+ * queda pendiente y se reintenta; la caducidad de 36h saca las que se atasquen.
  */
 export async function analizarPendientes(
   accountId: string,
@@ -84,7 +93,7 @@ export async function analizarPendientes(
 
   const { data, error } = await supabase
     .from("raw_news")
-    .select("id, title, snippet, source, niche, tema")
+    .select("id, title, link, snippet, source, niche, tema")
     .eq("account_id", accountId)
     .eq("status", "pending_analysis")
     .order("created_at", { ascending: true })
@@ -94,145 +103,65 @@ export async function analizarPendientes(
   const pendientes = (data ?? []) as Pendiente[]
   if (pendientes.length === 0) return { analizadas: 0, fallidas: 0, errores: [] }
 
+  const model = (await modelosClaude()).analisis
   let analizadas = 0
   let fallidas = 0
   const errores: string[] = []
 
-  // Límite de la capa gratuita de Gemini: 15 peticiones por minuto.
-  // Usamos 11 por ventana de 62 segundos para evitar chocar con la ventana deslizante de Google.
-  const RATE_LIMIT_MAX = 11;
-  const RATE_LIMIT_WINDOW_MS = 62 * 1000; // 62 segundos
-  const TANDA = 3; // Concurrencia interna para no saturar la red local
+  // Tres a la vez: recorta el tiempo de pared sin amontonar peticiones.
+  const TANDA = 3
+  for (let i = 0; i < pendientes.length; i += TANDA) {
+    const grupo = pendientes.slice(i, i + TANDA)
+    await Promise.all(
+      grupo.map(async (noticia) => {
+        try {
+          // Composio sale a la web; el modelo no. Si no trae nada se analiza con
+          // el snippet: una noticia sin material no es un fallo, es una noticia
+          // con menos contexto, y el propio agente la marca 'failed'.
+          const material = await buscarEnLaWeb(`${noticia.title} ${noticia.tema}`.trim())
 
-  for (let i = 0; i < pendientes.length; i += RATE_LIMIT_MAX) {
-    const inicioMinuto = Date.now();
-    const chunkMinuto = pendientes.slice(i, i + RATE_LIMIT_MAX);
-    
-    console.log(`Procesando lote del minuto: noticias ${i + 1} a ${Math.min(i + RATE_LIMIT_MAX, pendientes.length)} de ${pendientes.length}`);
-
-    // Procesamos el chunk de 15 en pequeñas tandas de 3
-    for (let j = 0; j < chunkMinuto.length; j += TANDA) {
-      const grupo = chunkMinuto.slice(j, j + TANDA);
-      await Promise.all(
-        grupo.map(async (noticia) => {
-          try {
-            // Extraemos el contenido de la URL usando Jina Reader
-            let fullText = ""
-            try {
-              if (noticia.link) {
-                const jina = await fetch(`https://r.jina.ai/${noticia.link}`)
-                if (jina.ok) {
-                  fullText = await jina.text()
-                }
-                
-                // FALLBACK A COMPOSIO SI JINA FALLA
-                if (fullText.length < 500) {
-                  console.log(`Jina extrajo muy poco (${fullText.length} chars). Intentando Búsqueda General con Composio...`);
-                  const composioKey = process.env.COMPOSIO_API_KEY || "ak_Pp11FQ1q9ZDrcaa1EB4G";
-                  const res = await fetch("https://backend.composio.dev/api/v3.1/tools/execute/COMPOSIO_SEARCH_WEB", {
-                    method: "POST",
-                    headers: {
-                      "x-api-key": composioKey,
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                      entity_id: "default", 
-                      arguments: { query: noticia.title }
-                    })
-                  });
-                  if (res.ok) {
-                    const data = await res.json();
-                    if (data.successful && data.data && data.data.answer) {
-                      const extracted = "Resumen de investigación web sobre la noticia:\n" + data.data.answer;
-                      if (extracted.length > fullText.length) {
-                         fullText = extracted;
-                      }
-                    }
-                  }
-                }
-              }
-            } catch (e) {
-              console.error("Error al extraer contenido web:", e)
-            }
-
-            const prompt = `NOTICIA A CALIFICAR Y CONSOLIDAR
+          const prompt = `NOTICIA A CONSOLIDAR Y CALIFICAR
 - titulo: ${noticia.title}
 - fuente: ${noticia.source ?? "desconocida"}
+- enlace: ${noticia.link}
 - nicho al que pertenece (para el FIT): ${noticia.niche} / ${noticia.tema}
 - snippet original: ${noticia.snippet ?? "(sin snippet)"}
-- contenido extraido de la fuente original:
-${fullText ? fullText.slice(0, 15000) : "(no se pudo extraer el contenido, usa el snippet)"}`
 
-            let retryCount = 0;
-            let success = false;
-            
-            while (!success && retryCount < 60) {
-              try {
-                const r = await llamarIA({
-                  agente: "analisis",
-                  system: ANALISIS_SYSTEM,
-                  prompt,
-                  maxTokens: 4000,
-                  buscarWeb: false, // Apagamos el Search Grounding de Google
-                })
-                
-                if (!r.ok) {
-                  throw new Error(r.error);
-                }
+MATERIAL RECOLECTADO DE LA WEB
+${material ? material.slice(0, MAX_MATERIAL) : "(no se pudo recolectar material; trabaja con el titular y el snippet)"}`
 
-                const res = normaliza(parsearJSONDeClaude(r.texto))
-                const { error: errUpdate } = await supabase
-                  .from("raw_news")
-                  .update({
-                    full_content: res.full_content,
-                    content_fetched_at: new Date().toISOString(),
-                    content_fetch_status: res.content_fetch_status,
-                    relevance_score: res.relevance_score,
-                    keywords_matched: res.keywords_matched,
-                    analysis_notes: res.analysis_notes,
-                    status: "analyzed",
-                    analyzed_at: new Date().toISOString(),
-                  })
-                  .eq("id", noticia.id)
-                  .eq("status", "pending_analysis")
+          const r = await llamarClaude({
+            model,
+            system: ANALISIS_SYSTEM,
+            prompt,
+            maxTokens: 4000,
+          })
+          if (!r.ok) throw new Error(r.error)
 
-                if (errUpdate) throw new Error(errUpdate.message)
-                
-                analizadas++
-                success = true;
-              } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e);
-                if (msg.includes("429") || msg.includes("Quota") || msg.includes("exceeded")) {
-                  console.log(`[${noticia.id.slice(0, 8)}] Límite de Google alcanzado (429). Durmiendo 60s antes de reintentar... (intento ${retryCount + 1})`);
-                  await new Promise(res => setTimeout(res, 60000));
-                  retryCount++;
-                } else {
-                  // No es error de cuota, lanzarlo al catch externo para marcarlo como fallido
-                  throw e;
-                }
-              }
-            }
-            
-            if (!success) {
-              throw new Error("Se agotaron los reintentos (60 minutos) esperando a que Google libere cuota.");
-            }
-          } catch (e) {
-            fallidas++
-            errores.push(`[${noticia.id.slice(0, 8)}] ${e instanceof Error ? e.message : String(e)}`)
-          }
-        })
-      )
-    }
+          const res = normaliza(parsearJSONDeClaude(r.texto))
+          const { error: errUpdate } = await supabase
+            .from("raw_news")
+            .update({
+              full_content: res.full_content,
+              content_fetched_at: new Date().toISOString(),
+              content_fetch_status: res.content_fetch_status,
+              relevance_score: res.relevance_score,
+              keywords_matched: res.keywords_matched,
+              analysis_notes: res.analysis_notes,
+              status: "analyzed",
+              analyzed_at: new Date().toISOString(),
+            })
+            .eq("id", noticia.id)
+            .eq("status", "pending_analysis")
 
-    // Si aún quedan más noticias en la cola global, esperamos que se complete el minuto
-    if (i + RATE_LIMIT_MAX < pendientes.length) {
-      const tiempoTranscurrido = Date.now() - inicioMinuto;
-      const tiempoRestante = RATE_LIMIT_WINDOW_MS - tiempoTranscurrido;
-      if (tiempoRestante > 0) {
-        console.log(`\n⏳ Límite de 15 peticiones/minuto alcanzado. Esperando ${Math.ceil(tiempoRestante / 1000)}s antes de procesar el siguiente lote de 15...\n`);
-        await new Promise(r => setTimeout(r, tiempoRestante));
-      }
-    }
+          if (errUpdate) throw new Error(errUpdate.message)
+          analizadas++
+        } catch (e) {
+          fallidas++
+          errores.push(`[${noticia.id.slice(0, 8)}] ${e instanceof Error ? e.message : String(e)}`)
+        }
+      })
+    )
   }
 
   return { analizadas, fallidas, errores }

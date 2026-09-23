@@ -15,15 +15,10 @@ export const PASOS_IA: { paso: PasoIA; nombre: string }[] = [
   { paso: "instagram", nombre: "Instagram" },
 ]
 
-export const MODELOS_DISPONIBLES: { id: string; nombre: string; provider?: "claude" | "gemini" }[] = [
-  // Claude models
-  { id: "claude/claude-haiku-4-5-20251001", nombre: "Claude Haiku 4.5", provider: "claude" },
-  { id: "claude/claude-sonnet-5", nombre: "Claude Sonnet 5", provider: "claude" },
-  { id: "claude/claude-opus-5", nombre: "Claude Opus 5", provider: "claude" },
-  
-  // Gemini models
-  { id: "gemini/gemini-2.5-flash", nombre: "Gemini 2.5 Flash (rápido, gratis)", provider: "gemini" },
-  { id: "gemini/gemini-2.5-pro", nombre: "Gemini 2.5 Pro (alta capacidad)", provider: "gemini" },
+export const MODELOS_DISPONIBLES: { id: string; nombre: string }[] = [
+  { id: "claude-haiku-4-5-20251001", nombre: "Haiku 4.5 (rapido, barato)" },
+  { id: "claude-sonnet-5", nombre: "Sonnet 5 (equilibrado)" },
+  { id: "claude-opus-5", nombre: "Opus 5 (maxima calidad)" },
 ]
 
 export type ModelosPorPaso = Record<PasoIA, string>
