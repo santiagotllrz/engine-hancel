@@ -163,33 +163,59 @@ export async function analizarPendientes(
 - contenido extraido de la fuente original:
 ${fullText ? fullText.slice(0, 15000) : "(no se pudo extraer el contenido, usa el snippet)"}`
 
-            const r = await llamarIA({
-              agente: "analisis",
-              system: ANALISIS_SYSTEM,
-              prompt,
-              maxTokens: 4000,
-              buscarWeb: false, // Apagamos el Search Grounding de Google
-            })
-            if (!r.ok) throw new Error(r.error)
+            let retryCount = 0;
+            let success = false;
+            
+            while (!success && retryCount < 60) {
+              try {
+                const r = await llamarIA({
+                  agente: "analisis",
+                  system: ANALISIS_SYSTEM,
+                  prompt,
+                  maxTokens: 4000,
+                  buscarWeb: false, // Apagamos el Search Grounding de Google
+                })
+                
+                if (!r.ok) {
+                  throw new Error(r.error);
+                }
 
-            const res = normaliza(parsearJSONDeClaude(r.texto))
-            const { error: errUpdate } = await supabase
-              .from("raw_news")
-              .update({
-                full_content: res.full_content,
-                content_fetched_at: new Date().toISOString(),
-                content_fetch_status: res.content_fetch_status,
-                relevance_score: res.relevance_score,
-                keywords_matched: res.keywords_matched,
-                analysis_notes: res.analysis_notes,
-                status: "analyzed",
-                analyzed_at: new Date().toISOString(),
-              })
-              .eq("id", noticia.id)
-              .eq("status", "pending_analysis")
+                const res = normaliza(parsearJSONDeClaude(r.texto))
+                const { error: errUpdate } = await supabase
+                  .from("raw_news")
+                  .update({
+                    full_content: res.full_content,
+                    content_fetched_at: new Date().toISOString(),
+                    content_fetch_status: res.content_fetch_status,
+                    relevance_score: res.relevance_score,
+                    keywords_matched: res.keywords_matched,
+                    analysis_notes: res.analysis_notes,
+                    status: "analyzed",
+                    analyzed_at: new Date().toISOString(),
+                  })
+                  .eq("id", noticia.id)
+                  .eq("status", "pending_analysis")
 
-            if (errUpdate) throw new Error(errUpdate.message)
-            analizadas++
+                if (errUpdate) throw new Error(errUpdate.message)
+                
+                analizadas++
+                success = true;
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                if (msg.includes("429") || msg.includes("Quota") || msg.includes("exceeded")) {
+                  console.log(`[${noticia.id.slice(0, 8)}] Límite de Google alcanzado (429). Durmiendo 60s antes de reintentar... (intento ${retryCount + 1})`);
+                  await new Promise(res => setTimeout(res, 60000));
+                  retryCount++;
+                } else {
+                  // No es error de cuota, lanzarlo al catch externo para marcarlo como fallido
+                  throw e;
+                }
+              }
+            }
+            
+            if (!success) {
+              throw new Error("Se agotaron los reintentos (60 minutos) esperando a que Google libere cuota.");
+            }
           } catch (e) {
             fallidas++
             errores.push(`[${noticia.id.slice(0, 8)}] ${e instanceof Error ? e.message : String(e)}`)
