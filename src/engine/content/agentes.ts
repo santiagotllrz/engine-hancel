@@ -1,4 +1,4 @@
-import { llamarClaude, parsearJSONDeClaude } from "../claude/messages"
+import { llamarClaude, parsearJSONDeClaude, type UsoClaude } from "../claude/messages"
 import type { AngleJobInput, LinkedinJobInput, Variables } from "./types"
 
 /**
@@ -7,6 +7,9 @@ import type { AngleJobInput, LinkedinJobInput, Variables } from "./types"
  * Son lo que antes eran rutinas de Claude Code. Ahora es una llamada directa:
  * el motor arma el prompt con los datos del buzon, Claude devuelve el JSON, y el
  * motor lo escribe.
+ *
+ * Cada agente devuelve, junto al objeto, lo que costo la llamada: asi se puede
+ * ver el gasto real por paso sin instrumentar nada desde fuera.
  *
  * Cada agente devuelve el objeto tal cual lo esperan los parsers existentes
  * (`parseAngleResponse`, `parseLinkedinResponse`, `parseInstagramResponse`), asi
@@ -44,7 +47,10 @@ REGLAS
 RESPONDE SOLO con este JSON, sin texto alrededor:
 {"angle":"<2-3 frases>","thesis":"<1 frase refutable>","playbook_format":"<uno de los formatos>"}`
 
-export async function generarAngulo(input: AngleJobInput, model: string): Promise<unknown> {
+export async function generarAngulo(
+  input: AngleJobInput,
+  model: string
+): Promise<{ respuesta: unknown; uso: UsoClaude }> {
   const n = input.raw_news
   const prompt = `NOTICIA
 - titulo: ${n.title}
@@ -59,7 +65,7 @@ ${bloqueVariables(input.variables)}`
 
   const r = await llamarClaude({ model, system: ANGULO_SYSTEM, prompt, maxTokens: 800 })
   if (!r.ok) throw new Error(r.error)
-  return parsearJSONDeClaude(r.texto)
+  return { respuesta: parsearJSONDeClaude(r.texto), uso: r.uso }
 }
 
 // ------------------------------------------------------------------ linkedin
@@ -100,7 +106,10 @@ Antes de escribir el JSON confirma que ningun parrafo tiene un guion largo ni me
 
 type LinkedinBruto = { parrafos?: unknown; link_fuente?: unknown; notas?: unknown }
 
-export async function generarLinkedin(input: LinkedinJobInput, model: string): Promise<unknown> {
+export async function generarLinkedin(
+  input: LinkedinJobInput,
+  model: string
+): Promise<{ respuesta: unknown; uso: UsoClaude }> {
   const n = input.raw_news
   const prompt = `ANGULO
 - angulo: ${input.angle.angle}
@@ -128,10 +137,13 @@ ${bloqueVariables(input.variables)}`
   if (parrafos.length === 0) throw new Error("El post no trajo parrafos.")
 
   return {
-    post: parrafos.join("\n\n"),
-    hook: parrafos[0],
-    link_fuente: typeof bruto.link_fuente === "string" ? bruto.link_fuente : "",
-    notas: typeof bruto.notas === "string" ? bruto.notas : null,
+    respuesta: {
+      post: parrafos.join("\n\n"),
+      hook: parrafos[0],
+      link_fuente: typeof bruto.link_fuente === "string" ? bruto.link_fuente : "",
+      notas: typeof bruto.notas === "string" ? bruto.notas : null,
+    },
+    uso: r.uso,
   }
 }
 
@@ -166,7 +178,10 @@ RESPONDE SOLO con este JSON, sin texto alrededor:
 
 El array slides va en orden: el primero siempre photo_hook, el resto text. Antes de escribir relee y confirma que no hay guiones largos y que ningun hook o titulo es un fragmento con coma. Escribe en el idioma indicado.`
 
-export async function generarInstagram(input: LinkedinJobInput, model: string): Promise<unknown> {
+export async function generarInstagram(
+  input: LinkedinJobInput,
+  model: string
+): Promise<{ respuesta: unknown; uso: UsoClaude }> {
   const n = input.raw_news
   const prompt = `ANGULO
 - angulo: ${input.angle.angle}
@@ -183,5 +198,5 @@ ${bloqueVariables(input.variables)}`
 
   const r = await llamarClaude({ model, system: INSTAGRAM_SYSTEM, prompt, maxTokens: 3600 })
   if (!r.ok) throw new Error(r.error)
-  return parsearJSONDeClaude(r.texto)
+  return { respuesta: parsearJSONDeClaude(r.texto), uso: r.uso }
 }

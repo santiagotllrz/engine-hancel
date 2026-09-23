@@ -19,10 +19,11 @@ flowchart TD
         b_rep -->|No| b_ok["✅ Lista para analizar"]
     end
 
-    b_ok --> an_lee
+    b_ok --> an_web
 
     subgraph SG2["2 · Analizar y puntuar"]
-        an_lee["Lee el articulo completo,<br/>no solo el titular"] --> an_nota["Nota 1–10 + de que va<br/>y por donde enfocarla"]
+        an_web["🌐 Un buscador sale a la web<br/>y trae el hecho contrastado"] --> an_ia["La IA solo lee ese material:<br/>no navega, analiza"]
+        an_ia --> an_nota["Nota 1–10 + de que va<br/>y por donde enfocarla"]
         an_nota --> an_umbral{"¿Supera tu<br/>nota minima?"}
         an_umbral -->|No| an_arch["😴 Archivada, nunca se borra"]
         an_umbral -->|Si| an_ok["✅ Pasa a contenido"]
@@ -73,7 +74,7 @@ flowchart TD
 
     %% Cualquier paso puede fallar sin tumbar la pasada
     b_busca -.-> f_algo
-    an_lee -.-> f_algo
+    an_web -.-> f_algo
     im_dib -.-> f_algo
     pub_out -.-> f_algo
 
@@ -83,7 +84,7 @@ flowchart TD
     classDef muted fill:#1a1a1a,color:#999,stroke:#444;
     classDef warn fill:#2a2414,color:#fff,stroke:#a84;
 
-    class ent,acuenta,a_agro,a_hancel,b_rel,b_busca,b_rep,an_lee,an_nota,an_umbral,ang_enf,ang_tesis,ang_fmt,w_li,w_ig,w_fb,im_foto,im_dib,pub_modo,pub_boton,pub_tanda base;
+    class ent,acuenta,a_agro,a_hancel,b_rel,b_busca,b_rep,an_web,an_ia,an_nota,an_umbral,ang_enf,ang_tesis,ang_fmt,w_li,w_ig,w_fb,im_foto,im_dib,pub_modo,pub_boton,pub_tanda base;
     class b_ok,an_ok,ang_ok,im_ok,pub_out,f_retry ok;
     class b_desc bad;
     class an_arch,tools muted;

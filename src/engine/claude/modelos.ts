@@ -35,17 +35,20 @@ export async function modelosClaude(): Promise<ModelosPorPaso> {
     .maybeSingle()
 
   const fila = (data ?? {}) as Partial<Record<string, string>>
-  
-  const normalize = (val: string | undefined, def: string) => {
-    const v = val || def
-    return v.includes("/") ? v : `claude/${v}`
+
+  // Filas viejas pueden traer el prefijo `claude/` o `gemini/` del router de
+  // proveedores que hubo un tiempo. Se recorta: la API quiere el id pelado.
+  const limpio = (val: string | undefined, def: string) => {
+    const v = (val || def).trim()
+    const sinPrefijo = v.includes("/") ? v.slice(v.indexOf("/") + 1) : v
+    return sinPrefijo.startsWith("claude-") ? sinPrefijo : def
   }
 
   return {
-    analisis: normalize(fila.model_analisis, DEFAULTS.analisis),
-    angulo: normalize(fila.model_angulo, DEFAULTS.angulo),
-    linkedin: normalize(fila.model_linkedin, DEFAULTS.linkedin),
-    instagram: normalize(fila.model_instagram, DEFAULTS.instagram),
+    analisis: limpio(fila.model_analisis, DEFAULTS.analisis),
+    angulo: limpio(fila.model_angulo, DEFAULTS.angulo),
+    linkedin: limpio(fila.model_linkedin, DEFAULTS.linkedin),
+    instagram: limpio(fila.model_instagram, DEFAULTS.instagram),
   }
 }
 

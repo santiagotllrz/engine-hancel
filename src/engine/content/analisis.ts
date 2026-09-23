@@ -88,7 +88,7 @@ const MAX_MATERIAL = 12_000
 export async function analizarPendientes(
   accountId: string,
   limite = 6
-): Promise<{ analizadas: number; fallidas: number; errores: string[] }> {
+): Promise<{ analizadas: number; fallidas: number; errores: string[]; uso: { entrada: number; salida: number } }> {
   const supabase = supabaseAdmin()
 
   const { data, error } = await supabase
@@ -101,12 +101,14 @@ export async function analizarPendientes(
 
   if (error) throw new Error(`No se pudieron leer las pendientes: ${error.message}`)
   const pendientes = (data ?? []) as Pendiente[]
-  if (pendientes.length === 0) return { analizadas: 0, fallidas: 0, errores: [] }
+  if (pendientes.length === 0)
+    return { analizadas: 0, fallidas: 0, errores: [], uso: { entrada: 0, salida: 0 } }
 
   const model = (await modelosClaude()).analisis
   let analizadas = 0
   let fallidas = 0
   const errores: string[] = []
+  const uso = { entrada: 0, salida: 0 }
 
   // Tres a la vez: recorta el tiempo de pared sin amontonar peticiones.
   const TANDA = 3
@@ -137,6 +139,8 @@ ${material ? material.slice(0, MAX_MATERIAL) : "(no se pudo recolectar material;
             maxTokens: 4000,
           })
           if (!r.ok) throw new Error(r.error)
+          uso.entrada += r.uso.entrada
+          uso.salida += r.uso.salida
 
           const res = normaliza(parsearJSONDeClaude(r.texto))
           const { error: errUpdate } = await supabase
@@ -164,5 +168,5 @@ ${material ? material.slice(0, MAX_MATERIAL) : "(no se pudo recolectar material;
     )
   }
 
-  return { analizadas, fallidas, errores }
+  return { analizadas, fallidas, errores, uso }
 }

@@ -21,7 +21,7 @@ type Buzon = "jobs_angle" | "jobs_linkedin" | "jobs_instagram"
 
 async function procesarBuzon(
   tabla: Buzon,
-  agente: (input: unknown) => Promise<unknown>
+  agente: (input: unknown) => Promise<{ respuesta: unknown }>
 ): Promise<{ procesadas: number; fallidas: number; errores: string[] }> {
   const supabase = supabaseAdmin()
 
@@ -52,7 +52,7 @@ async function procesarBuzon(
     if (!claimed) continue
 
     try {
-      const respuesta = await agente(job.input)
+      const { respuesta } = await agente(job.input)
       const { error: errDone } = await supabase
         .from(tabla)
         .update({ respuesta, status: "done", processed_at: new Date().toISOString() })

@@ -48,8 +48,11 @@ export type LlamadaClaude = {
   maxBusquedas?: number
 }
 
+/** Lo que costo la llamada. Sirve para ver el gasto real por paso. */
+export type UsoClaude = { entrada: number; salida: number }
+
 export type ResultadoClaude =
-  | { ok: true; texto: string }
+  | { ok: true; texto: string; uso: UsoClaude }
   | { ok: false; error: string }
 
 /** Lee el token guardado. `null` si nadie lo ha pegado todavia. */
@@ -131,6 +134,7 @@ export async function llamarClaude(opciones: LlamadaClaude): Promise<ResultadoCl
 
     const datos = JSON.parse(cuerpo) as {
       content?: { type: string; text?: string }[]
+      usage?: { input_tokens?: number; output_tokens?: number }
     }
     const texto = (datos.content ?? [])
       .filter((bloque) => bloque.type === "text" && bloque.text)
@@ -139,7 +143,14 @@ export async function llamarClaude(opciones: LlamadaClaude): Promise<ResultadoCl
       .trim()
 
     if (!texto) return { ok: false, error: "Claude respondio sin texto." }
-    return { ok: true, texto }
+    return {
+      ok: true,
+      texto,
+      uso: {
+        entrada: datos.usage?.input_tokens ?? 0,
+        salida: datos.usage?.output_tokens ?? 0,
+      },
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return { ok: false, error: message }
