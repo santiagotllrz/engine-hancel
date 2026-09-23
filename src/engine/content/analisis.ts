@@ -117,23 +117,23 @@ export async function analizarPendientes(
               
               // FALLBACK A COMPOSIO SI JINA FALLA (paywalls, cloudflare bloqueos, o muy corto)
               if (fullText.length < 500) {
-                console.log(`Jina extrajo muy poco (${fullText.length} chars). Intentando Composio Fallback...`);
+                console.log(`Jina extrajo muy poco (${fullText.length} chars). Intentando Búsqueda General con Composio...`);
                 const composioKey = process.env.COMPOSIO_API_KEY || "ak_Pp11FQ1q9ZDrcaa1EB4G";
-                const res = await fetch("https://backend.composio.dev/api/v3.1/tools/execute/COMPOSIO_SEARCH_FETCH_URL_CONTENT", {
+                const res = await fetch("https://backend.composio.dev/api/v3.1/tools/execute/COMPOSIO_SEARCH_WEB", {
                   method: "POST",
                   headers: {
                     "x-api-key": composioKey,
                     "Content-Type": "application/json"
                   },
                   body: JSON.stringify({
-                    connected_account_id: "default", 
-                    arguments: { url: noticia.link }
+                    entity_id: "default", 
+                    arguments: { query: noticia.title }
                   })
                 });
                 if (res.ok) {
                   const data = await res.json();
-                  if (data.successful && data.data && data.data.results && data.data.results.length > 0) {
-                    const extracted = data.data.results[0].text || data.data.results[0].markdown || "";
+                  if (data.successful && data.data && data.data.answer) {
+                    const extracted = "Resumen de investigación web sobre la noticia:\n" + data.data.answer;
                     if (extracted.length > fullText.length) {
                        fullText = extracted;
                     }
