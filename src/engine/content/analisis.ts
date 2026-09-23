@@ -99,8 +99,9 @@ export async function analizarPendientes(
   const errores: string[] = []
 
   // Límite de la capa gratuita de Gemini: 15 peticiones por minuto.
-  const RATE_LIMIT_MAX = 15;
-  const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 60 segundos
+  // Usamos 11 por ventana de 62 segundos para evitar chocar con la ventana deslizante de Google.
+  const RATE_LIMIT_MAX = 11;
+  const RATE_LIMIT_WINDOW_MS = 62 * 1000; // 62 segundos
   const TANDA = 3; // Concurrencia interna para no saturar la red local
 
   for (let i = 0; i < pendientes.length; i += RATE_LIMIT_MAX) {
