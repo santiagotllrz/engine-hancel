@@ -98,54 +98,63 @@ export async function analizarPendientes(
   let fallidas = 0
   const errores: string[] = []
 
-  // Concurrencia moderada: 3 a la vez recorta el tiempo de pared sin pasarse de
-  // los limites del plan.
-  const TANDA = 3
-  for (let i = 0; i < pendientes.length; i += TANDA) {
-    const grupo = pendientes.slice(i, i + TANDA)
-    await Promise.all(
-      grupo.map(async (noticia) => {
-        try {
-          // Extraemos el contenido de la URL usando Jina Reader (convierte HTML a Markdown)
-          let fullText = ""
+  // Límite de la capa gratuita de Gemini: 15 peticiones por minuto.
+  const RATE_LIMIT_MAX = 15;
+  const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 60 segundos
+  const TANDA = 3; // Concurrencia interna para no saturar la red local
+
+  for (let i = 0; i < pendientes.length; i += RATE_LIMIT_MAX) {
+    const inicioMinuto = Date.now();
+    const chunkMinuto = pendientes.slice(i, i + RATE_LIMIT_MAX);
+    
+    console.log(`Procesando lote del minuto: noticias ${i + 1} a ${Math.min(i + RATE_LIMIT_MAX, pendientes.length)} de ${pendientes.length}`);
+
+    // Procesamos el chunk de 15 en pequeñas tandas de 3
+    for (let j = 0; j < chunkMinuto.length; j += TANDA) {
+      const grupo = chunkMinuto.slice(j, j + TANDA);
+      await Promise.all(
+        grupo.map(async (noticia) => {
           try {
-            if (noticia.link) {
-              const jina = await fetch(`https://r.jina.ai/${noticia.link}`)
-              if (jina.ok) {
-                fullText = await jina.text()
-              }
-              
-              // FALLBACK A COMPOSIO SI JINA FALLA (paywalls, cloudflare bloqueos, o muy corto)
-              if (fullText.length < 500) {
-                console.log(`Jina extrajo muy poco (${fullText.length} chars). Intentando Búsqueda General con Composio...`);
-                const composioKey = process.env.COMPOSIO_API_KEY || "ak_Pp11FQ1q9ZDrcaa1EB4G";
-                const res = await fetch("https://backend.composio.dev/api/v3.1/tools/execute/COMPOSIO_SEARCH_WEB", {
-                  method: "POST",
-                  headers: {
-                    "x-api-key": composioKey,
-                    "Content-Type": "application/json"
-                  },
-                  body: JSON.stringify({
-                    entity_id: "default", 
-                    arguments: { query: noticia.title }
-                  })
-                });
-                if (res.ok) {
-                  const data = await res.json();
-                  if (data.successful && data.data && data.data.answer) {
-                    const extracted = "Resumen de investigación web sobre la noticia:\n" + data.data.answer;
-                    if (extracted.length > fullText.length) {
-                       fullText = extracted;
+            // Extraemos el contenido de la URL usando Jina Reader
+            let fullText = ""
+            try {
+              if (noticia.link) {
+                const jina = await fetch(`https://r.jina.ai/${noticia.link}`)
+                if (jina.ok) {
+                  fullText = await jina.text()
+                }
+                
+                // FALLBACK A COMPOSIO SI JINA FALLA
+                if (fullText.length < 500) {
+                  console.log(`Jina extrajo muy poco (${fullText.length} chars). Intentando Búsqueda General con Composio...`);
+                  const composioKey = process.env.COMPOSIO_API_KEY || "ak_Pp11FQ1q9ZDrcaa1EB4G";
+                  const res = await fetch("https://backend.composio.dev/api/v3.1/tools/execute/COMPOSIO_SEARCH_WEB", {
+                    method: "POST",
+                    headers: {
+                      "x-api-key": composioKey,
+                      "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                      entity_id: "default", 
+                      arguments: { query: noticia.title }
+                    })
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data.successful && data.data && data.data.answer) {
+                      const extracted = "Resumen de investigación web sobre la noticia:\n" + data.data.answer;
+                      if (extracted.length > fullText.length) {
+                         fullText = extracted;
+                      }
                     }
                   }
                 }
               }
+            } catch (e) {
+              console.error("Error al extraer contenido web:", e)
             }
-          } catch (e) {
-            console.error("Error al extraer contenido web:", e)
-          }
 
-          const prompt = `NOTICIA A CALIFICAR Y CONSOLIDAR
+            const prompt = `NOTICIA A CALIFICAR Y CONSOLIDAR
 - titulo: ${noticia.title}
 - fuente: ${noticia.source ?? "desconocida"}
 - nicho al que pertenece (para el FIT): ${noticia.niche} / ${noticia.tema}
@@ -153,39 +162,50 @@ export async function analizarPendientes(
 - contenido extraido de la fuente original:
 ${fullText ? fullText.slice(0, 15000) : "(no se pudo extraer el contenido, usa el snippet)"}`
 
-          const r = await llamarIA({
-            agente: "analisis",
-            system: ANALISIS_SYSTEM,
-            prompt,
-            maxTokens: 4000,
-            buscarWeb: false, // Apagamos el Search Grounding de Google
-          })
-          if (!r.ok) throw new Error(r.error)
-
-          const res = normaliza(parsearJSONDeClaude(r.texto))
-          const { error: errUpdate } = await supabase
-            .from("raw_news")
-            .update({
-              full_content: res.full_content,
-              content_fetched_at: new Date().toISOString(),
-              content_fetch_status: res.content_fetch_status,
-              relevance_score: res.relevance_score,
-              keywords_matched: res.keywords_matched,
-              analysis_notes: res.analysis_notes,
-              status: "analyzed",
-              analyzed_at: new Date().toISOString(),
+            const r = await llamarIA({
+              agente: "analisis",
+              system: ANALISIS_SYSTEM,
+              prompt,
+              maxTokens: 4000,
+              buscarWeb: false, // Apagamos el Search Grounding de Google
             })
-            .eq("id", noticia.id)
-            .eq("status", "pending_analysis")
+            if (!r.ok) throw new Error(r.error)
 
-          if (errUpdate) throw new Error(errUpdate.message)
-          analizadas++
-        } catch (e) {
-          fallidas++
-          errores.push(`[${noticia.id.slice(0, 8)}] ${e instanceof Error ? e.message : String(e)}`)
-        }
-      })
-    )
+            const res = normaliza(parsearJSONDeClaude(r.texto))
+            const { error: errUpdate } = await supabase
+              .from("raw_news")
+              .update({
+                full_content: res.full_content,
+                content_fetched_at: new Date().toISOString(),
+                content_fetch_status: res.content_fetch_status,
+                relevance_score: res.relevance_score,
+                keywords_matched: res.keywords_matched,
+                analysis_notes: res.analysis_notes,
+                status: "analyzed",
+                analyzed_at: new Date().toISOString(),
+              })
+              .eq("id", noticia.id)
+              .eq("status", "pending_analysis")
+
+            if (errUpdate) throw new Error(errUpdate.message)
+            analizadas++
+          } catch (e) {
+            fallidas++
+            errores.push(`[${noticia.id.slice(0, 8)}] ${e instanceof Error ? e.message : String(e)}`)
+          }
+        })
+      )
+    }
+
+    // Si aún quedan más noticias en la cola global, esperamos que se complete el minuto
+    if (i + RATE_LIMIT_MAX < pendientes.length) {
+      const tiempoTranscurrido = Date.now() - inicioMinuto;
+      const tiempoRestante = RATE_LIMIT_WINDOW_MS - tiempoTranscurrido;
+      if (tiempoRestante > 0) {
+        console.log(`\n⏳ Límite de 15 peticiones/minuto alcanzado. Esperando ${Math.ceil(tiempoRestante / 1000)}s antes de procesar el siguiente lote de 15...\n`);
+        await new Promise(r => setTimeout(r, tiempoRestante));
+      }
+    }
   }
 
   return { analizadas, fallidas, errores }
