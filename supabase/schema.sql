@@ -52,6 +52,16 @@ create table if not exists public.raw_news (
   content_fetched_at   timestamptz,
   content_fetch_status text,
 
+  -- Rastro de las empujadas a mano al pipeline. La seleccion automatica solo
+  -- genera por encima del umbral; cuando alguien arrastra una que no llegaba,
+  -- esa discrepancia es el dato: el analisis la califico bajo y una persona la
+  -- vio valiosa. Se congelan score y umbral de ese momento porque los dos
+  -- cambian despues, y sin congelarlos el patron seria irrecuperable.
+  promoted_by_hand     boolean     not null default false,
+  promoted_at          timestamptz,
+  promoted_score       numeric,
+  promoted_threshold   numeric,
+
   constraint raw_news_link_key unique (link)
 );
 
@@ -59,6 +69,8 @@ create index if not exists raw_news_created_at_idx on public.raw_news (created_a
 create index if not exists raw_news_niche_idx      on public.raw_news (niche);
 create index if not exists raw_news_status_idx     on public.raw_news (status);
 create index if not exists raw_news_niche_tema_idx on public.raw_news (niche, tema);
+create index if not exists raw_news_promovidas_idx  on public.raw_news (account_id, promoted_at desc)
+  where promoted_by_hand;
 
 -- ------------------------------------------------------------------ corridas
 

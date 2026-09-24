@@ -21,6 +21,13 @@ export type RawNews = {
   full_content: string | null
   content_fetched_at: string | null
   content_fetch_status: string | null
+
+  /** La empujo alguien a mano, saltandose la seleccion automatica. */
+  promoted_by_hand: boolean
+  promoted_at: string | null
+  /** Score y umbral congelados al promoverla; los dos cambian despues. */
+  promoted_score: number | null
+  promoted_threshold: number | null
 }
 
 /** Fila de `public.pipeline_runs`. */

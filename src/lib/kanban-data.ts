@@ -64,6 +64,14 @@ export type Ficha = {
 
   /** La primera imagen ya generada, para verla en la tarjeta sin abrirla. */
   miniatura: string | null
+
+  /** La empujo alguien a mano en vez de la seleccion automatica. */
+  promovidaAMano: boolean
+  /**
+   * Se genero pese a no llegar al umbral. Es la discrepancia entre lo que
+   * dijo el analisis y lo que decidio una persona, y por eso se enseña.
+   */
+  bajoUmbral: boolean
 }
 
 export type Tablero = {
@@ -128,7 +136,7 @@ export async function getTablero(): Promise<Tablero> {
   const { data: noticias, error } = await supabase
     .from("raw_news")
     .select(
-      "id, title, source, link, niche, tema, status, relevance_score, created_at, date_serper, snippet, analysis_notes, keywords_matched, content_fetch_status"
+      "id, title, source, link, niche, tema, status, relevance_score, created_at, date_serper, snippet, analysis_notes, keywords_matched, content_fetch_status, promoted_by_hand, promoted_score, promoted_threshold"
     )
     .eq("account_id", accountId)
     .order("created_at", { ascending: false })
@@ -223,6 +231,12 @@ export async function getTablero(): Promise<Tablero> {
       angulo,
       piezas: misPiezas,
       miniatura: miniaturaDe(misPiezas),
+      promovidaAMano: n.promoted_by_hand === true,
+      bajoUmbral:
+        n.promoted_by_hand === true &&
+        n.promoted_score !== null &&
+        n.promoted_threshold !== null &&
+        n.promoted_score < n.promoted_threshold,
     }
 
     porEtapa[ficha.etapa].push(ficha)

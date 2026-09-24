@@ -10,6 +10,7 @@ import {
 import { configuracionDeGeneracion } from "@/lib/content-data"
 import { idDeCuentaActual } from "@/lib/accounts"
 import { tokenClaude } from "@/engine/claude/messages"
+import { analizarPendientes } from "@/engine/content/analisis"
 import { runContentTick } from "@/engine/content/tick"
 import { REDES } from "@/engine/content/types"
 import type { ContentAngle, ContentPiece, Red, Variables } from "@/engine/content/types"
@@ -758,4 +759,163 @@ export async function contenidoDeNoticia(
 
   if (error) return { ok: false, error: error.message }
   return { ok: true, contenido: (data as { full_content: string | null } | null)?.full_content ?? null }
+}
+
+// -------------------------------------------------------- mover en el tablero
+
+/**
+ * Empuja un hecho a la etapa a la que lo arrastraron.
+ *
+ * Arrastrar no cambia una etiqueta: la etapa se deduce de lo que existe —hay
+ * angulo, hay pieza, esta publicada— asi que moverla solo puede significar
+ * hacer el trabajo que falta para llegar ahi. De ahi que esto dispare el
+ * pipeline en vez de escribir un estado.
+ *
+ * Solo se admite el paso siguiente, no cualquier salto: generar un post exige
+ * un angulo, y publicar exige una pieza. Un salto de dos etapas dejaria al
+ * usuario esperando un resultado que nunca llega.
+ */
+export type DestinoTablero = "analizada" | "angulo" | "post" | "publicado" | "descartado"
+
+export async function moverFicha(
+  newsId: string,
+  destino: DestinoTablero
+): Promise<ActionResult> {
+  if (!newsId) return { ok: false, error: "Falta el id de la noticia." }
+
+  try {
+    const accountId = await idDeCuentaActual()
+    const supabase = supabaseAdmin()
+
+    const news = await loadNews(newsId)
+
+    const [{ data: angulos }, { data: piezas }] = await Promise.all([
+      supabase
+        .from("content_angles")
+        .select("id, status")
+        .eq("raw_news_id", newsId)
+        .eq("account_id", accountId),
+      supabase
+        .from("content_pieces")
+        .select("id, status, published_at")
+        .eq("raw_news_id", newsId)
+        .eq("account_id", accountId),
+    ])
+
+    const angulo = (angulos ?? [])[0] as { id: string; status: string } | undefined
+    const misPiezas = (piezas ?? []) as { id: string; status: string; published_at: string | null }[]
+
+    switch (destino) {
+      case "analizada": {
+        if (news.status !== "pending_analysis") {
+          return { ok: false, error: "Esta noticia ya paso por el analisis." }
+        }
+        const { analizadas, errores } = await analizarPendientes(accountId, 1, [newsId])
+        refresh()
+        if (analizadas === 0) {
+          return { ok: false, error: errores[0] ?? "El analisis no devolvio nada." }
+        }
+        return { ok: true }
+      }
+
+      case "angulo": {
+        if (angulo) return { ok: false, error: "Esta noticia ya tiene angulo." }
+        await anotarPromocion(news)
+        return await encolarContenido(newsId)
+      }
+
+      case "post": {
+        if (!angulo) {
+          return { ok: false, error: "Primero hay que generar el angulo: arrastrala a Angulo." }
+        }
+        if (misPiezas.length > 0) return { ok: false, error: "Esta noticia ya tiene piezas." }
+
+        // Sin red elegida manda la configuracion: es la misma decision que toma
+        // la seleccion automatica, y es lo unico que se puede deducir de soltar
+        // la tarjeta en una columna que no pregunta por red.
+        const config = await configuracionDeGeneracion()
+        const redes = config.auto_networks.length > 0 ? config.auto_networks : (["linkedin"] as Red[])
+
+        await anotarPromocion(news)
+        for (const red of redes) {
+          const r = await generateFromAngle(angulo.id, red)
+          if (!r.ok) return r
+        }
+        return { ok: true, warning: await avisoSiFaltaToken() }
+      }
+
+      case "publicado": {
+        const publicables = misPiezas.filter((p) => !p.published_at && p.status !== "rejected")
+        if (publicables.length === 0) {
+          return { ok: false, error: "No hay piezas sin publicar en esta noticia." }
+        }
+        // Publicar sale a las redes y no se deshace, asi que el aviso lo da la
+        // interfaz antes de llamar aqui; a estas alturas ya esta confirmado.
+        for (const pieza of publicables) {
+          const r = await publishPieceNow(pieza.id)
+          if (!r.ok) return r
+        }
+        return { ok: true }
+      }
+
+      case "descartado": {
+        // Se descarta lo que exista, de arriba abajo: una noticia sin angulo se
+        // descarta como noticia, y una con piezas tiene que descartar tambien
+        // las piezas o seguiria contando como post.
+        if (misPiezas.length > 0) {
+          const { error } = await supabase
+            .from("content_pieces")
+            .update({ status: "rejected", approved_at: null })
+            .in("id", misPiezas.map((p) => p.id))
+            .eq("account_id", accountId)
+            .is("published_at", null)
+          if (error) throw new Error(error.message)
+        }
+        if (angulo) {
+          const r = await discardAngle(angulo.id)
+          if (!r.ok) return r
+        }
+        if (!angulo && misPiezas.length === 0) {
+          const { error } = await supabase
+            .from("raw_news")
+            .update({ status: "discarded" })
+            .eq("id", newsId)
+            .eq("account_id", accountId)
+          if (error) throw new Error(error.message)
+        }
+        refresh()
+        return { ok: true }
+      }
+    }
+  } catch (error) {
+    return fail(error, "No se pudo mover la tarjeta.")
+  }
+}
+
+/**
+ * Deja constancia de que esto se genero a mano y con que nota.
+ *
+ * El dato que importa es la discrepancia: si el score no llegaba al umbral, el
+ * analisis dijo que no valia y una persona dijo que si. Con eso se pueden
+ * buscar despues patrones de lo que el agente infravalora. Score y umbral se
+ * copian, no se referencian: los dos cambian, y una referencia haria que el
+ * registro mintiera en cuanto alguien moviera la barra.
+ *
+ * Solo la primera vez: reencolar la misma noticia no cambia lo que se decidio
+ * la primera vez, que es lo que se quiere estudiar.
+ */
+async function anotarPromocion(news: RawNews): Promise<void> {
+  if (news.promoted_by_hand) return
+
+  const config = await configuracionDeGeneracion()
+  await supabaseAdmin()
+    .from("raw_news")
+    .update({
+      promoted_by_hand: true,
+      promoted_at: new Date().toISOString(),
+      promoted_score: news.relevance_score,
+      promoted_threshold: config.score_threshold,
+    })
+    .eq("id", news.id)
+    .eq("account_id", news.account_id)
 }

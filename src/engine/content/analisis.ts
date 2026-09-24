@@ -84,20 +84,27 @@ const MAX_MATERIAL = 12_000
  * En tandas pequenas y con concurrencia moderada: el tick pasa cada cinco
  * minutos, asi que no hace falta vaciar la cola de una. Una noticia que falla se
  * queda pendiente y se reintenta; la caducidad de 36h saca las que se atasquen.
+ *
+ * `soloIds` acota la tanda a unas noticias concretas, para cuando alguien pide
+ * una en particular desde el tablero en vez de esperar al turno de la cola. El
+ * filtro de pendientes sigue en pie: pedir una ya analizada no la reanaliza.
  */
 export async function analizarPendientes(
   accountId: string,
-  limite = 6
+  limite = 6,
+  soloIds?: string[]
 ): Promise<{ analizadas: number; fallidas: number; errores: string[]; uso: { entrada: number; salida: number } }> {
   const supabase = supabaseAdmin()
 
-  const { data, error } = await supabase
+  let consulta = supabase
     .from("raw_news")
     .select("id, title, link, snippet, source, niche, tema")
     .eq("account_id", accountId)
     .eq("status", "pending_analysis")
-    .order("created_at", { ascending: true })
-    .limit(limite)
+
+  if (soloIds && soloIds.length > 0) consulta = consulta.in("id", soloIds)
+
+  const { data, error } = await consulta.order("created_at", { ascending: true }).limit(limite)
 
   if (error) throw new Error(`No se pudieron leer las pendientes: ${error.message}`)
   const pendientes = (data ?? []) as Pendiente[]
