@@ -18,6 +18,12 @@ export async function subirCarrusel(
   const supabase = supabaseAdmin()
   const urls: string[] = []
 
+  // Una marca por regeneracion, la misma para todas las laminas de la tanda.
+  // La ruta se reescribe, asi que sin esto la direccion publica seria identica
+  // a la de antes y el navegador seguiria enseñando la imagen vieja: se
+  // regeneraba de verdad y no se notaba en absoluto.
+  const version = Date.now().toString(36)
+
   for (const [indice, png] of imagenes.entries()) {
     // El numero va con cero delante para que ordenar por nombre en el panel de
     // Supabase coincida con el orden real del carrusel.
@@ -33,7 +39,7 @@ export async function subirCarrusel(
     if (error) throw new Error(`No se pudo subir la imagen ${numero}: ${error.message}`)
 
     const { data } = supabase.storage.from(BUCKET).getPublicUrl(ruta)
-    urls.push(data.publicUrl)
+    urls.push(`${data.publicUrl}?v=${version}`)
   }
 
   return urls

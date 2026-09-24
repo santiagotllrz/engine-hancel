@@ -99,14 +99,34 @@ function admite(origen: Etapa, destino: Etapa): boolean {
 }
 
 export function Tablero({ datos }: { datos: TableroDatos }) {
-  const [ficha, setFicha] = React.useState<Ficha | null>(null)
+  // Se guarda cual esta abierta, no la ficha: si se guardara la ficha, la
+  // ventana pintaria para siempre la copia del momento en que se abrio, y
+  // regenerar un carrusel dejaria de verse aunque el servidor ya tuviera las
+  // imagenes nuevas. Buscandola en `datos` cada vez, cualquier revalidacion
+  // llega sola a la ventana abierta.
+  const [abiertaId, setAbiertaId] = React.useState<string | null>(null)
   const [abierta, setAbierta] = React.useState(false)
   const [arrastrando, setArrastrando] = React.useState<Ficha | null>(null)
   const [moviendo, setMoviendo] = React.useState<string | null>(null)
   const [aviso, setAviso] = React.useState<{ tipo: "error" | "ok"; texto: string } | null>(null)
 
+  // Con la que se abrio, de respaldo: al cambiar de etapa una ficha puede
+  // quedarse fuera de las visibles de su columna, y es mejor seguir viendo lo
+  // de antes que una ventana en blanco de golpe.
+  const [respaldo, setRespaldo] = React.useState<Ficha | null>(null)
+
+  const ficha = React.useMemo(() => {
+    if (!abiertaId) return null
+    for (const lista of Object.values(datos.fichas)) {
+      const encontrada = lista.find((f) => f.newsId === abiertaId)
+      if (encontrada) return encontrada
+    }
+    return respaldo
+  }, [abiertaId, datos, respaldo])
+
   function abrir(f: Ficha) {
-    setFicha(f)
+    setRespaldo(f)
+    setAbiertaId(f.newsId)
     setAbierta(true)
   }
 
