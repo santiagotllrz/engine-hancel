@@ -13,11 +13,21 @@ import type { RawNews } from "@/lib/types"
  * ficha lleva las etapas en pestañas en vez de repartirse en tarjetas sueltas
  * que no se saben hermanas.
  *
- * La columna sale del punto mas avanzado al que llego el hecho, no de un campo
- * de estado: asi no hay dos verdades que puedan discrepar.
+ * Las etapas son seis y se agrupan de cuatro en la interfaz: "Noticias" junta
+ * traidas y analizadas, "Contenido" junta angulo y post. El grupo dice en que
+ * fase del proceso esta; la etapa, en que punto exacto dentro de esa fase.
+ *
+ * La etapa sale del punto mas avanzado al que llego el hecho, no de un campo de
+ * estado: asi no hay dos verdades que puedan discrepar.
  */
 
-export type Columna = "noticias" | "contenido" | "publicado" | "descartados"
+export type Etapa =
+  | "sin_analizar"
+  | "analizada"
+  | "angulo"
+  | "post"
+  | "publicado"
+  | "descartado"
 
 export type PiezaDelTablero = {
   id: string
@@ -27,12 +37,11 @@ export type PiezaDelTablero = {
   published_at: string | null
   linkedin_urn: string | null
   publish_error: string | null
-  job_instagram_id: string | null
 }
 
 export type Ficha = {
   newsId: string
-  columna: Columna
+  etapa: Etapa
   titulo: string
   fuente: string | null
   link: string
@@ -42,7 +51,6 @@ export type Ficha = {
   creada: string
   fechaSerper: string | null
 
-  /** Analisis: `analizada` en false significa que aun esta en cola. */
   analizada: boolean
   score: number | null
   notas: string | null
@@ -52,25 +60,45 @@ export type Ficha = {
 
   angulo: Pick<ContentAngle, "id" | "angle" | "thesis" | "playbook_format" | "status"> | null
   piezas: PiezaDelTablero[]
+
+  /** La primera imagen ya generada, para verla en la tarjeta sin abrirla. */
+  miniatura: string | null
 }
 
-export type Tablero = Record<Columna, Ficha[]>
+export type Tablero = Record<Etapa, Ficha[]>
 
 /** Lo que cabe en pantalla sin volverse lento; lo viejo se ve en /noticias. */
 const TOPE = 300
 
-function columnaDe(
+function etapaDe(
+  analizada: boolean,
   angulo: Ficha["angulo"],
   piezas: PiezaDelTablero[]
-): Columna {
+): Etapa {
   if (piezas.some((p) => p.status === "published")) return "publicado"
-  // Descartado es solo lo que alguien rechazo a mano: si hay piezas y todas
-  // estan rechazadas, el hecho murio ahi. Lo que no llega por score nunca
-  // genera nada, asi que no aparece por aqui.
-  if (piezas.length > 0 && piezas.every((p) => p.status === "rejected")) return "descartados"
-  if (angulo?.status === "discarded" && piezas.length === 0) return "descartados"
-  if (angulo || piezas.length > 0) return "contenido"
-  return "noticias"
+  // Descartado es solo lo rechazado a mano: lo que no llega por score nunca
+  // genera nada, asi que por aqui no aparece.
+  if (piezas.length > 0 && piezas.every((p) => p.status === "rejected")) return "descartado"
+  if (piezas.length > 0) return "post"
+  if (angulo) return angulo.status === "discarded" ? "descartado" : "angulo"
+  return analizada ? "analizada" : "sin_analizar"
+}
+
+/**
+ * La imagen que representa al hecho.
+ *
+ * Instagram guarda todas las laminas y vale la portada; Facebook guarda la suya
+ * en el payload. LinkedIn no tiene: su tarjeta se dibuja al publicar, asi que
+ * antes de salir no hay nada que enseñar y se cae a la de las otras redes si el
+ * mismo angulo las produjo.
+ */
+function miniaturaDe(piezas: PiezaDelTablero[]): string | null {
+  const ig = piezas.find((p) => p.network === "instagram")
+  const portada = ig?.payload.images?.[0]
+  if (portada) return portada
+
+  const fb = piezas.find((p) => p.network === "facebook")
+  return fb?.payload.image ?? null
 }
 
 export async function getTablero(): Promise<Tablero> {
@@ -89,9 +117,16 @@ export async function getTablero(): Promise<Tablero> {
 
   if (error) throw new Error(`No se pudo cargar el tablero: ${error.message}`)
   const filas = (noticias ?? []) as RawNews[]
-  if (filas.length === 0) {
-    return { noticias: [], contenido: [], publicado: [], descartados: [] }
+
+  const vacio: Tablero = {
+    sin_analizar: [],
+    analizada: [],
+    angulo: [],
+    post: [],
+    publicado: [],
+    descartado: [],
   }
+  if (filas.length === 0) return vacio
 
   const ids = filas.map((n) => n.id)
   const [angulos, piezas] = await Promise.all([
@@ -110,7 +145,6 @@ export async function getTablero(): Promise<Tablero> {
     published_at: string | null
     linkedin_urn: string | null
     publish_error: string | null
-    job_instagram_id: string | null
   })[]) {
     if (!p.raw_news_id) continue
     const lista = piezasPorNoticia.get(p.raw_news_id) ?? []
@@ -122,23 +156,29 @@ export async function getTablero(): Promise<Tablero> {
       published_at: p.published_at,
       linkedin_urn: p.linkedin_urn,
       publish_error: p.publish_error,
-      job_instagram_id: p.job_instagram_id,
     })
     piezasPorNoticia.set(p.raw_news_id, lista)
   }
 
-  const tablero: Tablero = { noticias: [], contenido: [], publicado: [], descartados: [] }
+  const tablero = vacio
 
   for (const n of filas) {
     const a = angulosPorNoticia.get(n.id) ?? null
     const angulo = a
-      ? { id: a.id, angle: a.angle, thesis: a.thesis, playbook_format: a.playbook_format, status: a.status }
+      ? {
+          id: a.id,
+          angle: a.angle,
+          thesis: a.thesis,
+          playbook_format: a.playbook_format,
+          status: a.status,
+        }
       : null
     const misPiezas = piezasPorNoticia.get(n.id) ?? []
+    const analizada = n.status === "analyzed"
 
     const ficha: Ficha = {
       newsId: n.id,
-      columna: columnaDe(angulo, misPiezas),
+      etapa: etapaDe(analizada, angulo, misPiezas),
       titulo: n.title,
       fuente: n.source,
       link: n.link,
@@ -147,7 +187,7 @@ export async function getTablero(): Promise<Tablero> {
       snippet: n.snippet,
       creada: n.created_at,
       fechaSerper: n.date_serper,
-      analizada: n.status === "analyzed",
+      analizada,
       score: n.relevance_score,
       notas: n.analysis_notes,
       keywords: n.keywords_matched,
@@ -155,9 +195,10 @@ export async function getTablero(): Promise<Tablero> {
       estadoContenido: n.content_fetch_status,
       angulo,
       piezas: misPiezas,
+      miniatura: miniaturaDe(misPiezas),
     }
 
-    tablero[ficha.columna].push(ficha)
+    tablero[ficha.etapa].push(ficha)
   }
 
   return tablero

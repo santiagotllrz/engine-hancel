@@ -48,6 +48,9 @@ const NOMBRE_RED: Record<string, string> = {
 
 const REDES = ["linkedin", "instagram", "facebook"] as const
 
+/** Cada panel scrollea por su cuenta para que la ventana no crezca sin fin. */
+const PANEL = "min-h-0 flex-1 overflow-y-auto pr-1"
+
 /** La pestaña que toca abrir: la etapa mas avanzada que alcanzo el hecho. */
 function pestanaInicial(f: Ficha): string {
   if (f.piezas.length > 0) {
@@ -86,7 +89,7 @@ export function FichaDialog({
 
   return (
     <Dialog open={abierta} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="text-base leading-snug">{ficha.titulo}</DialogTitle>
           <DialogDescription>
@@ -97,8 +100,12 @@ export function FichaDialog({
 
         {/* `key` por ficha: al abrir otra, las pestañas se remontan y vuelven a
             su etapa actual sin tener que sincronizar estado a mano. */}
-        <Tabs key={ficha.newsId} defaultValue={pestanaInicial(ficha)}>
-          <TabsList className="flex-wrap">
+        <Tabs
+          key={ficha.newsId}
+          defaultValue={pestanaInicial(ficha)}
+          className="flex min-h-0 flex-1 flex-col gap-3"
+        >
+          <TabsList className="h-auto shrink-0 flex-wrap">
             <TabsTrigger value="noticia">Noticia</TabsTrigger>
             {ficha.analizada ? <TabsTrigger value="analisis">Analisis</TabsTrigger> : null}
             {ficha.angulo ? <TabsTrigger value="angulo">Angulo</TabsTrigger> : null}
@@ -109,24 +116,24 @@ export function FichaDialog({
             ))}
           </TabsList>
 
-          <TabsContent value="noticia">
+          <TabsContent value="noticia" className={PANEL}>
             <PanelNoticia ficha={ficha} />
           </TabsContent>
 
           {ficha.analizada ? (
-            <TabsContent value="analisis">
+            <TabsContent value="analisis" className={PANEL}>
               <PanelAnalisis ficha={ficha} />
             </TabsContent>
           ) : null}
 
           {ficha.angulo ? (
-            <TabsContent value="angulo">
+            <TabsContent value="angulo" className={PANEL}>
               <PanelAngulo ficha={ficha} redesHechas={redesHechas} />
             </TabsContent>
           ) : null}
 
           {ficha.piezas.map((p) => (
-            <TabsContent key={p.id} value={`pieza:${p.id}`}>
+            <TabsContent key={p.id} value={`pieza:${p.id}`} className={PANEL}>
               <PanelPieza pieza={p} />
             </TabsContent>
           ))}
