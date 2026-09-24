@@ -126,12 +126,24 @@ export function Tablero({ datos }: { datos: TableroDatos }) {
 
     setAviso(null)
     setMoviendo(f.newsId)
-    const r = await moverFicha(f.newsId, destino)
-    setMoviendo(null)
-
-    if (!r.ok) setAviso({ tipo: "error", texto: r.error })
-    else if (r.warning) setAviso({ tipo: "error", texto: r.warning })
-    else setAviso({ tipo: "ok", texto: "Hecho." })
+    try {
+      const r = await moverFicha(f.newsId, destino)
+      if (!r.ok) setAviso({ tipo: "error", texto: r.error })
+      else if (r.warning) setAviso({ tipo: "error", texto: r.warning })
+      else setAviso({ tipo: "ok", texto: "Hecho." })
+    } catch (e) {
+      // Una accion que no llega a responder deja la tarjeta atascada en
+      // "moviendo" si no se recoge aqui, y ya no se puede volver a arrastrar.
+      setAviso({
+        tipo: "error",
+        texto:
+          e instanceof Error && e.message
+            ? `No se pudo mover: ${e.message}`
+            : "No se pudo mover: la accion no respondio. Puede haber tardado de mas.",
+      })
+    } finally {
+      setMoviendo(null)
+    }
   }
 
   return (

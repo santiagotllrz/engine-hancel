@@ -63,14 +63,31 @@ function pestanaInicial(f: Ficha): string {
   return "noticia"
 }
 
+/**
+ * Corre una accion del servidor y deja el boton a la espera mientras tanto.
+ *
+ * El try/catch no es por elegancia: las acciones devuelven sus fallos como
+ * `{ ok: false }`, pero una que no llega a responder —se corto por tiempo, se
+ * cayo la red— rechaza la promesa, y sin recogerla la transicion no termina
+ * nunca: los botones se quedan deshabilitados para siempre y sin un solo
+ * mensaje. Parecia que la accion se hubiera tragado el clic.
+ */
 function useAccion() {
   const [pending, start] = React.useTransition()
   const [error, setError] = React.useState<string | null>(null)
   const correr = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
     start(async () => {
       setError(null)
-      const r = await fn()
-      if (!r.ok) setError(r.error ?? "Algo fallo.")
+      try {
+        const r = await fn()
+        if (!r.ok) setError(r.error ?? "Algo fallo.")
+      } catch (e) {
+        setError(
+          e instanceof Error && e.message
+            ? `No se pudo completar: ${e.message}`
+            : "No se pudo completar: la accion no respondio. Puede haber tardado de mas."
+        )
+      }
     })
   return { pending, error, correr }
 }

@@ -19,6 +19,15 @@ import { configuracionDeGeneracion, getScoreDistribution } from "@/lib/content-d
 
 export const dynamic = "force-dynamic"
 
+/**
+ * Las server actions de esta pagina corren en su misma ruta, asi que heredan
+ * este tope. Sin declararlo se quedan en el de por defecto de la plataforma
+ * —unos segundos— y las acciones largas (redibujar un carrusel, analizar una
+ * noticia, publicar) se cortan a media faena sin decir nada.
+ */
+export const maxDuration = 60
+
+
 export const metadata = {
   title: "Variables · Engine Hancel",
 }
