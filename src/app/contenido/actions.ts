@@ -735,3 +735,26 @@ async function facebookDesdeCarruselExistente(angleId: string): Promise<boolean>
   if (error) throw new Error(error.message)
   return true
 }
+
+/**
+ * El texto consolidado de una noticia, para la ficha del tablero.
+ *
+ * No viaja con el tablero a proposito: son hasta 8000 caracteres por noticia y
+ * multiplicado por cientos de tarjetas convertia la pagina en megabytes de HTML
+ * para algo que solo se lee al abrir una ficha.
+ */
+export async function contenidoDeNoticia(
+  newsId: string
+): Promise<{ ok: true; contenido: string | null } | { ok: false; error: string }> {
+  if (!newsId) return { ok: false, error: "Falta el id de la noticia." }
+
+  const { data, error } = await supabaseAdmin()
+    .from("raw_news")
+    .select("full_content")
+    .eq("id", newsId)
+    .eq("account_id", await idDeCuentaActual())
+    .maybeSingle()
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, contenido: (data as { full_content: string | null } | null)?.full_content ?? null }
+}

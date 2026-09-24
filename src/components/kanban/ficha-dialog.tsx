@@ -14,6 +14,7 @@ import {
 
 import {
   approvePiece,
+  contenidoDeNoticia,
   encolarContenido,
   generateFromAngle,
   publishPieceNow,
@@ -189,6 +190,25 @@ function PanelNoticia({ ficha }: { ficha: Ficha }) {
 // ------------------------------------------------------------------ analisis
 
 function PanelAnalisis({ ficha }: { ficha: Ficha }) {
+  // El texto consolidado se pide al abrir: no viaja con el tablero porque son
+  // miles de caracteres por noticia y solo se leen de uno en uno.
+  const [contenido, setContenido] = React.useState<string | null>(null)
+  const [cargando, setCargando] = React.useState(true)
+
+  // Sin reiniciar estado aqui: el panel se remonta con cada ficha (las pestañas
+  // llevan `key`), asi que arranca ya en "cargando" y solo escribe al responder.
+  React.useEffect(() => {
+    let vivo = true
+    contenidoDeNoticia(ficha.newsId).then((r) => {
+      if (!vivo) return
+      setContenido(r.ok ? r.contenido : null)
+      setCargando(false)
+    })
+    return () => {
+      vivo = false
+    }
+  }, [ficha.newsId])
+
   return (
     <div className="flex flex-col gap-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -204,7 +224,9 @@ function PanelAnalisis({ ficha }: { ficha: Ficha }) {
       </div>
       <Campo etiqueta="Notas del analisis">{ficha.notas ?? "(sin notas)"}</Campo>
       <Campo etiqueta="Contenido consolidado">
-        <span className="whitespace-pre-wrap">{ficha.contenido ?? "(sin contenido)"}</span>
+        <span className="whitespace-pre-wrap">
+          {cargando ? "Cargando…" : (contenido ?? "(sin contenido)")}
+        </span>
       </Campo>
     </div>
   )

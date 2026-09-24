@@ -65,10 +65,24 @@ export type Ficha = {
   miniatura: string | null
 }
 
-export type Tablero = Record<Etapa, Ficha[]>
+export type Tablero = {
+  /** Las tarjetas que se pintan: un trozo de cada etapa, no todo. */
+  fichas: Record<Etapa, Ficha[]>
+  /** Cuantas hay de verdad en cada etapa, aunque no se pinten todas. */
+  conteos: Record<Etapa, number>
+}
 
-/** Lo que cabe en pantalla sin volverse lento; lo viejo se ve en /noticias. */
-const TOPE = 300
+/**
+ * Cuantas tarjetas se pintan por etapa.
+ *
+ * El conteo se calcula sobre todo, no sobre esto: antes el tope recortaba la
+ * consulta y las cifras de las columnas mentian —decian 265 donde habia 349—
+ * porque contaban solo lo cargado.
+ */
+const VISIBLES = 60
+
+/** Freno de seguridad para que una cuenta enorme no traiga la tabla entera. */
+const MAX_FILAS = 3000
 
 function etapaDe(
   analizada: boolean,
@@ -109,16 +123,18 @@ export async function getTablero(): Promise<Tablero> {
   // etapa del proceso. Sigue estando en /noticias con su estado.
   const { data: noticias, error } = await supabase
     .from("raw_news")
-    .select("*")
+    .select(
+      "id, title, source, link, niche, tema, status, relevance_score, created_at, date_serper, snippet, analysis_notes, keywords_matched, content_fetch_status"
+    )
     .eq("account_id", accountId)
     .neq("status", "discarded_date")
     .order("created_at", { ascending: false })
-    .limit(TOPE)
+    .limit(MAX_FILAS)
 
   if (error) throw new Error(`No se pudo cargar el tablero: ${error.message}`)
-  const filas = (noticias ?? []) as RawNews[]
+  const filas = (noticias ?? []) as unknown as RawNews[]
 
-  const vacio: Tablero = {
+  const porEtapa: Record<Etapa, Ficha[]> = {
     sin_analizar: [],
     analizada: [],
     angulo: [],
@@ -126,7 +142,9 @@ export async function getTablero(): Promise<Tablero> {
     publicado: [],
     descartado: [],
   }
-  if (filas.length === 0) return vacio
+  if (filas.length === 0) {
+    return { fichas: porEtapa, conteos: { ...CONTEOS_VACIOS } }
+  }
 
   const ids = filas.map((n) => n.id)
   const [angulos, piezas] = await Promise.all([
@@ -160,7 +178,6 @@ export async function getTablero(): Promise<Tablero> {
     piezasPorNoticia.set(p.raw_news_id, lista)
   }
 
-  const tablero = vacio
 
   for (const n of filas) {
     const a = angulosPorNoticia.get(n.id) ?? null
@@ -191,15 +208,32 @@ export async function getTablero(): Promise<Tablero> {
       score: n.relevance_score,
       notas: n.analysis_notes,
       keywords: n.keywords_matched,
-      contenido: n.full_content,
+      contenido: null,
       estadoContenido: n.content_fetch_status,
       angulo,
       piezas: misPiezas,
       miniatura: miniaturaDe(misPiezas),
     }
 
-    tablero[ficha.etapa].push(ficha)
+    porEtapa[ficha.etapa].push(ficha)
   }
 
-  return tablero
+  // Los conteos salen de todo lo recorrido; las tarjetas, de un trozo.
+  const conteos = { ...CONTEOS_VACIOS }
+  const fichas = { ...porEtapa }
+  for (const etapa of Object.keys(porEtapa) as Etapa[]) {
+    conteos[etapa] = porEtapa[etapa].length
+    fichas[etapa] = porEtapa[etapa].slice(0, VISIBLES)
+  }
+
+  return { fichas, conteos }
+}
+
+const CONTEOS_VACIOS: Record<Etapa, number> = {
+  sin_analizar: 0,
+  analizada: 0,
+  angulo: 0,
+  post: 0,
+  publicado: 0,
+  descartado: 0,
 }

@@ -63,7 +63,7 @@ export function Tablero({ datos }: { datos: TableroDatos }) {
           en dos filas rompe la lectura de izquierda a derecha del proceso. */}
       <div className="flex items-start gap-5 overflow-x-auto pb-2">
         {GRUPOS.map((grupo) => {
-          const total = grupo.etapas.reduce((n, e) => n + datos[e.id].length, 0)
+          const total = grupo.etapas.reduce((n, e) => n + datos.conteos[e.id], 0)
           return (
             <section key={grupo.titulo} className="shrink-0">
               <header className="mb-2 flex items-baseline gap-2 border-b pb-1">
@@ -77,7 +77,8 @@ export function Tablero({ datos }: { datos: TableroDatos }) {
                     key={etapa.id}
                     titulo={etapa.titulo}
                     pista={etapa.pista}
-                    fichas={datos[etapa.id]}
+                    fichas={datos.fichas[etapa.id]}
+                    total={datos.conteos[etapa.id]}
                     onAbrir={abrir}
                   />
                 ))}
@@ -96,19 +97,23 @@ function Columna({
   titulo,
   pista,
   fichas,
+  total,
   onAbrir,
 }: {
   titulo: string
   pista: string
   fichas: Ficha[]
+  /** Cuantas hay de verdad: puede ser mas de las que se pintan. */
+  total: number
   onAbrir: (f: Ficha) => void
 }) {
+  const ocultas = total - fichas.length
   return (
     <div className="flex w-64 shrink-0 flex-col gap-2">
       <div className="px-1">
         <div className="flex items-baseline justify-between">
           <h3 className="text-xs font-medium">{titulo}</h3>
-          <span className="text-muted-foreground text-xs tabular-nums">{fichas.length}</span>
+          <span className="text-muted-foreground text-xs tabular-nums">{total}</span>
         </div>
         <p className="text-muted-foreground text-[11px]">{pista}</p>
       </div>
@@ -121,6 +126,12 @@ function Columna({
         ) : (
           fichas.map((f) => <Tarjeta key={f.newsId} ficha={f} onAbrir={() => onAbrir(f)} />)
         )}
+
+        {ocultas > 0 ? (
+          <p className="text-muted-foreground px-1 py-2 text-center text-xs">
+            y {ocultas} mas
+          </p>
+        ) : null}
       </div>
     </div>
   )
