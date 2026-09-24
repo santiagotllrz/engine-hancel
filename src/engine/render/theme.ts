@@ -211,6 +211,11 @@ export type Estilo = {
   mostrarPaginacion: boolean
   /** Meter fotos de banco en las laminas interiores. */
   usarFotos: boolean
+  /**
+   * Ilustrar el tema de frente en vez de buscar "el otro lado".
+   * En agro la foto util es el cultivo mismo; en tecnologia seria un cliche.
+   */
+  fotosLiterales: boolean
   cierre: Cierre
 }
 
@@ -221,6 +226,7 @@ export const ESTILO_POR_DEFECTO: Estilo = {
   marca: "",
   mostrarPaginacion: true,
   usarFotos: true,
+  fotosLiterales: false,
   cierre: CIERRE_POR_DEFECTO,
 }
 
@@ -241,6 +247,7 @@ export function estiloDesdeConfig(valor: unknown): Estilo {
     marca: typeof raw.marca === "string" ? raw.marca.trim().slice(0, 40) : "",
     mostrarPaginacion: raw.mostrarPaginacion !== false,
     usarFotos: raw.usarFotos !== false,
+    fotosLiterales: raw.fotosLiterales === true,
     cierre: cierreDesdeConfig(raw.cierre),
   }
 }

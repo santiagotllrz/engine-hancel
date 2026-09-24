@@ -30,6 +30,7 @@ export function CarouselStyleEditor({
   const [marca, setMarca] = React.useState(estilo.marca)
   const [paginacion, setPaginacion] = React.useState(estilo.mostrarPaginacion)
   const [usarFotos, setUsarFotos] = React.useState(estilo.usarFotos)
+  const [literales, setLiterales] = React.useState(estilo.fotosLiterales)
   const [cierreActivo, setCierreActivo] = React.useState(estilo.cierre.activo)
   const [cierreTitulo, setCierreTitulo] = React.useState(estilo.cierre.titulo)
   const [cierreTexto, setCierreTexto] = React.useState(estilo.cierre.texto)
@@ -42,6 +43,7 @@ export function CarouselStyleEditor({
     marca !== estilo.marca ||
     paginacion !== estilo.mostrarPaginacion ||
     usarFotos !== estilo.usarFotos ||
+    literales !== estilo.fotosLiterales ||
     cierreActivo !== estilo.cierre.activo ||
     cierreTitulo !== estilo.cierre.titulo ||
     cierreTexto !== estilo.cierre.texto
@@ -53,6 +55,7 @@ export function CarouselStyleEditor({
     form.set("marca", marca)
     form.set("mostrarPaginacion", paginacion ? "true" : "false")
     form.set("usarFotos", usarFotos ? "true" : "false")
+    form.set("fotosLiterales", literales ? "true" : "false")
     form.set("cierreActivo", cierreActivo ? "true" : "false")
     form.set("cierreTitulo", cierreTitulo)
     form.set("cierreTexto", cierreTexto)
@@ -187,6 +190,28 @@ export function CarouselStyleEditor({
               setUsarFotos(Boolean(v))
             }}
             aria-label="Usar fotos de banco"
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <Label htmlFor="fotosLiterales">Fotos literales del tema</Label>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Ilustra el asunto de frente: si la noticia habla de cafe, busca cafetales. Apagado,
+              busca la imagen de alrededor —una oficina, unas manos, una pantalla— que ilustra sin
+              repetir el titular. Enciendelo cuando el tema tenga una foto obvia y util; en
+              tecnologia suele dar tipicos.
+            </p>
+          </div>
+          <Switch
+            id="fotosLiterales"
+            checked={literales && usarFotos && pexelsConfigurado}
+            disabled={!pexelsConfigurado || !usarFotos}
+            onCheckedChange={(v) => {
+              setResult(null)
+              setLiterales(Boolean(v))
+            }}
+            aria-label="Buscar fotos literales del tema"
           />
         </div>
 

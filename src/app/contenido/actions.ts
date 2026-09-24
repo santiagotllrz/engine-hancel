@@ -579,6 +579,7 @@ export async function updateCarouselStyle(form: FormData): Promise<ActionResult>
           marca,
           mostrarPaginacion: form.get("mostrarPaginacion") === "true",
           usarFotos: form.get("usarFotos") === "true",
+          fotosLiterales: form.get("fotosLiterales") === "true",
           cierre: {
             activo: form.get("cierreActivo") === "true",
             titulo: text(form, "cierreTitulo").slice(0, 40),

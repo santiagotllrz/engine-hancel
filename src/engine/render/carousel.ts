@@ -94,7 +94,7 @@ export async function generarCarrusel(
   }
   const conFoto = necesitanFoto(variantes)
 
-  const terminos = terminosDeBusqueda(news, nichos)
+  const terminos = terminosDeBusqueda(news, nichos, estilo.fotosLiterales)
   const banco = new BancoDeFotos(terminos)
   const creditos: { autor: string; url: string }[] = []
 

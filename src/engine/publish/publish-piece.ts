@@ -243,7 +243,7 @@ async function tarjetaDelPost(
     const delBanco = async (): Promise<string | null> => {
       if (!estilo.usarFotos || !pexelsConfigurado()) return null
       const banco = new BancoDeFotos(
-        terminosDeBusqueda(news, await nichosConocidos(piece.account_id)),
+        terminosDeBusqueda(news, await nichosConocidos(piece.account_id), estilo.fotosLiterales),
         "apaisada"
       )
       const elegida = await banco.siguiente()

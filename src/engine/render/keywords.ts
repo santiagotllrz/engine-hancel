@@ -1,5 +1,7 @@
 import type { RawNews } from "@/lib/types"
 
+import { terminosLiteralesAgro } from "./keywords-agro"
+
 /**
  * De que buscar las fotos del carrusel.
  *
@@ -194,8 +196,16 @@ const RESPALDO = [
  * `keywords_matched` primero, porque son las que el analisis considero
  * relevantes; luego el tema del segmento y las palabras largas del titulo.
  */
-export function terminosDeBusqueda(news: RawNews | null, nichos: string[] = []): string[] {
+export function terminosDeBusqueda(
+  news: RawNews | null,
+  nichos: string[] = [],
+  literales = false
+): string[] {
   if (!news) return [...RESPALDO]
+
+  // En modo literal se ilustra el tema de frente y traducido al ingles, que es
+  // el idioma del banco de fotos. Ver `keywords-agro.ts`.
+  if (literales) return terminosLiteralesAgro(news.title, news.tema, news.keywords_matched)
 
   const vetados = [...nichos, news.niche]
   const terminos: string[] = []
