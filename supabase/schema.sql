@@ -748,3 +748,19 @@ alter table public.engine_secrets add column if not exists model_linkedin  text 
 alter table public.engine_secrets add column if not exists model_instagram text not null default 'claude-sonnet-5';
 alter table public.engine_secrets add column if not exists gemini_api_key  text;
 alter table public.generation_config add column if not exists ai_config jsonb not null default '{}'::jsonb;
+
+-- Cuando cambia el umbral de score, solo aplica a lo que entre despues: las
+-- noticias que ya estaban no se re-evaluan. Cambiar el umbral no puede resucitar
+-- hechos viejos que en su dia no llegaron.
+alter table public.generation_config
+  add column if not exists score_threshold_updated_at timestamptz;
+
+comment on column public.generation_config.score_threshold_updated_at is
+  'Cuando se cambio el umbral. La seleccion automatica solo mira noticias traidas despues.';
+
+update public.generation_config
+set score_threshold_updated_at = coalesce(score_threshold_updated_at, now());
+
+-- `raw_news.status` gana 'discarded_date': la noticia se guarda igual pero no
+-- entra al analisis porque el hecho ya es viejo (ver content/frescura.ts). Es
+-- texto libre, no hay constraint que tocar.

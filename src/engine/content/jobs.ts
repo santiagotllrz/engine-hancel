@@ -34,7 +34,7 @@ export async function getGenerationConfig(accountId: string): Promise<Generation
   const { data, error } = await supabaseAdmin()
     .from("generation_config")
     .select(
-      "variables, score_threshold, generation_mode, auto_networks, autopublish, carousel, updated_at"
+      "variables, score_threshold, score_threshold_updated_at, generation_mode, auto_networks, autopublish, carousel, updated_at"
     )
     .eq("account_id", accountId)
     .maybeSingle()
@@ -45,6 +45,7 @@ export async function getGenerationConfig(accountId: string): Promise<Generation
   return {
     variables: parseVariables(row.variables),
     score_threshold: typeof row.score_threshold === "number" ? row.score_threshold : null,
+    score_threshold_updated_at: row.score_threshold_updated_at ?? new Date(0).toISOString(),
     generation_mode: row.generation_mode === "auto" ? "auto" : "manual",
     auto_networks: parseRedes(row.auto_networks),
     autopublish: row.autopublish === true,

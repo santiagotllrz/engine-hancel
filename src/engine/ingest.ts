@@ -1,4 +1,5 @@
 import { expirarPendientesViejas } from "./content/expiry"
+import { DIAS_DE_FRESCURA, esVieja } from "./content/frescura"
 import { DEDUPE_FETCH_LIMIT, type SearchSpec } from "./config"
 import { findDuplicateIds, type DedupeCandidate } from "./dedupe"
 import { EventRecorder, type EventSink } from "./events"
@@ -145,7 +146,13 @@ export async function runIngestion(options: RunOptions): Promise<IngestionSummar
       const { data, error } = await supabase
         .from("raw_news")
         .upsert(
-          batch.map((fila) => ({ ...fila, account_id: accountId })),
+          // Lo viejo entra igual a la base, pero marcado: asi queda el rastro de
+          // que se trajo y por que no se analizo, en vez de desaparecer.
+          batch.map((fila) => ({
+            ...fila,
+            account_id: accountId,
+            ...(esVieja(fila.date_serper) ? { status: "discarded_date" } : {}),
+          })),
           { onConflict: "account_id,link", ignoreDuplicates: true }
         )
         .select("id")
@@ -153,7 +160,10 @@ export async function runIngestion(options: RunOptions): Promise<IngestionSummar
       if (error) throw new Error(`Fallo al insertar noticias: ${error.message}`)
       inserted += data?.length ?? 0
     }
-    recorder.emit("insert.done", `${inserted} noticias nuevas guardadas`, { inserted })
+    recorder.emit("insert.done", `${inserted} noticias nuevas guardadas`, {
+      inserted,
+      diasDeFrescura: DIAS_DE_FRESCURA,
+    })
 
     // Se mira el dia completo, no solo esta corrida: la corrida de la tarde debe
     // detectar que repite un hecho que ya trajo la de la manana.

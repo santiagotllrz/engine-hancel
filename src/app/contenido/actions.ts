@@ -639,6 +639,18 @@ export async function updateGenerationConfig(form: FormData): Promise<ActionResu
   const redes = REDES.filter((red) => form.getAll("auto_networks").includes(red))
 
   try {
+    const accountId = await idDeCuentaActual()
+
+    // Cambiar el umbral solo afecta a lo que entre despues. Se marca la fecha
+    // solo si el numero cambio de verdad: guardar otra cosa de la pantalla no
+    // puede mover la linea y dejar fuera noticias que ya cumplian.
+    const { data: previa } = await supabaseAdmin()
+      .from("generation_config")
+      .select("score_threshold")
+      .eq("account_id", accountId)
+      .maybeSingle()
+    const cambioElUmbral = (previa as { score_threshold: number | null } | null)?.score_threshold !== umbral
+
     const { error } = await supabaseAdmin()
       .from("generation_config")
       .update({
@@ -646,9 +658,10 @@ export async function updateGenerationConfig(form: FormData): Promise<ActionResu
         score_threshold: umbral,
         generation_mode: modo,
         auto_networks: redes,
+        ...(cambioElUmbral ? { score_threshold_updated_at: new Date().toISOString() } : {}),
         updated_at: new Date().toISOString(),
       })
-      .eq("account_id", await idDeCuentaActual())
+      .eq("account_id", accountId)
 
     if (error) throw new Error(error.message)
     refresh()

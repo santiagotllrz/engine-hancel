@@ -148,6 +148,8 @@ export type GenerationConfig = {
   variables: Variables
   /** NULL mientras el usuario no defina el scoring desde la interfaz. */
   score_threshold: number | null
+  /** Cuando se fijo el umbral: solo rige para noticias traidas despues. */
+  score_threshold_updated_at: string
   generation_mode: "auto" | "manual"
   /**
    * Para que redes genera el modo automatico.

@@ -491,6 +491,9 @@ export async function runContentTick(
         .eq("account_id", cuenta.id)
         .eq("status", "analyzed")
         .gte("relevance_score", config.score_threshold)
+        // El umbral solo rige para lo que entro despues de fijarlo: cambiarlo no
+        // resucita noticias viejas que en su dia no llegaron.
+        .gte("created_at", config.score_threshold_updated_at)
         .order("relevance_score", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(MAX_AUTO_POR_TICK * 6)
