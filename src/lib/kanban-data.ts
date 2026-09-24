@@ -28,6 +28,7 @@ export type Etapa =
   | "post"
   | "publicado"
   | "descartado"
+  | "descartado_fecha"
 
 export type PiezaDelTablero = {
   id: string
@@ -85,10 +86,13 @@ const VISIBLES = 60
 const MAX_FILAS = 3000
 
 function etapaDe(
+  estadoNoticia: string,
   analizada: boolean,
   angulo: Ficha["angulo"],
   piezas: PiezaDelTablero[]
 ): Etapa {
+  // El hecho ya era viejo al llegar: no se analiza ni se genera nada con el.
+  if (estadoNoticia === "discarded_date") return "descartado_fecha"
   if (piezas.some((p) => p.status === "published")) return "publicado"
   // Descartado es solo lo rechazado a mano: lo que no llega por score nunca
   // genera nada, asi que por aqui no aparece.
@@ -119,15 +123,14 @@ export async function getTablero(): Promise<Tablero> {
   const supabase = supabaseAdmin()
   const accountId = await idDeCuentaActual()
 
-  // Lo descartado por fecha no entra al tablero: es ruido de la ingesta, no una
-  // etapa del proceso. Sigue estando en /noticias con su estado.
+  // Lo descartado por fecha tambien entra: es un final del recorrido, no ruido
+  // que esconder. Dejarlo fuera hacia que el tablero no sumara lo que hay.
   const { data: noticias, error } = await supabase
     .from("raw_news")
     .select(
       "id, title, source, link, niche, tema, status, relevance_score, created_at, date_serper, snippet, analysis_notes, keywords_matched, content_fetch_status"
     )
     .eq("account_id", accountId)
-    .neq("status", "discarded_date")
     .order("created_at", { ascending: false })
     .limit(MAX_FILAS)
 
@@ -141,16 +144,23 @@ export async function getTablero(): Promise<Tablero> {
     post: [],
     publicado: [],
     descartado: [],
+    descartado_fecha: [],
   }
   if (filas.length === 0) {
     return { fichas: porEtapa, conteos: { ...CONTEOS_VACIOS } }
   }
 
-  const ids = filas.map((n) => n.id)
+  // Se filtra por cuenta, no por la lista de ids: meter cientos de uuid en un
+  // `in()` hace una URL de decenas de kB que PostgREST rechaza, y el fallo era
+  // mudo —las piezas no llegaban y todo parecia estar en "analizada"—. Ademas
+  // las dos tablas ya llevan `account_id`, asi que el filtro es el mismo.
   const [angulos, piezas] = await Promise.all([
-    supabase.from("content_angles").select("*").in("raw_news_id", ids),
-    supabase.from("content_pieces").select("*").in("raw_news_id", ids),
+    supabase.from("content_angles").select("*").eq("account_id", accountId),
+    supabase.from("content_pieces").select("*").eq("account_id", accountId),
   ])
+
+  if (angulos.error) throw new Error(`No se pudieron leer los angulos: ${angulos.error.message}`)
+  if (piezas.error) throw new Error(`No se pudieron leer las piezas: ${piezas.error.message}`)
 
   const angulosPorNoticia = new Map<string, ContentAngle>()
   for (const a of (angulos.data ?? []) as ContentAngle[]) {
@@ -195,7 +205,7 @@ export async function getTablero(): Promise<Tablero> {
 
     const ficha: Ficha = {
       newsId: n.id,
-      etapa: etapaDe(analizada, angulo, misPiezas),
+      etapa: etapaDe(n.status, analizada, angulo, misPiezas),
       titulo: n.title,
       fuente: n.source,
       link: n.link,
@@ -236,4 +246,5 @@ const CONTEOS_VACIOS: Record<Etapa, number> = {
   post: 0,
   publicado: 0,
   descartado: 0,
+  descartado_fecha: 0,
 }

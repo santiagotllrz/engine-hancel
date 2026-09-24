@@ -38,7 +38,10 @@ const GRUPOS: { titulo: string; etapas: { id: Etapa; titulo: string; pista: stri
   },
   {
     titulo: "Descartados",
-    etapas: [{ id: "descartado", titulo: "Descartados", pista: "Rechazados a mano" }],
+    etapas: [
+      { id: "descartado", titulo: "A mano", pista: "Rechazados por ti" },
+      { id: "descartado_fecha", titulo: "Por fecha", pista: "Ya eran viejas al llegar" },
+    ],
   },
 ]
 
