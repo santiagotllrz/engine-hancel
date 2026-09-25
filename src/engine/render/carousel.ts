@@ -12,7 +12,7 @@ import {
   renderSlide,
   repartirVariantes,
 } from "./render"
-import { subirCarrusel } from "./storage"
+import { subirCarrusel, subirImagenSuelta } from "./storage"
 import type { Slide } from "./templates"
 import { ESTILO_POR_DEFECTO, type Estilo } from "./theme"
 
@@ -36,6 +36,15 @@ export type CarouselPayload = {
   terminosFoto: string[]
   /** Creditos de Pexels: la licencia no lo exige, pero se agradece. */
   creditos: { autor: string; url: string }[]
+  /**
+   * La portada redibujada para Facebook, sin numeracion ni "desliza".
+   *
+   * Facebook publica una sola imagen, asi que reutilizar la del carrusel metia
+   * en el feed un "1 / 6" y una invitacion a deslizar que no llevan a ninguna
+   * parte. Es la misma lamina y la misma foto, dibujada otra vez sin esos dos
+   * elementos: una llamada mas a Satori y ni una a Pexels.
+   */
+  portadaFacebook?: string
 }
 
 /** Lo que el agente deja en `jobs_instagram.respuesta`. */
@@ -77,7 +86,9 @@ export async function generarCarrusel(
   respuesta: unknown,
   news: RawNews | null,
   estilo: Estilo = ESTILO_POR_DEFECTO,
-  nichos: string[] = []
+  nichos: string[] = [],
+  /** Dibuja ademas la portada suelta que usa Facebook. */
+  conPortadaFacebook = false
 ): Promise<CarouselPayload> {
   const { caption, hashtags, slides } = parseInstagramResponse(respuesta)
 
@@ -150,10 +161,23 @@ export async function generarCarrusel(
 
   const images = await subirCarrusel(pieceKey, imagenes)
 
+  // La de Facebook se dibuja aparte y con la misma foto: total 1 y sin
+  // paginacion, que es lo que quita el "1 / 6" y el "desliza".
+  let portadaFacebook: string | undefined
+  if (conPortadaFacebook && slides[0]) {
+    const png = await renderSlide(
+      { slide: slides[0], variante: variantes[0], foto: fotoPortada, etiqueta },
+      1,
+      { ...estilo, mostrarPaginacion: false }
+    )
+    portadaFacebook = await subirImagenSuelta(pieceKey, "facebook", png)
+  }
+
   return {
     caption,
     hashtags,
     images,
+    ...(portadaFacebook ? { portadaFacebook } : {}),
     slideCount: slides.length,
     portadaSinFoto: sinFotoPortada,
     terminosFoto: terminos.slice(0, 6),

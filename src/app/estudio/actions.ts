@@ -447,13 +447,24 @@ export async function regenerateCarousel(pieceId: string): Promise<ActionResult>
     )
     const { estiloDesdeConfig } = await import("@/engine/render/theme")
 
+    const { data: hermanaFacebook } = await supabase
+      .from("content_pieces")
+      .select("id, payload")
+      .eq("job_instagram_id", pieza.job_instagram_id)
+      .eq("network", "facebook")
+      .is("published_at", null)
+      .maybeSingle()
+
     const news = await noticiaDelAngulo(pieza.content_angle_id)
     const carrusel = await generarCarrusel(
       (job as { id: string }).id,
       (job as { respuesta: unknown }).respuesta,
       news,
       estiloDesdeConfig((cfg as { carousel?: unknown } | null)?.carousel),
-      await nichosConocidos(pieza.account_id)
+      await nichosConocidos(pieza.account_id),
+      // Solo si hay pieza de Facebook que actualizar: dibujarla siempre seria
+      // una llamada de mas a Satori en la mayoria de las regeneraciones.
+      Boolean(hermanaFacebook)
     )
 
     // El texto lo escribio el agente y no cambia porque se redibujen las imagenes.
@@ -476,20 +487,13 @@ export async function regenerateCarousel(pieceId: string): Promise<ActionResult>
     // si se redibujo, la suya tambien cambia. Solo si no se publico ya, porque
     // lo publicado no se toca. Se lee, se funde y se escribe porque `update`
     // sobre jsonb reemplaza el documento entero y aqui solo cambia una clave.
-    if (carrusel.images[0]) {
-      const { data: hermanas } = await supabase
+    const portadaFb = carrusel.portadaFacebook ?? carrusel.images[0]
+    if (hermanaFacebook && portadaFb) {
+      const hermana = hermanaFacebook as { id: string; payload: Record<string, unknown> }
+      await supabase
         .from("content_pieces")
-        .select("id, payload")
-        .eq("job_instagram_id", pieza.job_instagram_id)
-        .eq("network", "facebook")
-        .is("published_at", null)
-
-      for (const hermana of (hermanas ?? []) as { id: string; payload: Record<string, unknown> }[]) {
-        await supabase
-          .from("content_pieces")
-          .update({ payload: { ...hermana.payload, image: carrusel.images[0] } })
-          .eq("id", hermana.id)
-      }
+        .update({ payload: { ...hermana.payload, image: portadaFb } })
+        .eq("id", hermana.id)
     }
 
     refresh()
@@ -771,13 +775,55 @@ async function facebookDesdeCarruselExistente(angleId: string): Promise<boolean>
     (job as { respuesta: unknown }).respuesta
   )
 
+  // Facebook necesita su portada, sin numeracion ni "desliza": publica una sola
+  // imagen y esos dos elementos invitan a un gesto que ahi no existe. Si el
+  // carrusel no la trae —se genero antes de que existiera— se redibuja ahora, y
+  // de paso se refrescan sus laminas, que salen del mismo guion.
+  const guardada = (pieza.payload as unknown as { portadaFacebook?: string }).portadaFacebook
+  let portada = guardada ?? null
+
+  if (!portada) {
+    const { generarCarrusel, nichosConocidos, noticiaDelAngulo } = await import(
+      "@/engine/render/carousel"
+    )
+    const { estiloDesdeConfig } = await import("@/engine/render/theme")
+    const { data: cfg } = await supabase
+      .from("generation_config")
+      .select("carousel")
+      .eq("account_id", accountId)
+      .maybeSingle()
+
+    const rehecho = await generarCarrusel(
+      pieza.job_instagram_id,
+      (job as { respuesta: unknown }).respuesta,
+      await noticiaDelAngulo(angleId),
+      estiloDesdeConfig((cfg as { carousel?: unknown } | null)?.carousel),
+      await nichosConocidos(accountId),
+      true
+    )
+    portada = rehecho.portadaFacebook ?? rehecho.images[0] ?? null
+
+    await supabase
+      .from("content_pieces")
+      .update({
+        payload: {
+          ...rehecho,
+          caption:
+            (pieza.payload as unknown as { caption?: string }).caption ?? rehecho.caption,
+        },
+      })
+      .eq("id", pieza.id)
+  }
+
+  if (!portada) return false
+
   const { error } = await supabase.from("content_pieces").insert({
     account_id: accountId,
     content_angle_id: angleId,
     raw_news_id: pieza.raw_news_id,
     job_instagram_id: pieza.job_instagram_id,
     network: "facebook",
-    payload: armarPublicacionFacebook({ slides, caption, hashtags, portada: imagenes[0] }),
+    payload: armarPublicacionFacebook({ slides, caption, hashtags, portada }),
     status: "generated",
     variables_usadas: ((job as { input?: { variables?: unknown } }).input?.variables ?? null) as Variables | null,
     generated_at: new Date().toISOString(),

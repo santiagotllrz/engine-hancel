@@ -356,12 +356,16 @@ function PanelPieza({ pieza, newsId }: { pieza: PiezaDelTablero; newsId: string 
         </div>
       ) : null}
 
+      {/* `self-start` no es un detalle: en una columna flex la imagen se estira
+          al ancho del panel, y con `object-cover` eso la recortaba en una banda
+          apaisada que no se parecia a lo que sale publicado. Mismo tamaño que
+          las laminas del carrusel, porque es la misma imagen. */}
       {pieza.payload.image ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={pieza.payload.image}
           alt="Imagen de la publicacion"
-          className="h-40 w-auto rounded-md border object-cover"
+          className="h-36 w-28 shrink-0 self-start rounded-md border object-cover"
           loading="lazy"
         />
       ) : null}

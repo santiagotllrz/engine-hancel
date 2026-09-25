@@ -452,16 +452,17 @@ export async function runContentTick(
     try {
       const news = await noticiaDelAngulo(job.content_angle_id)
       const configCuenta = await configDe(job.account_id)
+      // Un trabajo viejo no trae destinos: era solo Instagram.
+      const destinos = job.input?.destinos ?? ["instagram"]
+
       const carrusel = await generarCarrusel(
         job.id,
         job.respuesta,
         news,
         estiloDesdeConfig(configCuenta.carousel),
-        await nichosDe(job.account_id)
+        await nichosDe(job.account_id),
+        destinos.includes("facebook")
       )
-
-      // Un trabajo viejo no trae destinos: era solo Instagram.
-      const destinos = job.input?.destinos ?? ["instagram"]
 
       if (destinos.includes("instagram")) {
         const { error } = await supabase.from("content_pieces").insert({
@@ -491,7 +492,7 @@ export async function runContentTick(
       // laminas como descripcion. Las imagenes ya estan dibujadas y subidas
       // aunque Instagram no fuera destino; a Facebook solo le hace falta la
       // primera.
-      if (destinos.includes("facebook") && carrusel.images[0]) {
+      if (destinos.includes("facebook") && (carrusel.portadaFacebook ?? carrusel.images[0])) {
         const { caption, hashtags, slides } = parseInstagramResponse(job.respuesta)
         const { error: errorFacebook } = await supabase.from("content_pieces").insert({
           account_id: job.account_id,
@@ -499,7 +500,12 @@ export async function runContentTick(
           raw_news_id: news?.id ?? null,
           job_instagram_id: job.id,
           network: "facebook",
-          payload: armarPublicacionFacebook({ slides, caption, hashtags, portada: carrusel.images[0] }),
+          payload: armarPublicacionFacebook({
+            slides,
+            caption,
+            hashtags,
+            portada: carrusel.portadaFacebook ?? carrusel.images[0],
+          }),
           status: "generated",
           variables_usadas: (job.input?.variables ?? null) as Variables | null,
           generated_at: new Date().toISOString(),

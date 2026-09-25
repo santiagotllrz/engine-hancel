@@ -45,6 +45,31 @@ export async function subirCarrusel(
   return urls
 }
 
+/**
+ * Sube una imagen suelta dentro de la carpeta de un carrusel.
+ *
+ * La usa la portada de Facebook, que es la misma lamina que la del carrusel
+ * pero dibujada de nuevo sin numeracion. Vive en la misma carpeta para que
+ * borrar el carrusel se la lleve tambien.
+ */
+export async function subirImagenSuelta(
+  pieceKey: string,
+  nombre: string,
+  png: Buffer
+): Promise<string> {
+  const supabase = supabaseAdmin()
+  const ruta = `${pieceKey}/${nombre}.png`
+
+  const { error } = await supabase.storage.from(BUCKET).upload(ruta, png, {
+    contentType: "image/png",
+    upsert: true,
+  })
+  if (error) throw new Error(`No se pudo subir ${nombre}: ${error.message}`)
+
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(ruta)
+  return `${data.publicUrl}?v=${Date.now().toString(36)}`
+}
+
 /** Borra las imagenes de un carrusel. Se usa al descartar una pieza. */
 export async function borrarCarrusel(pieceKey: string): Promise<void> {
   const supabase = supabaseAdmin()
