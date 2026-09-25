@@ -42,36 +42,39 @@ export function leToca(
     return { corre: true, motivo: "Automatico: corre en cuanto hay trabajo." }
   }
 
-  // Programado: solo dentro de su ventana, y una vez por ventana.
-  if (ajustes.run_hours.length === 0) {
+  // Programado: corre en cuanto pasa una de sus horas, y una sola vez por hora.
+  if (ajustes.run_at.length === 0) {
     return { corre: false, motivo: "Programado pero sin horas: no corre nunca." }
   }
 
   const { hour, minute } = partsIn(timezone, now)
-  const horario = ajustes.run_hours
-    .map((h) => `${dos(h)}:${dos(ajustes.run_minute)}`)
-    .join(", ")
+  const ahora = hour * 60 + minute
+  const horario = ajustes.run_at.map(comoHora).join(", ")
 
-  if (!ajustes.run_hours.includes(hour)) {
-    return { corre: false, motivo: `Son las ${dos(hour)}:00; corre a las ${horario}.` }
+  // La ultima que ya toco. Se compara con "menor o igual" y no con igualdad
+  // porque el tick pasa cada pocos minutos y nunca cae en el minuto exacto: sin
+  // esto, una hora programada se saltaria siempre que el tick no acertara justo.
+  const vencidas = ajustes.run_at.filter((m) => m <= ahora)
+  if (vencidas.length === 0) {
+    return { corre: false, motivo: `Son las ${comoHora(ahora)}; corre a las ${horario}.` }
   }
-
-  if (minute < ajustes.run_minute) {
-    return {
-      corre: false,
-      motivo: `La pasada de las ${dos(hour)}:${dos(ajustes.run_minute)} aun no ha llegado.`,
-    }
-  }
+  const toca = vencidas[vencidas.length - 1]
 
   if (ajustes.last_run_at) {
     const anterior = new Date(ajustes.last_run_at)
     const ultima = partsIn(timezone, anterior)
-    if (anterior.toDateString() === now.toDateString() && ultima.hour === hour) {
-      return { corre: false, motivo: "La pasada de esta hora ya se hizo." }
+    const mismoDia = anterior.toDateString() === now.toDateString()
+    if (mismoDia && ultima.hour * 60 + ultima.minute >= toca) {
+      return { corre: false, motivo: `La pasada de las ${comoHora(toca)} ya se hizo.` }
     }
   }
 
-  return { corre: true, motivo: `Pasada de las ${dos(hour)}:${dos(ajustes.run_minute)}.` }
+  return { corre: true, motivo: `Pasada de las ${comoHora(toca)}.` }
+}
+
+/** Un minuto del dia como hora legible: 545 es 09:05. */
+export function comoHora(minutos: number): string {
+  return `${dos(Math.floor(minutos / 60))}:${dos(minutos % 60)}`
 }
 
 function dos(n: number): string {
@@ -85,19 +88,19 @@ export function proximasPasadas(
   now: Date,
   cuantas = 3
 ): string[] {
-  if (ajustes.mode !== "programado" || ajustes.run_hours.length === 0) return []
+  if (ajustes.mode !== "programado" || ajustes.run_at.length === 0) return []
 
   const { hour, minute } = partsIn(timezone, now)
+  const ahora = hour * 60 + minute
   const salidas: string[] = []
 
-  // Dos vueltas: lo que queda de hoy y, si no llena, el principio de mañana.
-  for (const dia of ["hoy", "mañana"] as const) {
-    for (const h of ajustes.run_hours) {
-      if (salidas.length >= cuantas) break
-      const yaPaso = h < hour || (h === hour && minute >= ajustes.run_minute)
-      if (dia === "hoy" && yaPaso) continue
-      salidas.push(`${dia === "hoy" ? "" : "mañana "}${dos(h)}:${dos(ajustes.run_minute)}`)
-    }
+  for (const m of ajustes.run_at) {
+    if (salidas.length >= cuantas) break
+    if (m > ahora) salidas.push(comoHora(m))
+  }
+  for (const m of ajustes.run_at) {
+    if (salidas.length >= cuantas) break
+    salidas.push(`mañana ${comoHora(m)}`)
   }
 
   return salidas

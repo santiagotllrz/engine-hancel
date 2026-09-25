@@ -25,31 +25,69 @@ const NOMBRE: Record<Modo, string> = {
  * —a una hora, o en cuanto llega el trabajo— y nadie podia saber cual sin leer
  * el codigo. Cada uno lleva su frase explicandose.
  */
+/** Un minuto del dia como hora legible: 545 es 09:05. */
+function comoHora(minutos: number): string {
+  const h = Math.floor(minutos / 60)
+  const m = minutos % 60
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+}
+
+/**
+ * Lee lo que se escribio: "9", "9:20", "18.30", separados por comas o espacios.
+ *
+ * Se acepta la hora suelta porque es como se escribe deprisa, y "9" no puede
+ * significar otra cosa que las nueve en punto. Lo que no se entiende se
+ * descarta en silencio; el campo vuelve a pintarse normalizado al guardar, asi
+ * que se ve enseguida que se quedo fuera.
+ */
+function leerHoras(texto: string): number[] {
+  const minutos: number[] = []
+
+  for (const trozo of texto.split(/[,;\s]+/)) {
+    const limpio = trozo.trim()
+    if (!limpio) continue
+
+    const partes = limpio.split(/[:.]/)
+    const h = Number(partes[0])
+    const m = partes.length > 1 ? Number(partes[1]) : 0
+    if (!Number.isInteger(h) || h < 0 || h > 23) continue
+    if (!Number.isInteger(m) || m < 0 || m > 59) continue
+    minutos.push(h * 60 + m)
+  }
+
+  return [...new Set(minutos)].sort((a, b) => a - b)
+}
+
 export function CronEditor({
   clave,
   modos,
   modo,
   horas,
-  minuto,
+  tanda,
   canal = "",
   titulo = "Cron",
   proximas,
+  porCanal = false,
   soloLectura = false,
 }: {
   clave: string
   modos: Modo[]
   modo: Modo
+  /** Minutos del dia. */
   horas: number[]
-  minuto: number
+  /** Cuantas piezas por pasada. Solo tiene sentido en publicacion. */
+  tanda: number
   canal?: string
   titulo?: string
   /** Las proximas pasadas previstas, ya calculadas en el servidor. */
   proximas: string[]
+  /** Es el agente de publicacion, el unico que publica por tandas. */
+  porCanal?: boolean
   soloLectura?: boolean
 }) {
   const [elegido, setElegido] = React.useState<Modo>(modo)
-  const [texto, setTexto] = React.useState(horas.join(", "))
-  const [min, setMin] = React.useState(String(minuto))
+  const [texto, setTexto] = React.useState(horas.map(comoHora).join(", "))
+  const [porTanda, setPorTanda] = React.useState(String(tanda))
   const [pending, startTransition] = React.useTransition()
   const [result, setResult] = React.useState<ActionResult | null>(null)
 
@@ -61,15 +99,19 @@ export function CronEditor({
   }
 
   const guardarHoras = () => {
-    const parsed = texto
-      .split(/[,\s]+/)
-      .map((t) => Number(t.trim()))
-      .filter((n) => !Number.isNaN(n))
-
+    const minutos = leerHoras(texto)
     setResult(null)
-    startTransition(async () =>
-      setResult(await guardarHorario(clave, parsed, Number(min) || 0, canal))
-    )
+    startTransition(async () => {
+      const r = await guardarHorario(
+        clave,
+        minutos,
+        canal,
+        porCanal ? Number(porTanda) || 1 : undefined
+      )
+      setResult(r)
+      // Se repinta normalizado: asi se ve que entendio y que descarto.
+      if (r.ok) setTexto(minutos.map(comoHora).join(", "))
+    })
   }
 
   return (
@@ -100,12 +142,12 @@ export function CronEditor({
         </div>
 
         {elegido === "programado" ? (
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+          <div className="grid gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor={`horas-${clave}-${canal}`}>Horas</Label>
               <Input
                 id={`horas-${clave}-${canal}`}
-                placeholder="9, 13, 18"
+                placeholder="9:00, 9:20, 13:30, 18:00"
                 value={texto}
                 disabled={soloLectura}
                 onChange={(e) => {
@@ -114,23 +156,35 @@ export function CronEditor({
                 }}
                 className="font-mono"
               />
+              <p className="text-muted-foreground text-xs">
+                Separadas por comas, con minuto propio cada una. &quot;9&quot; son las 09:00.
+              </p>
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={`min-${clave}-${canal}`}>Minuto</Label>
-              <Input
-                id={`min-${clave}-${canal}`}
-                className="w-20 font-mono"
-                value={min}
-                disabled={soloLectura}
-                onChange={(e) => {
-                  setResult(null)
-                  setMin(e.target.value)
-                }}
-              />
+
+            {porCanal ? (
+              <div className="grid gap-1.5">
+                <Label htmlFor={`tanda-${clave}-${canal}`}>Piezas por pasada</Label>
+                <Input
+                  id={`tanda-${clave}-${canal}`}
+                  className="w-24 font-mono"
+                  value={porTanda}
+                  disabled={soloLectura}
+                  onChange={(e) => {
+                    setResult(null)
+                    setPorTanda(e.target.value)
+                  }}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Cuantas salen en cada hora. Lo que sobre espera a la siguiente.
+                </p>
+              </div>
+            ) : null}
+
+            <div>
+              <Button onClick={guardarHoras} disabled={pending || soloLectura}>
+                {pending ? "Guardando…" : "Guardar"}
+              </Button>
             </div>
-            <Button onClick={guardarHoras} disabled={pending || soloLectura}>
-              {pending ? "Guardando…" : "Guardar"}
-            </Button>
           </div>
         ) : null}
 

@@ -193,8 +193,13 @@ create table if not exists public.agent_settings (
   -- y no pulsar nunca, con su columna ocupando sitio para siempre.
   enabled     boolean     not null default true,
   mode        text        not null default 'automatico',
-  run_hours   integer[]   not null default '{}',
-  run_minute  integer     not null default 0,
+  -- Los minutos del dia en que corre, de 0 a 1439: un 545 son las 09:05.
+  -- Antes eran una lista de horas y un unico minuto para todas, asi que se
+  -- podia pedir "9:30 y 18:30" pero no "9:10 y 9:30", y para publicar varias
+  -- veces dentro de la misma hora eso no sirve. Fuera del modo programado se
+  -- conservan: apagar y volver a programar no deberia perder el horario que
+  -- costo decidir.
+  run_at      integer[]   not null default '{}',
   batch_size  integer,
   last_run_at timestamptz,
 

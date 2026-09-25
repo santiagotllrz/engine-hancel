@@ -56,8 +56,15 @@ export type AjustesAgente = {
   /** Solo lo usa publicacion, que tiene un horario por red. Vacio en el resto. */
   canal: string
   mode: Modo
-  run_hours: number[]
-  run_minute: number
+  /**
+   * Los minutos del dia en que corre, de 0 a 1439.
+   *
+   * Antes eran una lista de horas y un unico minuto para todas, asi que se
+   * podia pedir "9:30 y 18:30" pero no "9:10 y 9:30": el minuto era del agente
+   * y no de cada pasada. Para publicar varias veces dentro de la misma hora eso
+   * no sirve.
+   */
+  run_at: number[]
   batch_size: number | null
   last_run_at: string | null
   /** `null` = el que trae el codigo. Se escribe solo al editarlo. */
@@ -78,8 +85,7 @@ function porDefecto(agent: Agente, canal: string): AjustesAgente {
     canal,
     enabled: true,
     mode: agent === "extraccion" ? "manual" : "automatico",
-    run_hours: [],
-    run_minute: 0,
+    run_at: [],
     batch_size: null,
     last_run_at: null,
     prompt: null,
@@ -94,10 +100,11 @@ function normalizar(fila: Record<string, unknown>): AjustesAgente {
     canal: String(fila.canal ?? ""),
     enabled: fila.enabled !== false,
     mode: (MODOS as readonly string[]).includes(modo) ? (modo as Modo) : "manual",
-    run_hours: Array.isArray(fila.run_hours)
-      ? [...(fila.run_hours as number[])].sort((a, b) => a - b)
+    run_at: Array.isArray(fila.run_at)
+      ? [...new Set(fila.run_at as number[])]
+          .filter((m) => Number.isInteger(m) && m >= 0 && m <= 1439)
+          .sort((a, b) => a - b)
       : [],
-    run_minute: typeof fila.run_minute === "number" ? fila.run_minute : 0,
     batch_size: typeof fila.batch_size === "number" ? fila.batch_size : null,
     last_run_at: (fila.last_run_at as string | null) ?? null,
     prompt: (fila.prompt as string | null) ?? null,
@@ -159,7 +166,7 @@ export async function guardarAjustes(
   cambios: Partial<
     Pick<
       AjustesAgente,
-      "enabled" | "mode" | "run_hours" | "run_minute" | "batch_size" | "prompt" | "model"
+      "enabled" | "mode" | "run_at" | "batch_size" | "prompt" | "model"
     >
   >
 ): Promise<void> {

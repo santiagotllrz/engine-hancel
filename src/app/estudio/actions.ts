@@ -601,54 +601,6 @@ export async function runTickNow(): Promise<ActionResult> {
 
 // ------------------------------------------------------------- configuracion
 
-/** Cuando y cuanto se publica en una red. */
-export async function updatePublishSchedule(form: FormData): Promise<ActionResult> {
-  const network = text(form, "network")
-  if (network !== "linkedin" && network !== "instagram" && network !== "facebook") {
-    return { ok: false, error: "Red no soportada." }
-  }
-
-  const horas = [
-    ...new Set(
-      String(form.get("run_hours") ?? "")
-        .split(",")
-        .map((parte) => Number(parte.trim()))
-        .filter((valor) => Number.isInteger(valor) && valor >= 0 && valor <= 23)
-    ),
-  ].sort((a, b) => a - b)
-
-  const minuto = Number(text(form, "run_minute") || "0")
-  const tanda = Number(text(form, "batch_size") || "1")
-
-  if (!Number.isInteger(minuto) || minuto < 0 || minuto > 59) {
-    return { ok: false, error: "El minuto tiene que estar entre 0 y 59." }
-  }
-  if (!Number.isInteger(tanda) || tanda < 1 || tanda > 20) {
-    return { ok: false, error: "Las piezas por tanda van de 1 a 20." }
-  }
-
-  try {
-    const { error } = await supabaseAdmin()
-      .from("publish_schedule")
-      .update({
-        enabled: form.get("enabled") === "true",
-        run_hours: horas,
-        run_minute: minuto,
-        batch_size: tanda,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("account_id", await idDeCuentaActual())
-      .eq("network", network)
-
-    if (error) throw new Error(error.message)
-    refresh()
-    return { ok: true }
-  } catch (error) {
-    return fail(error, "No se pudo guardar la programacion.")
-  }
-}
-
-/** El aspecto de las imagenes del carrusel. Cambia como se ve, no que dice. */
 export async function updateCarouselStyle(form: FormData): Promise<ActionResult> {
   const paleta = text(form, "paleta")
   const fuente = text(form, "fuente")

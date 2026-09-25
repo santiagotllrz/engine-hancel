@@ -118,8 +118,9 @@ export default async function AgentePage({
             titulo={canal ? `Cron · ${NOMBRE_DE_RED[canal as keyof typeof NOMBRE_DE_RED]}` : "Cron"}
             modos={ficha.modos}
             modo={ajustes.mode}
-            horas={ajustes.run_hours}
-            minuto={ajustes.run_minute}
+            horas={ajustes.run_at}
+            tanda={ajustes.batch_size ?? 1}
+            porCanal={ficha.porCanal === true}
             proximas={proximasPasadas(ajustes, ajustesCuenta.timezone, ahora)}
             soloLectura={espejo}
           />

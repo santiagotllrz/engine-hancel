@@ -105,26 +105,29 @@ async function arrancar(agent: Agente): Promise<void> {
 
 export async function guardarHorario(
   clave: string,
-  horas: number[],
-  minuto: number,
-  canal = ""
+  /** Minutos del dia, de 0 a 1439. Un 545 son las 09:05. */
+  minutos: number[],
+  canal = "",
+  /** Cuantas piezas por pasada. Solo lo usa publicacion. */
+  tanda?: number
 ): Promise<ActionResult> {
   const r = resolver(clave)
   if (!r.ok) return r
 
   // Se limpia aqui y no se confia en el formulario: es una accion de servidor y
   // una hora fuera de rango dejaria al agente sin correr nunca, en silencio.
-  const limpias = [...new Set(horas.filter((h) => Number.isInteger(h) && h >= 0 && h <= 23))].sort(
-    (a, b) => a - b
-  )
-  if (!Number.isInteger(minuto) || minuto < 0 || minuto > 59) {
-    return { ok: false, error: "El minuto tiene que estar entre 0 y 59." }
+  const limpias = [...new Set(minutos.filter((m) => Number.isInteger(m) && m >= 0 && m <= 1439))]
+    .sort((a, b) => a - b)
+    .slice(0, 24)
+
+  if (tanda !== undefined && (!Number.isInteger(tanda) || tanda < 1 || tanda > 20)) {
+    return { ok: false, error: "La tanda tiene que ser un entero entre 1 y 20." }
   }
 
   try {
     await guardarAjustes(await idDeCuentaActual(), r.agent, canal, {
-      run_hours: limpias,
-      run_minute: minuto,
+      run_at: limpias,
+      ...(tanda === undefined ? {} : { batch_size: tanda }),
     })
     refresh(clave)
     return { ok: true }

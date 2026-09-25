@@ -1,6 +1,7 @@
 import "server-only"
 
 import type { ContentAngle, ContentPiece, PiecePayload } from "@/engine/content/types"
+import { comoHora } from "@/engine/agents/turno"
 import { redesActivas as redesActivas_ } from "@/engine/agents/redes"
 import { ajustesDe, type Agente } from "@/engine/agents/settings"
 import { supabaseAdmin } from "@/engine/supabase-admin"
@@ -368,10 +369,8 @@ async function modosDeEtapa(accountId: string): Promise<Partial<Record<Etapa, Mo
       nombre: quien.nombre,
       modo: ajustes.mode,
       horario:
-        ajustes.mode === "programado" && ajustes.run_hours.length > 0
-          ? ajustes.run_hours
-              .map((h) => `${String(h).padStart(2, "0")}:${String(ajustes.run_minute).padStart(2, "0")}`)
-              .join(", ")
+        ajustes.mode === "programado" && ajustes.run_at.length > 0
+          ? ajustes.run_at.map(comoHora).join(", ")
           : null,
     }
   }
