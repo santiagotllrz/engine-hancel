@@ -48,16 +48,42 @@ export type CarouselPayload = {
 }
 
 /** Lo que el agente deja en `jobs_instagram.respuesta`. */
+/**
+ * Arregla la palabra que no se puede publicar mal.
+ *
+ * Al modelo se le pide en el prompt que escriba con tildes y con eñe, y casi
+ * siempre lo hace, pero "anos" por "años" no es una falta como las demas: es
+ * otra palabra, y bastante desafortunada. Es la unica que se corrige en codigo
+ * porque es la unica donde el arreglo es seguro —"anos" no aparece de verdad
+ * en una noticia del campo— y el fallo, caro.
+ *
+ * El resto de tildes no se toca: no hay forma fiable de saber si "cayo" era
+ * "cayó" o el arbol, y un arreglo a medias es peor que ninguno.
+ */
+function arreglarEnies(texto: string): string {
+  return texto.replace(/anos/gi, (m) => (m[0] === "A" ? "Años" : "años"))
+}
+
 export function parseInstagramResponse(respuesta: unknown): {
   caption: string
   hashtags: string[]
   slides: Slide[]
   /** Las busquedas de foto que eligio quien escribio el carrusel. */
   fotos: string[]
+  /** La cosa concreta que va recortada en la portada. Vacio = sin elemento. */
+  elemento: string
 } {
   const raiz = (respuesta ?? {}) as Record<string, unknown>
 
-  const slides = parseSlides(raiz.slides)
+  const slides = parseSlides(raiz.slides).map((slide) =>
+    slide.type === "photo_hook"
+      ? { ...slide, hook: slide.hook ? arreglarEnies(slide.hook) : slide.hook }
+      : {
+          ...slide,
+          title: slide.title ? arreglarEnies(slide.title) : slide.title,
+          body: slide.body ? arreglarEnies(slide.body) : slide.body,
+        }
+  )
   if (slides.length < MIN_SLIDES) {
     throw new Error(
       `El agente de Instagram devolvio ${slides.length} slides utiles y hacen falta al menos ` +
@@ -66,7 +92,7 @@ export function parseInstagramResponse(respuesta: unknown): {
     )
   }
 
-  const caption = typeof raiz.caption === "string" ? raiz.caption.trim() : ""
+  const caption = typeof raiz.caption === "string" ? arreglarEnies(raiz.caption.trim()) : ""
   const hashtags = Array.isArray(raiz.hashtags)
     ? raiz.hashtags
         .filter((h): h is string => typeof h === "string" && h.trim().length > 0)
@@ -84,7 +110,12 @@ export function parseInstagramResponse(respuesta: unknown): {
         .slice(0, 8)
     : []
 
-  return { caption, hashtags, slides, fotos }
+  const elemento =
+    typeof raiz.elemento === "string" && raiz.elemento.trim().length > 2
+      ? raiz.elemento.trim()
+      : ""
+
+  return { caption, hashtags, slides, fotos, elemento }
 }
 
 /**
@@ -103,7 +134,7 @@ export async function generarCarrusel(
   /** Dibuja ademas la portada suelta que usa Facebook. */
   conPortadaFacebook = false
 ): Promise<CarouselPayload> {
-  const { caption, hashtags, slides, fotos } = parseInstagramResponse(respuesta)
+  const { caption, hashtags, slides, fotos, elemento } = parseInstagramResponse(respuesta)
 
   // El cierre es una lamina de marca, no del guion: se añade aqui y no se le
   // pide al agente. Va siempre, porque la llamada a seguir la cuenta es lo
@@ -124,6 +155,12 @@ export async function generarCarrusel(
 
   // El logo se descarga una vez: Satori necesita los bytes, no una URL.
   const logo = await descargarFoto(estilo.logo)
+
+  // El elemento de la portada: la cosa concreta de la que habla la noticia,
+  // buscada en internet y no en el banco de fotos. Es opcional de verdad: si no
+  // aparece nada utilizable la portada sale como siempre, sin hueco raro.
+  const inserto = await buscarInserto(elemento)
+  const insertoPos = Math.floor(Math.random() * 4)
   const conFoto = necesitanFoto(variantes)
 
   // Lo que pidio el agente manda; el rastreo del titular queda de respaldo por
@@ -176,7 +213,15 @@ export async function generarCarrusel(
 
     imagenes.push(
       await renderSlide(
-        { slide, variante: variantes[indice], foto, etiqueta, logo },
+        {
+          slide,
+          variante: variantes[indice],
+          foto,
+          etiqueta,
+          logo,
+          inserto: indice === 0 ? inserto : null,
+          insertoPos,
+        },
         slides.length,
         estilo
       )
@@ -236,3 +281,31 @@ export async function nichosConocidos(accountId: string): Promise<string[]> {
 }
 
 export { MAX_SLIDES, MIN_SLIDES }
+
+
+/**
+ * El elemento recortado de la portada, ya descargado.
+ *
+ * Se piden varias candidatas y se prueban en orden: la primera que se pueda
+ * descargar de verdad gana. Muchas imagenes de resultados vienen de sitios que
+ * bloquean la descarga directa o sirven HTML en vez de la imagen, asi que
+ * quedarse con la primera sin comprobarla dejaria la portada sin elemento la
+ * mitad de las veces.
+ */
+async function buscarInserto(consulta: string): Promise<string | null> {
+  if (!consulta) return null
+
+  try {
+    const { searchImage } = await import("../serper")
+    const candidatas = await searchImage(consulta)
+
+    for (const imagen of candidatas.slice(0, 5)) {
+      const descargada = await descargarFoto(imagen.url)
+      if (descargada) return descargada
+    }
+  } catch {
+    // Una busqueda caida no puede tumbar el carrusel: es un adorno, no el post.
+  }
+
+  return null
+}

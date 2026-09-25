@@ -61,10 +61,14 @@ export type SlideRender = {
   etiqueta?: string | null
   /** El logo ya descargado, para la lamina de cierre. Solo lo usa ella. */
   logo?: string | null
+  /** El elemento recortado, ya descargado. Solo lo usa la portada. */
+  inserto?: string | null
+  /** En cual de las cuatro esquinas va. Se sortea al generar. */
+  insertoPos?: number
 }
 
 export async function renderSlide(
-  { slide, variante, foto, etiqueta, logo }: SlideRender,
+  { slide, variante, foto, etiqueta, logo, inserto, insertoPos }: SlideRender,
   total: number,
   estilo: Estilo = ESTILO_POR_DEFECTO
 ): Promise<Buffer> {
@@ -79,6 +83,8 @@ export async function renderSlide(
       foto={foto ?? null}
       etiqueta={etiqueta ?? null}
       logo={logo ?? null}
+      inserto={inserto ?? null}
+      insertoPos={insertoPos ?? 0}
     />,
     { width: ANCHO, height: ALTO, fonts }
   )

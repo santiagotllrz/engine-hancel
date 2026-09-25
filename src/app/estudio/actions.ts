@@ -186,9 +186,11 @@ export async function encolarContenido(rawNewsId: string): Promise<ActionResult>
     if (repetido) return { ok: false, error: repetido }
 
     await enqueueAngleJob(news, config.variables)
-    // El tick tambien drena lo que ya estuviera hecho, asi que una sola
-    // pasada encola y materializa.
-    await runContentTick({ trigger: "manual" })
+    // Se fuerza el agente de angulo porque mandar algo a mano es una orden, no
+    // una sugerencia: sin esto, con el agente en manual o esperando su hora, lo
+    // que acabas de arrastrar se quedaba en la cola con todo lo demas y no
+    // pasaba nada visible al soltarlo.
+    await runContentTick({ trigger: "manual", forzar: ["angulo"] })
     refresh()
     return { ok: true, warning: await avisoSiFaltaToken() }
   } catch (error) {
@@ -212,7 +214,7 @@ export async function encolarContenidoConOverride(form: FormData): Promise<Actio
     if (repetido) return { ok: false, error: repetido }
 
     await enqueueAngleJob(news, config.variables, override)
-    await runContentTick({ trigger: "manual" })
+    await runContentTick({ trigger: "manual", forzar: ["angulo"] })
     refresh()
     return { ok: true, warning: await avisoSiFaltaToken() }
   } catch (error) {
@@ -279,7 +281,9 @@ export async function generateFromAngle(
         .eq("account_id", await idDeCuentaActual())
     }
 
-    await runContentTick({ trigger: "manual" })
+    // Igual que al encolar un angulo: pedir una pieza a mano la adelanta a lo
+    // que haya en cola, sea cual sea el modo de su agente.
+    await runContentTick({ trigger: "manual", forzar: ["instagram", "linkedin"] })
     refresh()
     return { ok: true, warning: await avisoSiFaltaToken() }
   } catch (error) {

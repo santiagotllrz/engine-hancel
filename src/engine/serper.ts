@@ -71,3 +71,65 @@ export async function searchNews(
   const payload = (await response.json()) as { news?: SerperNewsItem[] }
   return payload.news ?? []
 }
+
+// ------------------------------------------------------------------ imagenes
+
+const SERPER_IMAGES_URL = "https://google.serper.dev/images"
+
+export type ImagenEncontrada = {
+  url: string
+  ancho: number
+  alto: number
+  titulo: string
+}
+
+/**
+ * Busca una imagen concreta: un logo, un producto, una persona, un objeto.
+ *
+ * Pexels no vale para esto. Es un banco de fotos de stock: sabe de "cafetal" y
+ * de "vacas", pero no de "logo de Fedegan" ni de "Decreto 1138", y ante una
+ * busqueda que no entiende devuelve algo bonito y ajeno. Aqui hace falta lo
+ * contrario, la cosa exacta de la que habla la noticia.
+ *
+ * Por eso Google, a traves de Serper, que ya esta pagado y configurado para la
+ * ingesta. Se piden varias y se filtra: las muy pequeñas se ven rotas al
+ * ampliarlas y las muy apaisadas no encajan en un circulo.
+ */
+export async function searchImage(
+  consulta: string,
+  signal?: AbortSignal
+): Promise<ImagenEncontrada[]> {
+  const response = await fetch(SERPER_IMAGES_URL, {
+    method: "POST",
+    headers: {
+      "X-API-KEY": await apiKey(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ q: consulta, num: 10 }),
+    signal: signal ?? AbortSignal.timeout(15_000),
+  })
+
+  if (!response.ok) return []
+
+  const datos = (await response.json().catch(() => null)) as {
+    images?: { imageUrl?: string; imageWidth?: number; imageHeight?: number; title?: string }[]
+  } | null
+
+  return (datos?.images ?? [])
+    .map((i) => ({
+      url: i.imageUrl ?? "",
+      ancho: i.imageWidth ?? 0,
+      alto: i.imageHeight ?? 0,
+      titulo: i.title ?? "",
+    }))
+    .filter((i) => {
+      if (!/^https?:\/\//.test(i.url)) return false
+      // El SVG se descarta: Satori solo dibuja mapas de bits.
+      if (/\.svg($|\?)/i.test(i.url)) return false
+      if (i.ancho < 200 || i.alto < 200) return false
+      // Dentro de un circulo, algo mas ancho que 2:1 se recorta hasta no
+      // reconocerse. Se prefiere lo cuadrado.
+      const proporcion = i.ancho / i.alto
+      return proporcion > 0.45 && proporcion < 2.2
+    })
+}

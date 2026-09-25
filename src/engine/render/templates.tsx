@@ -41,6 +41,10 @@ export type LaminaProps = {
   foto: string | null
   /** El logo de la marca, ya descargado. Solo lo usa la lamina de cierre. */
   logo?: string | null
+  /** El elemento recortado de la portada, ya descargado. */
+  inserto?: string | null
+  /** Cual de las cuatro posiciones ocupa. Solo la portada lo usa. */
+  insertoPos?: number
   /**
    * Antetitulo de la portada: el tema de la noticia, en versalitas sobre el
    * hook. Es el hueco que en las cuentas que funcionan lleva la seccion, y sirve
@@ -244,7 +248,84 @@ function Marco({
  * El antetitulo en versalitas cierra el patron: dice de que va antes de que
  * nadie lea el titular.
  */
-function Portada({ slide, total, estilo, foto, etiqueta }: LaminaProps) {
+/**
+ * El elemento recortado de la portada.
+ *
+ * Un logo, un producto, una cara: la cosa concreta de la que habla la noticia,
+ * dentro de un circulo. Es lo que hace que alguien reconozca el hecho antes de
+ * leer el titular, como hace la portada de un medio, y lo que separa un post
+ * que se entiende de un vistazo de una foto de archivo con texto encima.
+ *
+ * Vive siempre en la mitad superior. El titular ocupa la de abajo y taparlo
+ * seria cambiar un problema por otro peor; dentro de esa mitad la posicion se
+ * sortea, para que una serie de posts no salga toda igual.
+ */
+const POSICIONES_INSERTO = [
+  { top: 120, left: 80 },
+  { top: 120, right: 80 },
+  { top: 210, right: 64 },
+  { top: 210, left: 64 },
+] as const
+
+/**
+ * El tamaño sale de donde empieza el titular, no del gusto.
+ *
+ * El hook son hasta seis lineas de 92px ancladas abajo, asi que por encima de
+ * los ~540px no hay nada que tapar. Con 320 de diametro y la posicion mas baja
+ * el circulo acaba en 530: entra justo, y cualquier cosa mas grande empieza a
+ * comerse la primera linea del titular.
+ */
+const DIAMETRO_INSERTO = 320
+
+function Inserto({
+  src,
+  estilo,
+  posicion,
+}: {
+  src: string
+  estilo: Estilo
+  posicion: number
+}) {
+  const sitio = POSICIONES_INSERTO[posicion % POSICIONES_INSERTO.length]
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        position: "absolute",
+        ...sitio,
+        width: DIAMETRO_INSERTO,
+        height: DIAMETRO_INSERTO,
+        borderRadius: DIAMETRO_INSERTO,
+        // El aro despega el circulo de la foto: sin el, un elemento de fondo
+        // parecido al de la foto se funde con ella y deja de leerse como pieza.
+        border: `8px solid ${estilo.paleta.acento}`,
+        // Y el fondo sostiene los recortes con transparencia, que son la mayoria
+        // de los logos: sin el se verian sobre la foto y perderian la forma.
+        background: estilo.paleta.fondo,
+      }}
+    >
+      {/* El redondeo va tambien en la imagen. Satori no recorta a los hijos con
+          el `overflow` del padre, asi que confiar en el dejaba un cuadrado
+          blanco con las esquinas del logo asomando por fuera del aro. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        width={DIAMETRO_INSERTO}
+        height={DIAMETRO_INSERTO}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          borderRadius: DIAMETRO_INSERTO,
+        }}
+      />
+    </div>
+  )
+}
+
+function Portada({ slide, total, estilo, foto, etiqueta, inserto, insertoPos = 0 }: LaminaProps) {
   const { paleta } = estilo
   const hook = slide.type === "photo_hook" ? (slide.hook ?? "").trim() : ""
   const antetitulo = (etiqueta ?? "").trim()
@@ -269,6 +350,8 @@ function Portada({ slide, total, estilo, foto, etiqueta }: LaminaProps) {
 
       {/* Desde el 30%: deja limpia la mitad superior, que es la que atrae. */}
       <Fundido estilo={estilo} ancho={ANCHO} alto={ALTO} desde={30} />
+
+      {inserto ? <Inserto src={inserto} estilo={estilo} posicion={insertoPos} /> : null}
 
       <div style={{ display: "flex", position: "absolute", top: 0, left: 0 }}>
         <Marco estilo={estilo} numero={slide.n} total={total} fondo="transparent" sobreFoto alinear="abajo">

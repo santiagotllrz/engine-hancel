@@ -208,8 +208,19 @@ REGLAS DE LAS BUSQUEDAS
 - NADA GENERICO. "nature", "business", "landscape", "people" devuelven cualquier cosa y arruinan el carrusel.
 - Si el asunto no tiene foto obvia (una ley, un decreto, un indice), busca el sector que toca: quien lo sufre, donde se aplica, que se produce.
 
+EL ELEMENTO DE LA PORTADA
+Ademas de la foto de fondo, la portada lleva un elemento recortado en un circulo: un logo, un producto, una persona, un objeto reconocible. Es lo que hace que alguien identifique la noticia antes de leerla, como la portada de un medio.
+
+Devuelve "elemento": UNA busqueda corta, EN ESPAÑOL, de la cosa concreta de la que habla la noticia. No es una foto de ambiente: es la cosa.
+- Si hay una institucion, empresa o gremio protagonista, su logo: "logo Fedegan", "logo Federacion Nacional de Cafeteros", "logo Nu Colombia", "logo ICA Colombia".
+- Si hay un producto o cultivo concreto, el producto: "cogollo de cannabis medicinal", "botella de leche entera", "bulto de fertilizante".
+- Si hay una persona con nombre y cargo, esa persona: "German Bahamon gerente Fedecafe".
+- Si no hay nada de eso, el objeto mas reconocible del hecho: "dron agricola fumigando", "barco de pesca artesanal".
+
+Esta busqueda va a un buscador de internet, no a un banco de fotos: pide la cosa exacta con su nombre propio, no una descripcion generica. "logo Fedegan" esta bien; "asociacion de ganaderos" no, porque no existe como imagen.
+
 RESPONDE SOLO con este JSON, sin texto alrededor:
-{"slide_count":<n>,"caption":"<2 a 4 frases con la tesis y el cta, oraciones completas>","hashtags":["<3 a 6 en minuscula sin espacios>"],"fotos":["<5 a 8 busquedas en ingles, literales al asunto>"],"slides":[{"n":1,"type":"photo_hook","hook":"<el hecho con su dato duro mas la consecuencia, max 95 caracteres>"},{"n":2,"type":"text","title":"<oracion completa>","body":"<max 2 frases>"}]}
+{"slide_count":<n>,"caption":"<2 a 4 frases con la tesis y el cta, oraciones completas>","hashtags":["<3 a 6 en minuscula sin espacios>"],"fotos":["<5 a 8 busquedas en ingles, literales al asunto>"],"elemento":"<una busqueda en español de la cosa concreta: un logo, un producto, una persona>","slides":[{"n":1,"type":"photo_hook","hook":"<el hecho con su dato duro mas la consecuencia, max 95 caracteres>"},{"n":2,"type":"text","title":"<oracion completa>","body":"<max 2 frases>"}]}
 
 El array slides va en orden: el primero siempre photo_hook, el resto text. Antes de escribir relee y confirma cuatro cosas: que no hay guiones largos, que ningun hook o titulo es un fragmento con coma, que el dato mas fuerte del carrusel esta en el hook y no en el slide 2, y que el texto lleva todas sus tildes y sus eñes. Escribe en el idioma indicado.`
 
