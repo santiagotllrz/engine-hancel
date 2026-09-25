@@ -44,6 +44,15 @@ export const NOMBRE_MODO: Record<Modo, string> = {
 
 export type AjustesAgente = {
   agent: Agente
+  /**
+   * Si el agente esta en servicio.
+   *
+   * Distinto del modo: "manual" es "lo disparas tu"; apagado es "este paso no
+   * existe para esta cuenta". Sin la distincion, la unica forma de no publicar
+   * en una red era dejarla en manual y no pulsar nunca, con su columna ocupando
+   * sitio en el tablero para siempre.
+   */
+  enabled: boolean
   /** Solo lo usa publicacion, que tiene un horario por red. Vacio en el resto. */
   canal: string
   mode: Modo
@@ -67,6 +76,7 @@ function porDefecto(agent: Agente, canal: string): AjustesAgente {
   return {
     agent,
     canal,
+    enabled: true,
     mode: agent === "extraccion" ? "manual" : "automatico",
     run_hours: [],
     run_minute: 0,
@@ -82,6 +92,7 @@ function normalizar(fila: Record<string, unknown>): AjustesAgente {
   return {
     agent: fila.agent as Agente,
     canal: String(fila.canal ?? ""),
+    enabled: fila.enabled !== false,
     mode: (MODOS as readonly string[]).includes(modo) ? (modo as Modo) : "manual",
     run_hours: Array.isArray(fila.run_hours)
       ? [...(fila.run_hours as number[])].sort((a, b) => a - b)
@@ -145,7 +156,12 @@ export async function guardarAjustes(
   accountId: string,
   agent: Agente,
   canal: string,
-  cambios: Partial<Pick<AjustesAgente, "mode" | "run_hours" | "run_minute" | "batch_size" | "prompt" | "model">>
+  cambios: Partial<
+    Pick<
+      AjustesAgente,
+      "enabled" | "mode" | "run_hours" | "run_minute" | "batch_size" | "prompt" | "model"
+    >
+  >
 ): Promise<void> {
   const { error } = await supabaseAdmin()
     .from("agent_settings")

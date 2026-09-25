@@ -6,7 +6,6 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 import type { Cuenta } from "@/engine/accounts"
-import { AccountSwitcher } from "@/components/account-switcher"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import {
@@ -111,13 +110,12 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <AccountSwitcher cuentas={cuentas} activa={cuenta} />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser email={email} />
+        <NavUser email={email} cuentas={cuentas} cuenta={cuenta} />
       </SidebarFooter>
     </Sidebar>
   )

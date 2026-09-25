@@ -5,6 +5,13 @@ import * as React from "react"
 import { ejecutarAgente } from "@/app/agentes/actions"
 import { moverFicha, type DestinoTablero } from "@/app/estudio/actions"
 import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { FichaDialog } from "@/components/kanban/ficha-dialog"
 import type { Etapa, Ficha, ModoDeEtapa, Tablero as TableroDatos } from "@/lib/kanban-data"
 import { PlayIcon } from "lucide-react"
@@ -25,7 +32,41 @@ import { PlayIcon } from "lucide-react"
  * pipeline y por eso solo admite la etapa siguiente.
  */
 
-const GRUPOS: { titulo: string; etapas: { id: Etapa; titulo: string; pista: string }[] }[] = [
+type Grupo = { titulo: string; etapas: { id: Etapa; titulo: string; pista: string }[] }
+
+const NOMBRE_RED_COLUMNA: Record<string, string> = {
+  linkedin: "LinkedIn",
+  instagram: "Instagram",
+  facebook: "Facebook",
+}
+
+/**
+ * Las columnas, con Post abierto en una por red activa.
+ *
+ * Post era una columna sola y una tarjeta por hecho, pero un hecho produce un
+ * post por red y cada uno se revisa y se aprueba por separado: verlos apilados
+ * en la misma tarjeta obligaba a abrirla para saber que habia de que. Solo
+ * salen las redes con agente en servicio y canal conectado.
+ */
+function gruposCon(redes: string[]): Grupo[] {
+  return GRUPOS_BASE.map((g) =>
+    g.titulo !== "Contenido"
+      ? g
+      : {
+          ...g,
+          etapas: [
+            g.etapas[0],
+            ...redes.map((red) => ({
+              id: `post_${red}` as Etapa,
+              titulo: NOMBRE_RED_COLUMNA[red] ?? red,
+              pista: "Piezas generadas",
+            })),
+          ],
+        }
+  )
+}
+
+const GRUPOS_BASE: Grupo[] = [
   {
     titulo: "Noticias",
     etapas: [
@@ -37,7 +78,6 @@ const GRUPOS: { titulo: string; etapas: { id: Etapa; titulo: string; pista: stri
     titulo: "Contenido",
     etapas: [
       { id: "angulo", titulo: "Angulo", pista: "Enfoque decidido" },
-      { id: "post", titulo: "Post", pista: "Piezas generadas" },
     ],
   },
   {
@@ -70,7 +110,9 @@ const ORDEN: Partial<Record<Etapa, number>> = {
   sin_analizar: 0,
   analizada: 1,
   angulo: 2,
-  post: 3,
+  post_linkedin: 3,
+  post_instagram: 3,
+  post_facebook: 3,
   publicado: 4,
 }
 
@@ -78,7 +120,9 @@ const ORDEN: Partial<Record<Etapa, number>> = {
 const DESTINOS: Partial<Record<Etapa, DestinoTablero>> = {
   analizada: "analizada",
   angulo: "angulo",
-  post: "post",
+  post_linkedin: "post",
+  post_instagram: "post",
+  post_facebook: "post",
   publicado: "publicado",
   descartado: "descartado",
 }
@@ -123,7 +167,7 @@ export function Tablero({ datos }: { datos: TableroDatos }) {
   const ficha = React.useMemo(() => {
     if (!abiertaId) return null
     for (const lista of Object.values(datos.fichas)) {
-      const encontrada = lista.find((f) => f.newsId === abiertaId)
+      const encontrada = lista.find((f) => `${f.newsId}:${f.red ?? ""}` === abiertaId)
       if (encontrada) return encontrada
     }
     return respaldo
@@ -131,7 +175,7 @@ export function Tablero({ datos }: { datos: TableroDatos }) {
 
   function abrir(f: Ficha) {
     setRespaldo(f)
-    setAbiertaId(f.newsId)
+    setAbiertaId(`${f.newsId}:${f.red ?? ""}`)
     setAbierta(true)
   }
 
@@ -185,10 +229,10 @@ export function Tablero({ datos }: { datos: TableroDatos }) {
         </p>
       ) : null}
 
-      {/* Scroll horizontal: seis columnas no caben en un portatil, y partirlas
+      {/* Scroll horizontal: las columnas no caben en un portatil, y partirlas
           en dos filas rompe la lectura de izquierda a derecha del proceso. */}
       <div className="flex items-start gap-5 overflow-x-auto pb-2">
-        {GRUPOS.map((grupo) => {
+        {gruposCon(datos.redes).map((grupo) => {
           const total = grupo.etapas.reduce((n, e) => n + datos.conteos[e.id], 0)
           return (
             <section key={grupo.titulo} className="shrink-0">
@@ -207,6 +251,7 @@ export function Tablero({ datos }: { datos: TableroDatos }) {
                     fichas={datos.fichas[etapa.id]}
                     total={datos.conteos[etapa.id]}
                     modo={datos.modos[etapa.id]}
+                    redes={datos.redes}
                     moviendo={moviendo}
                     // Mientras no se arrastre nada, ninguna columna se ilumina.
                     aceptaLaArrastrada={
@@ -235,6 +280,7 @@ function Columna({
   fichas,
   total,
   modo,
+  redes,
   moviendo,
   aceptaLaArrastrada,
   onAbrir,
@@ -249,6 +295,8 @@ function Columna({
   total: number
   /** Como esta el agente que llena esta etapa, si lo hay. */
   modo?: ModoDeEtapa
+  /** Las redes con columna, para poder elegir a cual publicar. */
+  redes: string[]
   /** El id de la ficha que se esta moviendo, si hay alguna. */
   moviendo: string | null
   aceptaLaArrastrada: boolean
@@ -282,7 +330,7 @@ function Columna({
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="text-xs font-medium">{titulo}</h3>
           <div className="flex items-center gap-1">
-            {modo ? <IndicadorModo modo={modo} /> : null}
+            {modo ? <IndicadorModo modo={modo} redes={redes} /> : null}
             <span className="text-muted-foreground text-xs tabular-nums">{total}</span>
           </div>
         </div>
@@ -307,7 +355,7 @@ function Columna({
         ) : (
           fichas.map((f) => (
             <Tarjeta
-              key={f.newsId}
+              key={`${f.newsId}:${f.red ?? ""}`}
               ficha={f}
               arrastrable={etapa !== "descartado_fecha" && etapa !== "repetida"}
               moviendo={moviendo === f.newsId}
@@ -414,21 +462,25 @@ function Tarjeta({
  * esta columna: pulsar en "Angulo" anguliza lo que esta en "Analizadas". Es lo
  * mismo que haria la pasada automatica; cambia solo quien aprieta.
  */
-function IndicadorModo({ modo }: { modo: ModoDeEtapa }) {
+function IndicadorModo({ modo, redes }: { modo: ModoDeEtapa; redes: string[] }) {
   const [pending, startTransition] = React.useTransition()
   const [aviso, setAviso] = React.useState<string | null>(null)
 
-  const correr = () => {
+  const correr = (canal = "") => {
     setAviso(null)
     startTransition(async () => {
       try {
-        const r = await ejecutarAgente(modo.agente)
+        const r = await ejecutarAgente(modo.agente, canal)
         setAviso(r.ok ? r.resumen : r.error)
       } catch {
         setAviso("No respondio. Puede haber tardado de mas.")
       }
     })
   }
+
+  // Publicar saca al feed y no se deshace, asi que se pregunta a donde en vez
+  // de suponer que quien pulsa quiere las tres redes de una.
+  const preguntaRed = modo.agente === "publicacion" && redes.length > 1
 
   return (
     <span className="flex items-center gap-1">
@@ -450,10 +502,35 @@ function IndicadorModo({ modo }: { modo: ModoDeEtapa }) {
             : "Automatico"}
       </Badge>
 
-      {modo.modo === "manual" ? (
+      {modo.modo !== "manual" ? null : preguntaRed ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                disabled={pending}
+                title={`Publicar ahora`}
+                aria-label="Publicar ahora"
+                className="hover:bg-accent rounded p-0.5 transition-colors disabled:opacity-50"
+              />
+            }
+          >
+            <PlayIcon className={`size-3 ${pending ? "animate-pulse" : ""}`} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Publicar en</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => correr("")}>Todas las redes</DropdownMenuItem>
+            {redes.map((red) => (
+              <DropdownMenuItem key={red} onClick={() => correr(red)}>
+                {NOMBRE_RED_COLUMNA[red] ?? red}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
         <button
           type="button"
-          onClick={correr}
+          onClick={() => correr()}
           disabled={pending}
           title={`Ejecutar ${modo.nombre} ahora`}
           aria-label={`Ejecutar ${modo.nombre} ahora`}
@@ -461,7 +538,7 @@ function IndicadorModo({ modo }: { modo: ModoDeEtapa }) {
         >
           <PlayIcon className={`size-3 ${pending ? "animate-pulse" : ""}`} />
         </button>
-      ) : null}
+      )}
     </span>
   )
 }

@@ -1,9 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { ChevronsUpDownIcon, LogOutIcon } from "lucide-react"
+import { CheckIcon, ChevronsUpDownIcon, LogOutIcon } from "lucide-react"
 
+import { cambiarCuenta } from "@/app/cuenta/actions"
 import { cerrarSesion } from "@/app/login/actions"
+import type { Cuenta } from "@/engine/accounts"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -22,15 +24,28 @@ import {
 } from "@/components/ui/sidebar"
 
 /**
- * La cuenta con la que se entro, y la salida.
+ * Quien entro, con que cuenta trabaja y la salida.
+ *
+ * El selector de cuenta vivia arriba, en su propio bloque con su icono y el
+ * rotulo "cuenta" debajo del nombre. Ocupaba dos lineas de la sidebar para
+ * decir algo que casi nunca cambia, asi que se pliega aqui: sigue a un clic,
+ * pero deja de gritar.
  *
  * El menu tenia antes entradas de plantilla —Upgrade, Billing, Notifications—
  * que no llevaban a ningun sitio. Con una sesion real detras, dejarlas seria
  * enseñar cuatro botones rotos alrededor del unico que hace algo.
  */
-export function NavUser({ email }: { email: string }) {
+export function NavUser({
+  email,
+  cuentas,
+  cuenta,
+}: {
+  email: string
+  cuentas: Cuenta[]
+  cuenta: Cuenta
+}) {
   const { isMobile } = useSidebar()
-  const [saliendo, startTransition] = React.useTransition()
+  const [ocupado, startTransition] = React.useTransition()
 
   // La inicial del correo: no hay nombre ni foto que mostrar, y dos letras
   // inventadas se leerian como si los hubiera.
@@ -47,7 +62,7 @@ export function NavUser({ email }: { email: string }) {
               <AvatarFallback>{inicial}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">Hancel</span>
+              <span className="truncate font-medium">{cuenta.name}</span>
               <span className="truncate text-xs">{email}</span>
             </div>
             <ChevronsUpDownIcon className="ml-auto size-4" />
@@ -73,14 +88,37 @@ export function NavUser({ email }: { email: string }) {
               </DropdownMenuLabel>
             </DropdownMenuGroup>
 
+            {/* Con una sola cuenta no se ofrece cambiar: un selector de un
+                elemento solo puede llevar a donde ya estas. */}
+            {cuentas.length > 1 ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-muted-foreground text-xs">
+                  Cuenta
+                </DropdownMenuLabel>
+                {cuentas.map((c) => (
+                  <DropdownMenuItem
+                    key={c.id}
+                    disabled={ocupado || c.id === cuenta.id}
+                    onClick={() =>
+                      startTransition(async () => void (await cambiarCuenta(c.slug)))
+                    }
+                  >
+                    <span className="flex-1 truncate">{c.name}</span>
+                    {c.id === cuenta.id ? <CheckIcon className="size-4" /> : null}
+                  </DropdownMenuItem>
+                ))}
+              </>
+            ) : null}
+
             <DropdownMenuSeparator />
 
             <DropdownMenuItem
-              disabled={saliendo}
+              disabled={ocupado}
               onClick={() => startTransition(async () => void (await cerrarSesion()))}
             >
               <LogOutIcon />
-              {saliendo ? "Saliendo…" : "Cerrar sesion"}
+              {ocupado ? "Saliendo…" : "Cerrar sesion"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

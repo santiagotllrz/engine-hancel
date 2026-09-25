@@ -81,6 +81,19 @@ create index if not exists raw_news_promovidas_idx  on public.raw_news (account_
 create index if not exists raw_news_duplicate_of_idx on public.raw_news (duplicate_of_news_id)
   where duplicate_of_news_id is not null;
 
+-- Una noticia, un trabajo de angulo, una pieza por red.
+--
+-- No lo impedia nada, y bastaba con que dos pasadas del tick se solaparan: las
+-- dos leian la cola antes de que ninguna escribiera y las dos encolaban. Asi
+-- salieron cuatro angulos del mismo hecho, y de cada uno su carrusel y su pieza
+-- de Facebook. La comprobacion en codigo no puede cerrarlo, porque la carrera
+-- ocurre entre leer y escribir; el unico sitio donde se cierra es aqui.
+create unique index if not exists jobs_angle_una_por_noticia
+  on public.jobs_angle (account_id, raw_news_id);
+create unique index if not exists content_pieces_una_por_red
+  on public.content_pieces (account_id, raw_news_id, network)
+  where raw_news_id is not null;
+
 -- ------------------------------------------------------------------ corridas
 
 -- Una fila por ejecucion del motor. Nace en 'running' y se cierra en
@@ -174,6 +187,11 @@ create table if not exists public.agent_settings (
   agent       text        not null,
   canal       text        not null default '',
 
+  -- Apagado, el agente no corre ni aparece en el tablero, sea cual sea su modo.
+  -- Es distinto de "manual", que significa que lo disparas tu: sin la
+  -- distincion, la unica forma de no publicar en una red era dejarla en manual
+  -- y no pulsar nunca, con su columna ocupando sitio para siempre.
+  enabled     boolean     not null default true,
   mode        text        not null default 'automatico',
   run_hours   integer[]   not null default '{}',
   run_minute  integer     not null default 0,

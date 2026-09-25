@@ -2,6 +2,7 @@ import "server-only"
 
 import type { ContentAngle, ContentPiece, PiecePayload } from "@/engine/content/types"
 import { ajustesDe, type Agente } from "@/engine/agents/settings"
+import { getLinkedinStatus } from "@/engine/publish/linkedin"
 import { supabaseAdmin } from "@/engine/supabase-admin"
 import { idDeCuentaActual } from "@/lib/accounts"
 import type { RawNews } from "@/lib/types"
@@ -26,7 +27,9 @@ export type Etapa =
   | "sin_analizar"
   | "analizada"
   | "angulo"
-  | "post"
+  | "post_linkedin"
+  | "post_instagram"
+  | "post_facebook"
   | "publicado"
   | "descartado"
   | "descartado_fecha"
@@ -44,6 +47,15 @@ export type PiezaDelTablero = {
 
 export type Ficha = {
   newsId: string
+  /**
+   * La red de esta tarjeta, cuando esta en una columna de Post.
+   *
+   * En el resto de etapas la unidad es el hecho y vale null. En Post no: un
+   * hecho produce un post por red y cada uno se revisa y se publica por su
+   * lado, asi que ahi la tarjeta es (hecho, red) y aparece en tantas columnas
+   * como piezas tenga.
+   */
+  red: string | null
   etapa: Etapa
   titulo: string
   fuente: string | null
@@ -86,6 +98,8 @@ export type ModoDeEtapa = {
 }
 
 export type Tablero = {
+  /** Las redes con columna: agente en servicio y canal conectado. */
+  redes: string[]
   /** Las tarjetas que se pintan: un trozo de cada etapa, no todo. */
   fichas: Record<Etapa, Ficha[]>
   /** Cuantas hay de verdad en cada etapa, aunque no se pinten todas. */
@@ -117,7 +131,7 @@ function etapaDe(
   analizada: boolean,
   angulo: Ficha["angulo"],
   piezas: PiezaDelTablero[]
-): Etapa {
+): Etapa | "post" {
   // Publicado manda sobre cualquier etiqueta de descarte: si algo salio a la
   // red, el tablero no puede decir lo contrario aunque despues se marcara como
   // repetido. Por eso va antes que los motivos.
@@ -173,15 +187,18 @@ export async function getTablero(): Promise<Tablero> {
     sin_analizar: [],
     analizada: [],
     angulo: [],
-    post: [],
+    post_linkedin: [],
+    post_instagram: [],
+    post_facebook: [],
     publicado: [],
     descartado: [],
     descartado_fecha: [],
     repetida: [],
   }
   const modos = await modosDeEtapa(accountId)
+  const redesActivas = await redesEnElTablero(accountId)
   if (filas.length === 0) {
-    return { fichas: porEtapa, conteos: { ...CONTEOS_VACIOS }, modos }
+    return { fichas: porEtapa, conteos: { ...CONTEOS_VACIOS }, modos, redes: redesActivas }
   }
 
   // Se filtra por cuenta, no por la lista de ids: meter cientos de uuid en un
@@ -237,9 +254,12 @@ export async function getTablero(): Promise<Tablero> {
     const misPiezas = piezasPorNoticia.get(n.id) ?? []
     const analizada = n.status === "analyzed"
 
+    const etapa = etapaDe(n.status, analizada, angulo, misPiezas)
+
     const ficha: Ficha = {
       newsId: n.id,
-      etapa: etapaDe(n.status, analizada, angulo, misPiezas),
+      red: null,
+      etapa: etapa === "post" ? "post_instagram" : etapa,
       titulo: n.title,
       fuente: n.source,
       link: n.link,
@@ -265,6 +285,27 @@ export async function getTablero(): Promise<Tablero> {
         n.promoted_score < n.promoted_threshold,
     }
 
+    // En Post la unidad deja de ser el hecho: un hecho produce un post por red
+    // y cada uno se revisa y se publica por su lado, asi que la tarjeta se
+    // reparte en tantas columnas como piezas tenga. Solo las redes que estan en
+    // el tablero: si LinkedIn esta apagado o sin conectar, su pieza no tiene
+    // donde caer y la columna no existe.
+    if (etapa === "post") {
+      for (const pieza of misPiezas) {
+        if (!redesActivas.includes(pieza.network)) continue
+        const columna = `post_${pieza.network}` as Etapa
+        if (!(columna in porEtapa)) continue
+        porEtapa[columna].push({
+          ...ficha,
+          red: pieza.network,
+          etapa: columna,
+          piezas: [pieza],
+          miniatura: miniaturaDe([pieza]),
+        })
+      }
+      continue
+    }
+
     porEtapa[ficha.etapa].push(ficha)
   }
 
@@ -276,14 +317,16 @@ export async function getTablero(): Promise<Tablero> {
     fichas[etapa] = porEtapa[etapa].slice(0, VISIBLES)
   }
 
-  return { fichas, conteos, modos }
+  return { fichas, conteos, modos, redes: redesActivas }
 }
 
 const CONTEOS_VACIOS: Record<Etapa, number> = {
   sin_analizar: 0,
   analizada: 0,
   angulo: 0,
-  post: 0,
+  post_linkedin: 0,
+  post_instagram: 0,
+  post_facebook: 0,
   publicado: 0,
   descartado: 0,
   descartado_fecha: 0,
@@ -302,7 +345,9 @@ const AGENTE_DE_ETAPA: Partial<Record<Etapa, { agente: Agente; nombre: string }>
   sin_analizar: { agente: "extraccion", nombre: "Extraccion" },
   analizada: { agente: "analisis", nombre: "Analisis" },
   angulo: { agente: "angulo", nombre: "Angulo" },
-  post: { agente: "instagram", nombre: "Contenido" },
+  post_linkedin: { agente: "linkedin", nombre: "LinkedIn" },
+  post_instagram: { agente: "instagram", nombre: "Instagram" },
+  post_facebook: { agente: "instagram", nombre: "Facebook" },
   publicado: { agente: "publicacion", nombre: "Publicacion" },
 }
 
@@ -332,4 +377,46 @@ async function modosDeEtapa(accountId: string): Promise<Partial<Record<Etapa, Mo
   }
 
   return salida
+}
+
+/**
+ * Las redes que tienen columna en el tablero.
+ *
+ * Dos condiciones, y las dos hacen falta: el agente en servicio y el canal
+ * conectado. Una columna de LinkedIn sin cuenta enlazada seria un sitio donde
+ * las piezas se acumulan sin poder salir nunca, que es peor que no tenerla.
+ */
+async function redesEnElTablero(accountId: string): Promise<string[]> {
+  const supabase = supabaseAdmin()
+
+  const { data: cuenta } = await supabase
+    .from("accounts")
+    .select("buffer_instagram_channel_id, buffer_facebook_channel_id")
+    .eq("id", accountId)
+    .maybeSingle()
+
+  const canales = (cuenta ?? {}) as {
+    buffer_instagram_channel_id: string | null
+    buffer_facebook_channel_id: string | null
+  }
+
+  // Expirada cuenta como no conectada: el token caducado no publica, y una
+  // columna que acumula piezas que no van a salir engaña mas que informar.
+  const linkedin = await getLinkedinStatus(accountId)
+
+  const conectada: Record<string, boolean> = {
+    linkedin: linkedin.connected && !linkedin.expired,
+    instagram: Boolean(canales.buffer_instagram_channel_id),
+    facebook: Boolean(canales.buffer_facebook_channel_id),
+  }
+
+  const activas: string[] = []
+  for (const red of ["linkedin", "instagram", "facebook"]) {
+    if (!conectada[red]) continue
+    // Facebook no tiene agente propio: viaja con el guion de Instagram.
+    const ajustes = await ajustesDe(accountId, red === "facebook" ? "instagram" : (red as Agente))
+    if (ajustes.enabled) activas.push(red)
+  }
+
+  return activas
 }

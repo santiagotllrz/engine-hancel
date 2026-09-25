@@ -121,6 +121,19 @@ export async function enqueueAngleJob(
     .select("id")
     .single()
 
+  // 23505 es el indice que garantiza un solo trabajo por noticia. Llegar aqui
+  // significa que otra pasada la encolo primero, y eso es el resultado correcto,
+  // no un fallo: se devuelve el trabajo que ya existe y nadie duplica nada.
+  if (error?.code === "23505") {
+    const { data: existente } = await supabaseAdmin()
+      .from("jobs_angle")
+      .select("id")
+      .eq("account_id", news.account_id)
+      .eq("raw_news_id", news.id)
+      .maybeSingle()
+    if (existente) return (existente as { id: string }).id
+  }
+
   if (error) throw new Error(`No se pudo encolar el angulo: ${error.message}`)
   return (data as { id: string }).id
 }

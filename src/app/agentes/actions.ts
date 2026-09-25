@@ -40,6 +40,24 @@ function resolver(clave: string): { ok: true; agent: Agente } | { ok: false; err
   return { ok: true, agent: agenteReal(clave as ClaveAgente as Agente) }
 }
 
+/** Pone o quita de servicio a un agente. */
+export async function guardarActivo(
+  clave: string,
+  activo: boolean,
+  canal = ""
+): Promise<ActionResult> {
+  const r = resolver(clave)
+  if (!r.ok) return r
+
+  try {
+    await guardarAjustes(await idDeCuentaActual(), r.agent, canal, { enabled: activo })
+    refresh(clave)
+    return { ok: true }
+  } catch (error) {
+    return fail(error, "No se pudo cambiar el estado del agente.")
+  }
+}
+
 export async function guardarModo(
   clave: string,
   modo: Modo,
@@ -151,11 +169,14 @@ export async function guardarPrompt(clave: string, prompt: string): Promise<Acti
  * la diferencia es solo quien aprieta el gatillo. Asi una cuenta puede tener el
  * pipeline entero en manual y seguir avanzando etapa a etapa.
  *
- * Publicacion corre sus tres canales de una: el tablero tiene una sola columna
- * "Publicado", asi que un boton por canal ahi no tendria donde vivir.
+ * Publicacion admite una red concreta: el tablero tiene una sola columna
+ * "Publicado", asi que el boton pregunta a cual sacar en vez de suponer que
+ * quien lo pulsa quiere las tres.
  */
 export async function ejecutarAgente(
-  clave: string
+  clave: string,
+  /** Solo para publicacion: la red a la que sacar. Vacio son todas. */
+  canal = ""
 ): Promise<{ ok: true; resumen: string } | { ok: false; error: string }> {
   const ficha = fichaDe(clave)
   if (!ficha) return { ok: false, error: "Ese agente no existe." }
@@ -172,7 +193,11 @@ export async function ejecutarAgente(
     }
 
     const { runContentTick } = await import("@/engine/content/tick")
-    const r = await runContentTick({ trigger: "manual", forzar: [agent] })
+    const r = await runContentTick({
+      trigger: "manual",
+      forzar: [agent],
+      forzarCanal: agent === "publicacion" ? canal : undefined,
+    })
     refresh(clave)
 
     // Cada agente informa de lo suyo: un resumen con los seis numeros no dice

@@ -24,6 +24,12 @@ export function leToca(
   /** Lo que dispara la pasada. Una pasada a mano ignora el horario. */
   disparo: "auto" | "manual" = "auto"
 ): Turno {
+  // Apagado manda sobre todo, incluso sobre un disparo a mano: un agente fuera
+  // de servicio no es un agente en pausa, es un paso que esta cuenta no hace.
+  if (!ajustes.enabled) {
+    return { corre: false, motivo: "Esta apagado." }
+  }
+
   // A mano siempre corre: el boton del tablero esta justo para eso, para no
   // tener que esperar a la hora ni cambiar el modo para una pasada suelta.
   if (disparo === "manual") return { corre: true, motivo: "Disparado a mano." }

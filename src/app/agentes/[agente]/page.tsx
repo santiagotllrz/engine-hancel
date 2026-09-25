@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
+import { ActivoSwitch } from "@/components/agentes/activo-switch"
 import { CronEditor } from "@/components/agentes/cron-editor"
 import { ModeloEditor } from "@/components/agentes/modelo-editor"
 import { PromptEditor } from "@/components/agentes/prompt-editor"
@@ -76,6 +77,9 @@ export default async function AgentePage({
               <CardTitle className="text-base">{ficha.nombre}</CardTitle>
               {ficha.usaIA ? <Badge variant="secondary">Usa IA</Badge> : null}
               {espejo ? <Badge variant="outline">Comparte con {ficha.espejoDe}</Badge> : null}
+              <div className="ml-auto">
+                <ActivoSwitch clave={ficha.clave} activo={propios.enabled} soloLectura={espejo} />
+              </div>
             </div>
             <p className="text-muted-foreground mt-1 text-sm">{ficha.resumen}</p>
           </CardHeader>

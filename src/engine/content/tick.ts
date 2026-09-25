@@ -106,6 +106,14 @@ export async function runContentTick(
      * tener que cambiar el modo del agente y acordarse de devolverlo.
      */
     forzar?: Agente[]
+    /**
+     * Cuando se fuerza publicacion, la red concreta.
+     *
+     * Vacio son todas. Existe porque el boton del tablero pregunta a que red
+     * publicar: forzar las tres cuando solo se queria una sacaria al feed
+     * piezas que nadie habia mirado.
+     */
+    forzarCanal?: string
   } = {}
 ): Promise<TickSummary> {
   const trigger = options.trigger ?? "manual"
@@ -397,7 +405,9 @@ export async function runContentTick(
       generated_at: new Date().toISOString(),
     })
 
-    if (error) {
+    // 23505 es el indice de una pieza por red: ya hay post de LinkedIn de esta
+    // noticia. No es un fallo, es que alguien llego antes.
+    if (error && error.code !== "23505") {
       errors.push(error.message)
       log.emit("content.linkedin.failed", "No se pudo guardar la pieza", {
         accountId: job.account_id,
@@ -407,7 +417,7 @@ export async function runContentTick(
       continue
     }
 
-    piecesCreated++
+    if (!error) piecesCreated++
     await supabase
       .from("content_angles")
       .update({ status: "generated" })
@@ -466,8 +476,10 @@ export async function runContentTick(
           generated_at: new Date().toISOString(),
         })
 
-        if (error) throw new Error(error.message)
-        carouselsCreated++
+        // 23505 es el indice de una pieza por red: ya hay carrusel de esta
+        // noticia, asi que no hay nada que hacer y tampoco nada que reportar.
+        if (error && error.code !== "23505") throw new Error(error.message)
+        if (!error) carouselsCreated++
       }
 
       await supabase
@@ -492,7 +504,7 @@ export async function runContentTick(
           variables_usadas: (job.input?.variables ?? null) as Variables | null,
           generated_at: new Date().toISOString(),
         })
-        if (errorFacebook) {
+        if (errorFacebook && errorFacebook.code !== "23505") {
           // La de Instagram ya esta guardada; la de Facebook se puede rehacer
           // desde la interfaz. No merece tumbar el carrusel.
           errors.push(`Facebook: ${errorFacebook.message}`)
@@ -659,12 +671,10 @@ export async function runContentTick(
         // El modo del agente de publicacion manda sobre el horario viejo: cada
         // canal puede estar en manual, programado o automatico por separado.
         const suyo = await ajustesDe(cuenta.id, "publicacion", programa.network)
-        const turno = leToca(
-          suyo,
-          ajustes.timezone,
-          new Date(),
-          forzados.has("publicacion") ? "manual" : "auto"
-        )
+        const aMano =
+          forzados.has("publicacion") &&
+          (!options.forzarCanal || options.forzarCanal === programa.network)
+        const turno = leToca(suyo, ajustes.timezone, new Date(), aMano ? "manual" : "auto")
         if (!turno.corre) continue
 
         const cuantas = suyo.batch_size ?? programa.batch_size
