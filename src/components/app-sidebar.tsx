@@ -18,7 +18,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { BotIcon, CpuIcon, PenLineIcon, SettingsIcon } from "lucide-react"
+import { BotIcon, KanbanIcon, SettingsIcon } from "lucide-react"
 
 import { AGENTES } from "@/lib/agentes-catalogo"
 
@@ -36,22 +36,12 @@ export function AppSidebar({
 
   const navMain = [
     {
-      title: "Hancel Engine",
-      url: "/engine/config",
-      icon: <CpuIcon />,
-      isActive: pathname.startsWith("/engine"),
-      items: [
-        { title: "Taxonomia", url: "/engine/config", isActive: pathname === "/engine/config" },
-        { title: "Horario", url: "/engine/schedule", isActive: pathname === "/engine/schedule" },
-      ],
-    },
-    {
       // Sin subsecciones: el estudio es una sola pantalla, el tablero, y
       // colgarle hijos que no existen solo añadiria un desplegable vacio.
       title: "Estudio",
-      url: "/estudio",
-      icon: <PenLineIcon />,
-      isActive: pathname === "/estudio",
+      url: "/",
+      icon: <KanbanIcon />,
+      isActive: pathname === "/",
       items: [],
     },
     {
@@ -97,7 +87,7 @@ export function AppSidebar({
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/estudio" />}>
+            <SidebarMenuButton size="lg" render={<Link href="/" />}>
               {/* El lockup completo con la sidebar abierta; al colapsarla a
                   ancho de icono no cabe una marca apaisada, asi que se cambia
                   por el isotipo. Ambas llevan alt vacio y el nombre accesible

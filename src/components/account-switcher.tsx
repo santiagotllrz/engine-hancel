@@ -47,9 +47,11 @@ export function AccountSwitcher({
       </div>
       <div className="grid flex-1 text-left text-sm leading-tight">
         <span className="truncate font-medium">{activa.name}</span>
-        <span className="text-muted-foreground truncate text-xs">
-          {cambiando ? "cambiando…" : "cuenta"}
-        </span>
+        {/* Solo mientras cambia. En reposo el rotulo decia "cuenta" debajo del
+            nombre de la cuenta, que no añadia nada y ocupaba una linea. */}
+        {cambiando ? (
+          <span className="text-muted-foreground truncate text-xs">cambiando…</span>
+        ) : null}
       </div>
     </>
   )

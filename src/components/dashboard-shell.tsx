@@ -58,7 +58,7 @@ export async function DashboardShell({
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink render={<Link href="/estudio" />}>
+                  <BreadcrumbLink render={<Link href="/" />}>
                     Hancel Engine
                   </BreadcrumbLink>
                 </BreadcrumbItem>
@@ -70,7 +70,7 @@ export async function DashboardShell({
             </Breadcrumb>
           </div>
         </header>
-        <div className="flex flex-1 flex-col gap-6 p-4 pt-6 md:p-6 md:pt-8">{children}</div>
+        <div className="flex min-w-0 flex-1 flex-col gap-6 p-4 pt-6 md:p-6 md:pt-8">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   )

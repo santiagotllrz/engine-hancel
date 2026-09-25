@@ -14,6 +14,8 @@ import { proximasPasadas } from "@/engine/agents/turno"
 import { REDES, NOMBRE_DE_RED } from "@/engine/content/types"
 import { getSettings } from "@/engine/schedule"
 import { idDeCuentaActual } from "@/lib/accounts"
+import { TaxonomyEditor } from "@/components/agentes/taxonomy-editor"
+import { getTaxonomy } from "@/lib/engine-data"
 import { AGENTES, fichaDe } from "@/lib/agentes-catalogo"
 
 export const dynamic = "force-dynamic"
@@ -118,6 +120,19 @@ export default async function AgentePage({
             soloLectura={espejo}
           />
         ))}
+
+        {/* La taxonomia es el insumo de la extraccion: define que busca. Vivia
+            en una seccion propia, lejos del agente que la usa, asi que cambiar
+            un tema y ver que trae obligaba a ir y volver. */}
+        {ficha.clave === "extraccion" ? (
+          <section className="flex flex-col gap-3">
+            <h2 className="text-sm font-semibold">Taxonomia</h2>
+            <p className="text-muted-foreground text-sm">
+              Lo que sale a buscar: una consulta por segmento, agrupadas en categorias.
+            </p>
+            <TaxonomyEditor taxonomy={await getTaxonomy(accountId)} />
+          </section>
+        ) : null}
 
         <Card>
           <CardHeader className="pb-3">

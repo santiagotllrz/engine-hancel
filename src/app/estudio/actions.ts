@@ -48,7 +48,7 @@ function fail(error: unknown, fallback: string): ActionResult {
 }
 
 function refresh() {
-  revalidatePath("/estudio")
+  revalidatePath("/")
   revalidatePath("/configuracion/general")
   revalidatePath("/configuracion/conexiones")
   revalidatePath("/configuracion/marca")

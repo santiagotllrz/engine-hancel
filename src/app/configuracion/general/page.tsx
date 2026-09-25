@@ -1,5 +1,8 @@
 import { SeleccionDeNoticias } from "@/components/configuracion/seleccion-noticias"
+import { ZonaHoraria } from "@/components/configuracion/zona-horaria"
 import { DashboardShell } from "@/components/dashboard-shell"
+import { getSettings, hourIn } from "@/engine/schedule"
+import { idDeCuentaActual } from "@/lib/accounts"
 import { configuracionDeGeneracion, getScoreDistribution } from "@/lib/content-data"
 
 export const dynamic = "force-dynamic"
@@ -15,20 +18,26 @@ export const metadata = { title: "General · Engine Hancel" }
 /**
  * Lo que vale para toda la cuenta y no pertenece a ningun agente.
  *
- * Hoy es solo el umbral. Se queda como seccion propia porque no encaja ni en
- * Conexiones ni en Marca, y meterlo en un agente concreto mentiria: el liston
- * es de la cuenta, aunque quien lo mira sea el agente de angulo.
+ * El umbral y el huso horario. Ninguno encaja en Conexiones ni en Marca, y
+ * meterlos en un agente concreto mentiria: el liston es de la cuenta aunque lo
+ * mire el agente de angulo, y el huso es lo que da sentido a las horas de
+ * todos los agentes a la vez.
  */
 export default async function ConfiguracionGeneralPage() {
-  const [config, distribution] = await Promise.all([
+  const [config, distribution, ajustes] = await Promise.all([
     configuracionDeGeneracion(),
     getScoreDistribution(),
+    getSettings(await idDeCuentaActual()),
   ])
 
   return (
     <DashboardShell title="General">
       <div className="flex max-w-3xl flex-col gap-4">
         <SeleccionDeNoticias config={config} distribution={distribution} />
+        <ZonaHoraria
+          timezone={ajustes.timezone}
+          horaActual={hourIn(ajustes.timezone, new Date())}
+        />
       </div>
     </DashboardShell>
   )
