@@ -229,10 +229,10 @@ begin
 end;
 $$;
 
--- Un aviso por transaccion. La rutina puede cerrar veinte buzones en el mismo
+-- Un aviso por transaccion. El agente puede cerrar veinte buzones en el mismo
 -- UPDATE y el tick drena la cola entera, asi que el segundo aviso solo gastaria
 -- una invocacion identica. El flag es local a la transaccion y desaparece al
--- terminar; si la rutina escribe fila a fila en transacciones separadas, la
+-- terminar; si el agente escribe fila a fila en transacciones separadas, la
 -- segunda defensa es que el tick es idempotente y barato en vacio.
 create or replace function public.content_tick_on_row()
 returns trigger
@@ -267,7 +267,7 @@ for each row
 when (old.status is distinct from new.status and new.status in ('done', 'failed'))
 execute function public.content_tick_on_row();
 
--- El modo automatico: la rutina de analisis marca 'analyzed' y aqui arranca la
+-- El modo automatico: el agente de analisis marca 'analyzed' y aqui arranca la
 -- etapa 2. No se filtra por umbral ni por modo en el WHEN (una clausula WHEN no
 -- admite subconsultas): eso lo decide el tick leyendo generation_config, que es
 -- ademas donde debe vivir esa regla.

@@ -275,9 +275,9 @@ on conflict (category_id, label) do nothing;
 -- Etapa 2: de una noticia analizada a una pieza de LinkedIn.
 --
 -- Dos clases de tabla, separadas a proposito:
---   jobs_*      buzones. El mecanismo de ejecucion de las rutinas de Claude.
+--   jobs_*      buzones. El mecanismo de ejecucion de los agentes.
 --   content_*   el resultado limpio que consume la interfaz.
--- Si algun dia se cambia de rutinas a la API directa, solo cambian los buzones.
+-- Si algun dia se cambia la forma de llamar al modelo, solo cambian los buzones.
 
 -- Tabla de una sola fila, como engine_settings: el check sobre la PK booleana
 -- impide un segundo registro.
@@ -301,14 +301,14 @@ create table if not exists public.generation_config (
   constraint generation_config_mode_check      check (generation_mode in ('auto', 'manual'))
 );
 
--- Buzon de la rutina de angulo.
+-- Buzon del agente de angulo.
 --
--- La app escribe la fila en 'pending' y avisa por webhook; la rutina externa lee
+-- La app escribe la fila en 'pending' y avisa por webhook; la el agente lee
 -- la cola, escribe `respuesta` y marca 'done' o 'failed'. El webhook solo
 -- despierta: los datos viajan en `input`, nunca en la peticion.
 --
 -- `consumed_at` lo escribe SOLO la app, al materializar la respuesta. Es columna
--- aparte y no un cuarto estado por dos motivos: deja el contrato de la rutina en
+-- aparte y no un cuarto estado por dos motivos: deja el contrato de el agente en
 -- pending|done|failed exactamente como se especifico, y como el trigger de aviso
 -- vigila `status`, la escritura de la app no se despierta a si misma en bucle.
 create table if not exists public.jobs_angle (
@@ -331,9 +331,9 @@ create index if not exists jobs_angle_raw_news_id_idx on public.jobs_angle (raw_
 create index if not exists jobs_angle_por_drenar_idx  on public.jobs_angle (created_at)
   where consumed_at is null and status in ('done', 'failed');
 
--- Un angulo editorial propuesto por la rutina.
+-- Un angulo editorial propuesto por el agente.
 --
--- Cuantos angulos produce cada noticia lo decide la rutina, no este esquema: se
+-- Cuantos angulos produce cada noticia lo decide el agente, no este esquema: se
 -- materializa una fila por cada uno que venga en la respuesta y `position`
 -- conserva el orden en que los propuso.
 create table if not exists public.content_angles (
@@ -355,7 +355,7 @@ create table if not exists public.content_angles (
 create index if not exists content_angles_raw_news_id_idx on public.content_angles (raw_news_id);
 create index if not exists content_angles_status_idx      on public.content_angles (status, created_at desc);
 
--- Buzon de la rutina de LinkedIn. Mismo contrato que jobs_angle.
+-- Buzon de el agente de LinkedIn. Mismo contrato que jobs_angle.
 create table if not exists public.jobs_linkedin (
   id               uuid primary key default gen_random_uuid(),
   content_angle_id uuid        not null references public.content_angles (id) on delete cascade,
@@ -376,7 +376,7 @@ create index if not exists jobs_linkedin_por_drenar_idx on public.jobs_linkedin 
   where consumed_at is null and status in ('done', 'failed');
 
 -- La pieza lista para revisar. `payload` guarda el post tal como lo devolvio la
--- rutina; `variables_usadas` es la copia de las ranuras que produjeron ESTE
+-- agente; `variables_usadas` es la copia de las ranuras que produjeron ESTE
 -- texto, para poder explicar despues por que salio asi. La publicacion a
 -- LinkedIn no es parte de esta etapa.
 --
@@ -406,7 +406,7 @@ create index if not exists content_pieces_status_idx      on public.content_piec
 
 -- RLS: mismo regimen que el resto de tablas de configuracion y motor. Solo entra
 -- service_role, que es la credencial con la que se autentica tanto la app como
--- la rutina externa cuando escribe en su buzon. Que la rutina toque solo
+-- la el agente cuando escribe en su buzon. Que el agente toque solo
 -- respuesta/status/error/processed_at es una convencion del contrato, no algo
 -- que Postgres imponga.
 alter table public.generation_config enable row level security;
@@ -471,8 +471,8 @@ create index if not exists content_pieces_publicables_idx on public.content_piec
 
 -- --------------------------------------------------------------- instagram
 --
--- Buzon de la rutina de Instagram. Mismo contrato que los otros dos: la app
--- encola, la rutina escribe `respuesta` y marca 'done'; la app materializa.
+-- Buzon de el agente de Instagram. Mismo contrato que los otros dos: la app
+-- encola, el agente escribe `respuesta` y marca 'done'; la app materializa.
 --
 -- Aqui la app hace ademas un paso que las otras redes no tienen: dibujar las
 -- imagenes del carrusel y subirlas al storage.
@@ -593,7 +593,7 @@ comment on column public.content_pieces.image_urn is
 -- Una cuenta es un espacio de trabajo entero: su taxonomia, sus noticias, su
 -- contenido, su LinkedIn y su Instagram. Lo unico que comparten todas son las
 -- credenciales de las herramientas —Serper, Pexels, la app de LinkedIn, las
--- rutinas de Claude— porque son la misma maquinaria trabajando para clientes
+-- agentes de Claude— porque son la misma maquinaria trabajando para clientes
 -- distintos. Por eso esas siguen en el entorno y todo lo demas cuelga de aqui.
 
 create table if not exists public.accounts (
@@ -721,7 +721,7 @@ comment on column public.engine_settings.last_ingest_at is
 -- Facebook
 -- =========================================================================
 --
--- Facebook no tiene rutina propia: cada carrusel de Instagram produce tambien su
+-- Facebook no tiene agente propia: cada carrusel de Instagram produce tambien su
 -- version para Facebook —la portada como imagen y el texto de las laminas como
 -- descripcion— siempre que la cuenta tenga pagina configurada. Se publica por
 -- Buffer, como Instagram, en el canal que se pone desde la interfaz.
@@ -746,7 +746,7 @@ insert into public.publish_schedule (account_id, network)
 select id, 'facebook' from public.accounts
 on conflict (account_id, network) do nothing;
 
--- Facebook se elige como cualquier otra red al generar. No tiene rutina propia:
+-- Facebook se elige como cualquier otra red al generar. No tiene agente propia:
 -- sale del guion del carrusel de Instagram, y el trabajo del buzon lleva en
 -- `input.destinos` que piezas producir.
 alter table public.generation_config drop constraint if exists generation_config_auto_networks_check;
@@ -787,7 +787,7 @@ alter table public.engine_secrets enable row level security;
 insert into public.engine_secrets (id) values (true) on conflict (id) do nothing;
 
 -- Modelo por paso de IA (analisis, angulo, LinkedIn, Instagram), global y
--- editable desde la interfaz. Reemplaza el modelo fijo que tenia cada rutina.
+-- editable desde la interfaz. Reemplaza el modelo fijo que tenia cada agente.
 alter table public.engine_secrets add column if not exists model_analisis  text not null default 'claude-haiku-4-5-20251001';
 alter table public.engine_secrets add column if not exists model_angulo    text not null default 'claude-sonnet-5';
 alter table public.engine_secrets add column if not exists model_linkedin  text not null default 'claude-sonnet-5';
