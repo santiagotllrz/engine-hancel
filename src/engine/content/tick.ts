@@ -12,7 +12,6 @@ import { getPublishSchedules, marcarTanda } from "../publish/schedule"
 import { generarCarrusel, nichosConocidos, noticiaDelAngulo, parseInstagramResponse } from "../render/carousel"
 import { armarPublicacionFacebook } from "../render/facebook"
 import { estiloDesdeConfig } from "../render/theme"
-import type { RoutineCallResult } from "../routines"
 import { supabaseAdmin } from "../supabase-admin"
 import {
   claimAngleJobs,
@@ -29,7 +28,8 @@ import { analizarPendientes } from "./analisis"
 import { procesarBuzones } from "./procesar"
 import { ContentLog } from "./log"
 import { parseAngleResponse, parseLinkedinResponse } from "./parse"
-import type { ContentAngle, DestinoCarrusel, JobAngle, JobLinkedin, Variables } from "./types"
+import { REDES } from "./types"
+import type { ContentAngle, DestinoCarrusel, JobAngle, JobLinkedin, Red, Variables } from "./types"
 
 /**
  * Una pasada del pipeline de contenido.
@@ -85,7 +85,6 @@ export type TickSummary = {
   piecesPublished: number
   failedJobs: number
   noticiasAnalizadas: number
-  routines: RoutineCallResult[]
   errors: string[]
 }
 
@@ -103,7 +102,6 @@ export async function runContentTick(
   const started = new Date()
   const log = new ContentLog()
   const errors: string[] = []
-  const routines: RoutineCallResult[] = []
 
   let anglesQueued = 0
   let angleJobsConsumed = 0
@@ -148,7 +146,7 @@ export async function runContentTick(
 
   // --------------------------------------------------------------- analisis
   //
-  // Antes lo hacia una rutina externa; ahora el motor investiga cada noticia con
+  // El motor investiga cada noticia con
   // busqueda web y la puntua, en tandas cortas. Va primero para que la seleccion
   // automatica de esta misma pasada pueda usar lo recien analizado. Cada cuenta
   // en su try: que una falle no frena a las demas.
@@ -207,7 +205,7 @@ export async function runContentTick(
   for (const job of angleJobs as JobAngle[]) {
     if (job.status === "failed") {
       failedJobs++
-      log.emit("content.angle.failed", "La rutina marco el angulo como fallido", {
+      log.emit("content.angle.failed", "El agente no pudo escribir el angulo", {
         accountId: job.account_id,
         jobId: job.id,
         error: job.error,
@@ -260,20 +258,23 @@ export async function runContentTick(
     })
 
     // En automatico se genera una pieza por cada red configurada, todas desde el
-    // primer angulo que propuso la rutina; en manual esperan a que el usuario
+    // primer angulo propuesto; en manual esperan a que el usuario
     // elija cual convertir y para donde. Que compartan angulo es lo que hace que
     // el post y el carrusel cuenten lo mismo con distinta forma.
     //
-    // `auto_networks` puede estar vacia, y entonces no se genera nada: el
-    // automatico sigue sacando angulos y quedan esperando decision manual.
+    // Que redes se generan solas ya no es una lista aparte: lo dice el modo de
+    // cada agente de contenido. Un agente en manual no encola nada y su pieza
+    // espera a que alguien la pida desde el tablero, que es exactamente lo que
+    // significaba sacar esa red de la lista, pero dicho donde se configura.
     const config = await configDe(job.account_id)
-    if (config.generation_mode === "auto" && creados.length > 0 && config.auto_networks.length > 0) {
+    const redesAutomaticas = await redesQueGeneranSolas(job.account_id)
+    if (creados.length > 0 && redesAutomaticas.length > 0) {
       const primero = creados.reduce((a, b) => (a.position <= b.position ? a : b))
       const news = (await loadNews([job.raw_news_id])).get(job.raw_news_id)
       if (news) {
         let algunaEncolada = false
 
-        if (config.auto_networks.includes("linkedin")) {
+        if (redesAutomaticas.includes("linkedin")) {
           try {
             await enqueueLinkedinJob(primero, news, config.variables)
             linkedinQueued++
@@ -287,11 +288,11 @@ export async function runContentTick(
           }
         }
 
-        // Instagram y Facebook comparten trabajo: la rutina escribe un guion y
+        // Instagram y Facebook comparten trabajo: el agente escribe un guion y
         // de el salen las piezas de las redes elegidas. Un solo encolado con
         // los destinos, en vez de uno por red, que pediria el mismo guion dos
         // veces.
-        const destinos = config.auto_networks.filter(
+        const destinos = redesAutomaticas.filter(
           (red): red is DestinoCarrusel => red === "instagram" || red === "facebook"
         )
         if (destinos.length > 0) {
@@ -327,7 +328,7 @@ export async function runContentTick(
   for (const job of linkedinJobs as JobLinkedin[]) {
     if (job.status === "failed") {
       failedJobs++
-      log.emit("content.linkedin.failed", "La rutina marco el post como fallido", {
+      log.emit("content.linkedin.failed", "El agente no pudo escribir el post", {
         accountId: job.account_id,
         jobId: job.id,
         error: job.error,
@@ -405,7 +406,7 @@ export async function runContentTick(
   for (const job of instagramJobs) {
     if (job.status === "failed") {
       failedJobs++
-      log.emit("content.instagram.failed", "La rutina marco el carrusel como fallido", {
+      log.emit("content.instagram.failed", "El agente no pudo escribir el carrusel", {
         accountId: job.account_id,
         jobId: job.id,
         error: job.error,
@@ -724,9 +725,29 @@ export async function runContentTick(
     piecesPublished,
     failedJobs,
     noticiasAnalizadas,
-    routines,
     errors,
   }
 }
 
 export { MAX_DRENAJE_POR_TICK }
+
+
+/**
+ * Las redes cuyo agente genera sin que nadie se lo pida.
+ *
+ * Sustituye a la lista `auto_networks`, que era una segunda forma de decir lo
+ * mismo que el modo del agente y podia contradecirla: una red marcada ahi con
+ * su agente en manual dejaba al usuario esperando una pieza que nadie iba a
+ * escribir.
+ */
+async function redesQueGeneranSolas(accountId: string): Promise<Red[]> {
+  const redes: Red[] = []
+  for (const red of REDES) {
+    // Facebook no tiene agente propio: viaja con el guion de Instagram, asi que
+    // hereda su modo.
+    const agente = red === "facebook" ? "instagram" : red
+    const ajustes = await ajustesDe(accountId, agente)
+    if (ajustes.mode !== "manual") redes.push(red)
+  }
+  return redes
+}

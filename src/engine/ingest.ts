@@ -4,7 +4,6 @@ import { DEDUPE_FETCH_LIMIT, type SearchSpec } from "./config"
 import { findDuplicateIds, type DedupeCandidate } from "./dedupe"
 import { EventRecorder, type EventSink } from "./events"
 import { dedupeByLink, toRows, type RawNewsInsert } from "./normalize"
-import type { RoutineCallResult } from "./routines"
 import { searchNews } from "./serper"
 import { supabaseAdmin } from "./supabase-admin"
 import { getActiveSearches } from "./taxonomy"
@@ -31,7 +30,6 @@ export type IngestionSummary = {
   duplicatesRemoved: number
   failedSearches: number
   /** Rutinas de analisis invocadas al terminar. */
-  routines: RoutineCallResult[]
 }
 
 export type DryRunSummary = {
@@ -50,8 +48,6 @@ export type RunOptions = {
   signal?: AbortSignal
   /** Recibe cada evento en el momento en que ocurre (vista en vivo). */
   onEvent?: EventSink
-  /** Salta la llamada a las rutinas de analisis. */
-  skipRoutines?: boolean
 }
 
 /** Inicio del dia UTC, igual que el `created_at=gte.` que usaba n8n. */
@@ -198,7 +194,6 @@ export async function runIngestion(options: RunOptions): Promise<IngestionSummar
     // La ingesta ya no analiza: solo deja las noticias en `pending_analysis` y
     // saca de la cola lo caducado. El analisis lo hace el tick, que pasa cada
     // cinco minutos y las investiga y puntua en tandas cortas con Claude.
-    const routines: RoutineCallResult[] = []
 
     const caducadas = await expirarPendientesViejas(accountId)
     if (caducadas > 0) {
@@ -239,7 +234,6 @@ export async function runIngestion(options: RunOptions): Promise<IngestionSummar
       inserted,
       duplicatesRemoved,
       failedSearches: searches.filter((search) => search.error).length,
-      routines,
     }
   } catch (error) {
     // n8n dejaba la corrida colgada en "running" para siempre si algo fallaba.
@@ -262,7 +256,7 @@ export async function runIngestion(options: RunOptions): Promise<IngestionSummar
 
 /**
  * Ensayo sin efectos: corre las busquedas de verdad y reporta que pasaria, pero
- * no abre corrida, no inserta, no borra y no llama rutinas.
+ * no abre corrida, no inserta y no borra.
  */
 export async function dryRunIngestion(
   options: { accountId: string; signal?: AbortSignal; onEvent?: EventSink }

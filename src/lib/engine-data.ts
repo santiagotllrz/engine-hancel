@@ -2,38 +2,12 @@ import "server-only"
 
 import { idDeCuentaActual } from "@/lib/accounts"
 import { supabaseAdmin } from "@/engine/supabase-admin"
-import type { Routine } from "@/engine/routines"
 import { getTaxonomy, type CategoryWithSegments } from "@/engine/taxonomy"
 
 export type { CategoryWithSegments }
 export { getTaxonomy }
 
 /** Rutina tal como se muestra en la UI: el token nunca sale entero. */
-export type RoutineView = Omit<Routine, "token"> & {
-  hasToken: boolean
-  tokenHint: string | null
-}
-
-function maskToken(token: string | null): { hasToken: boolean; tokenHint: string | null } {
-  if (!token) return { hasToken: false, tokenHint: null }
-  const tail = token.slice(-4)
-  return { hasToken: true, tokenHint: `••••${tail}` }
-}
-
-export async function getRoutines(): Promise<RoutineView[]> {
-  const { data, error } = await supabaseAdmin()
-    .from("engine_routines")
-    .select("*")
-    .order("created_at")
-
-  if (error) throw new Error(`No se pudieron cargar las rutinas: ${error.message}`)
-
-  return ((data ?? []) as Routine[]).map(({ token, ...rest }) => ({
-    ...rest,
-    ...maskToken(token),
-  }))
-}
-
 export type PipelineEvent = {
   id: number
   run_id: string | null

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { updateCarouselStyle, type ActionResult } from "@/app/contenido/actions"
+import { updateCarouselStyle, type ActionResult } from "@/app/estudio/actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"

@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic"
 
 /** Vuelve siempre a la pantalla de conexion, con el resultado en la URL. */
 function volver(request: Request, params: Record<string, string>) {
-  const destino = new URL("/contenido/config", request.url)
+  const destino = new URL("/configuracion/conexiones", request.url)
   for (const [clave, valor] of Object.entries(params)) {
     destino.searchParams.set(clave, valor)
   }

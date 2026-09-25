@@ -3,13 +3,11 @@
 import * as React from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { usePathname, useSearchParams } from "next/navigation"
+import { usePathname } from "next/navigation"
 
 import type { Cuenta } from "@/engine/accounts"
 import { AccountSwitcher } from "@/components/account-switcher"
 import { NavMain } from "@/components/nav-main"
-import { NavNiches } from "@/components/nav-niches"
-import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -20,80 +18,77 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import {
-  BookOpenIcon,
-  CpuIcon,
-  DatabaseIcon,
-  NewspaperIcon,
-  PenLineIcon,
-} from "lucide-react"
+import { BotIcon, CpuIcon, PenLineIcon, SettingsIcon } from "lucide-react"
 
-export type NicheCount = { value: string; count: number }
+import { AGENTES } from "@/lib/agentes-catalogo"
 
 export function AppSidebar({
-  niches,
   email,
   cuentas,
   cuenta,
   ...props
 }: {
-  niches: NicheCount[]
   email: string
   cuentas: Cuenta[]
   cuenta: Cuenta
 } & React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const currentNiche = searchParams.get("niche")
-  const currentStatus = searchParams.get("status")
 
   const navMain = [
     {
       title: "Hancel Engine",
-      url: "/engine",
+      url: "/engine/config",
       icon: <CpuIcon />,
       isActive: pathname.startsWith("/engine"),
       items: [
-        { title: "En vivo", url: "/engine", isActive: pathname === "/engine" },
         { title: "Taxonomia", url: "/engine/config", isActive: pathname === "/engine/config" },
         { title: "Horario", url: "/engine/schedule", isActive: pathname === "/engine/schedule" },
-        { title: "Grafo", url: "/engine/graph", isActive: pathname === "/engine/graph" },
       ],
     },
     {
-      title: "Noticias",
-      url: "/noticias",
-      icon: <NewspaperIcon />,
-      isActive: pathname === "/noticias",
-      items: [
-        { title: "Todas", url: "/noticias", isActive: pathname === "/noticias" && !currentNiche && !currentStatus },
-        { title: "Analizadas", url: "/noticias?status=analyzed", isActive: currentStatus === "analyzed" },
-        { title: "Pendientes", url: "/noticias?status=pending_analysis", isActive: currentStatus === "pending_analysis" },
-      ],
-    },
-    {
-      title: "Contenido",
-      url: "/contenido",
+      // Sin subsecciones: el estudio es una sola pantalla, el tablero, y
+      // colgarle hijos que no existen solo añadiria un desplegable vacio.
+      title: "Estudio",
+      url: "/estudio",
       icon: <PenLineIcon />,
-      isActive: pathname.startsWith("/contenido"),
+      isActive: pathname === "/estudio",
+      items: [],
+    },
+    {
+      title: "Agentes",
+      url: `/agentes/${AGENTES[0].clave}`,
+      icon: <BotIcon />,
+      isActive: pathname.startsWith("/agentes"),
+      // En el orden del pipeline, que es el recorrido de una noticia: quien
+      // abre esto casi siempre viene siguiendo donde se atasco algo.
+      items: AGENTES.map((a) => ({
+        title: a.nombre,
+        url: `/agentes/${a.clave}`,
+        isActive: pathname === `/agentes/${a.clave}`,
+      })),
+    },
+    {
+      title: "Configuracion",
+      url: "/configuracion/general",
+      icon: <SettingsIcon />,
+      isActive: pathname.startsWith("/configuracion"),
       items: [
-        { title: "Estudio", url: "/contenido", isActive: pathname === "/contenido" },
-        { title: "Variables", url: "/contenido/config", isActive: pathname === "/contenido/config" },
-        { title: "Cola", url: "/contenido/cola", isActive: pathname === "/contenido/cola" },
+        {
+          title: "General",
+          url: "/configuracion/general",
+          isActive: pathname === "/configuracion/general",
+        },
+        {
+          title: "Conexiones",
+          url: "/configuracion/conexiones",
+          isActive: pathname === "/configuracion/conexiones",
+        },
+        {
+          title: "Marca",
+          url: "/configuracion/marca",
+          isActive: pathname === "/configuracion/marca",
+        },
       ],
-    },
-  ]
-
-  const navSecondary = [
-    {
-      title: "Supabase",
-      url: "https://supabase.com/dashboard/project/iddjepduokjysnibjjqy",
-      icon: <DatabaseIcon />,
-    },
-    {
-      title: "Documentacion",
-      url: "https://supabase.com/docs",
-      icon: <BookOpenIcon />,
     },
   ]
 
@@ -102,7 +97,7 @@ export function AppSidebar({
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/engine" />}>
+            <SidebarMenuButton size="lg" render={<Link href="/estudio" />}>
               {/* El lockup completo con la sidebar abierta; al colapsarla a
                   ancho de icono no cabe una marca apaisada, asi que se cambia
                   por el isotipo. Ambas llevan alt vacio y el nombre accesible
@@ -130,8 +125,6 @@ export function AppSidebar({
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
-        <NavNiches niches={niches} activeNiche={currentNiche} />
-        <NavSecondary items={navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
         <NavUser email={email} />

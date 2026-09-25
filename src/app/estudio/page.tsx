@@ -19,7 +19,7 @@ export const maxDuration = 60
 
 
 export const metadata = {
-  title: "Contenido · Engine Hancel",
+  title: "Estudio · Engine Hancel",
 }
 
 /**
@@ -33,7 +33,7 @@ export default async function ContenidoPage() {
   const [datos, ia] = await Promise.all([getTablero(), getEstadoIA()])
 
   return (
-    <DashboardShell title="Contenido">
+    <DashboardShell title="Estudio">
       <div className="flex flex-col gap-4">
         {!ia.tokenConfigurado ? (
           <Card className="border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30">

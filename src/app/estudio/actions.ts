@@ -14,7 +14,7 @@ import { analizarPendientes } from "@/engine/content/analisis"
 import { elegirPorHecho } from "@/engine/content/repetidas"
 import { modelosClaude } from "@/engine/claude/modelos"
 import { runContentTick } from "@/engine/content/tick"
-import { REDES } from "@/engine/content/types"
+
 import type { ContentAngle, ContentPiece, Red, Variables } from "@/engine/content/types"
 import { parseVariables, validateVariables } from "@/engine/content/variables"
 import { disconnectLinkedin } from "@/engine/publish/linkedin"
@@ -48,10 +48,10 @@ function fail(error: unknown, fallback: string): ActionResult {
 }
 
 function refresh() {
-  revalidatePath("/contenido")
-  revalidatePath("/contenido/config")
-  revalidatePath("/contenido/cola")
-  revalidatePath("/noticias")
+  revalidatePath("/estudio")
+  revalidatePath("/configuracion/general")
+  revalidatePath("/configuracion/conexiones")
+  revalidatePath("/configuracion/marca")
 }
 
 function text(form: FormData, key: string): string {
@@ -679,13 +679,8 @@ export async function updateGenerationConfig(form: FormData): Promise<ActionResu
   const invalido = validateVariables(variables)
   if (invalido) return { ok: false, error: invalido }
 
-  const modo = text(form, "generation_mode") || "manual"
-  if (modo !== "auto" && modo !== "manual") {
-    return { ok: false, error: "El modo tiene que ser automatico o manual." }
-  }
-
-  // Vacio = sin umbral: el modo automatico no selecciona nada hasta que se
-  // defina, que es justo lo que se quiere mientras no haya criterio de scoring.
+  // Vacio = sin umbral: no se selecciona nada sola hasta que se defina, que es
+  // justo lo que se quiere mientras no haya criterio de scoring.
   const umbralTexto = text(form, "score_threshold")
   let umbral: number | null = null
   if (umbralTexto.length > 0) {
@@ -694,17 +689,6 @@ export async function updateGenerationConfig(form: FormData): Promise<ActionResu
       return { ok: false, error: "El umbral tiene que ser un entero entre 0 y 10." }
     }
   }
-
-  if (modo === "auto" && umbral === null) {
-    return {
-      ok: false,
-      error: "Para activar el modo automatico hay que definir primero el umbral de score.",
-    }
-  }
-
-  // Se filtra contra la lista real en vez de confiar en lo que llegue del
-  // formulario: es una accion de servidor y cualquiera puede mandarle otra cosa.
-  const redes = REDES.filter((red) => form.getAll("auto_networks").includes(red))
 
   try {
     const accountId = await idDeCuentaActual()
@@ -724,8 +708,6 @@ export async function updateGenerationConfig(form: FormData): Promise<ActionResu
       .update({
         variables: parseVariables(variables),
         score_threshold: umbral,
-        generation_mode: modo,
-        auto_networks: redes,
         ...(cambioElUmbral ? { score_threshold_updated_at: new Date().toISOString() } : {}),
         updated_at: new Date().toISOString(),
       })

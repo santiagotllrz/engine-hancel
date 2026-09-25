@@ -17,7 +17,6 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { getNicheCounts } from "@/lib/news"
 import { cuentaActual, cuentasDelUsuario } from "@/lib/accounts"
 import { usuarioActual } from "@/lib/supabase/auth"
 
@@ -40,12 +39,10 @@ export async function DashboardShell({
 
   // La cuenta primero: los conteos de nichos ya salen acotados a ella.
   const [cuenta, cuentas] = await Promise.all([cuentaActual(), cuentasDelUsuario()])
-  const niches = await getNicheCounts()
 
   return (
     <SidebarProvider>
       <AppSidebar
-        niches={niches}
         email={usuario.email ?? ""}
         cuentas={cuentas}
         cuenta={cuenta}
@@ -61,7 +58,7 @@ export async function DashboardShell({
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink render={<Link href="/engine" />}>
+                  <BreadcrumbLink render={<Link href="/estudio" />}>
                     Hancel Engine
                   </BreadcrumbLink>
                 </BreadcrumbItem>

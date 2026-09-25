@@ -1,3 +1,4 @@
+import { supabaseAdmin } from "./supabase-admin"
 import { FRESHNESS, RESULTS_PER_SEARCH, type SearchSpec } from "./config"
 
 const SERPER_NEWS_URL = "https://google.serper.dev/news"
@@ -12,9 +13,25 @@ export type SerperNewsItem = {
   imageUrl?: string
 }
 
-function apiKey(): string {
-  const key = process.env.SERPER_API_KEY
-  if (!key) throw new Error("Falta SERPER_API_KEY en el entorno.")
+/**
+ * La clave de Serper.
+ *
+ * Primero la que este guardada en la aplicacion, que es donde se cambia sin
+ * redesplegar; el entorno queda de respaldo para no dejar la ingesta muerta en
+ * una instalacion que aun no la haya pegado.
+ */
+async function apiKey(): Promise<string> {
+  const { data } = await supabaseAdmin()
+    .from("engine_secrets")
+    .select("serper_api_key")
+    .eq("id", true)
+    .maybeSingle()
+
+  const guardada = (data as { serper_api_key: string | null } | null)?.serper_api_key?.trim()
+  const key = guardada || process.env.SERPER_API_KEY
+  if (!key) {
+    throw new Error("Falta la clave de Serper. Ponla en Configuracion, en Conexiones.")
+  }
   return key
 }
 
@@ -31,7 +48,7 @@ export async function searchNews(
   const response = await fetch(SERPER_NEWS_URL, {
     method: "POST",
     headers: {
-      "X-API-KEY": apiKey(),
+      "X-API-KEY": await apiKey(),
       "Content-Type": "application/json",
     },
     body: JSON.stringify({

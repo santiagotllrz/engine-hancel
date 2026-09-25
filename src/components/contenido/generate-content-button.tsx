@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { encolarContenido, type ActionResult } from "@/app/contenido/actions"
+import { encolarContenido, type ActionResult } from "@/app/estudio/actions"
 import { Button } from "@/components/ui/button"
 import { Loader2Icon, PenLineIcon } from "lucide-react"
 
@@ -11,7 +11,7 @@ import { Loader2Icon, PenLineIcon } from "lucide-react"
  *
  * Disponible en cualquier noticia, en cualquier modo y sin importar el umbral:
  * es una accion del usuario, no de la seleccion automatica. Por eso vive tanto
- * en la lista de candidatas como en `/noticias`.
+ * en la lista de candidatas como en el estudio.
  *
  * No espera a que la rutina trabaje, solo a que el trabajo quede encolado: el
  * angulo aparece despues, cuando la rutina responde y el tick lo materializa.

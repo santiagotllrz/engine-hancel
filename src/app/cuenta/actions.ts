@@ -134,8 +134,7 @@ export async function guardarTokenClaude(
     return {
       ok: false,
       error:
-        "El token debe empezar por sk-ant-oat01 (el de `claude setup-token`) o sk-ant-api03. " +
-        "El de las rutinas viejas no sirve.",
+        "El token debe empezar por sk-ant-oat01 (el de `claude setup-token`) o sk-ant-api03.",
     }
   }
 
@@ -183,3 +182,71 @@ export async function guardarModeloIA(
   }
 }
 
+
+
+// ------------------------------------------------------------------- serper
+
+/**
+ * La clave de Serper, la que paga las busquedas de noticias.
+ *
+ * Vivia en las variables de entorno de Vercel, donde cambiarla obliga a
+ * redesplegar. Es la que mas se rota —al cambiar de plan o agotar cuota— asi
+ * que se gestiona desde aqui. Misma regla que el token de Claude: se guarda
+ * entera, se devuelve enmascarada.
+ *
+ * Composio no esta aqui a proposito: es una pieza de backend que no se toca en
+ * el dia a dia, y sacarla a la interfaz solo añadiria una superficie mas por
+ * donde filtrar una credencial.
+ */
+export type EstadoSerper = {
+  configurado: boolean
+  vistaPrevia: string | null
+  /** Esta puesta en el entorno pero no en la aplicacion: el respaldo viejo. */
+  soloEnEntorno: boolean
+}
+
+export async function estadoSerper(): Promise<EstadoSerper> {
+  const { supabaseAdmin } = await import("@/engine/supabase-admin")
+  const { data } = await supabaseAdmin()
+    .from("engine_secrets")
+    .select("serper_api_key")
+    .eq("id", true)
+    .maybeSingle()
+
+  const valor = (data as { serper_api_key: string | null } | null)?.serper_api_key?.trim()
+  if (!valor) {
+    return {
+      configurado: Boolean(process.env.SERPER_API_KEY),
+      vistaPrevia: null,
+      soloEnEntorno: Boolean(process.env.SERPER_API_KEY),
+    }
+  }
+
+  return {
+    configurado: true,
+    vistaPrevia: valor.length > 10 ? `${valor.slice(0, 6)}…${valor.slice(-4)}` : "••••",
+    soloEnEntorno: false,
+  }
+}
+
+export async function guardarClaveSerper(
+  clave: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const limpio = clave.trim()
+  const { supabaseAdmin } = await import("@/engine/supabase-admin")
+
+  // Vacio = volver al entorno, no quedarse sin clave. Es la unica forma de
+  // deshacer sin tener que recordar y volver a pegar la que habia.
+  if (limpio.length > 0 && limpio.length < 20) {
+    return { ok: false, error: "Esa clave es demasiado corta para ser de Serper." }
+  }
+
+  const { error } = await supabaseAdmin()
+    .from("engine_secrets")
+    .update({ serper_api_key: limpio || null, updated_at: new Date().toISOString() })
+    .eq("id", true)
+
+  if (error) return { ok: false, error: error.message }
+  revalidatePath("/", "layout")
+  return { ok: true }
+}

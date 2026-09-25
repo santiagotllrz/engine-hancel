@@ -20,7 +20,7 @@ import {
   publishPieceNow,
   regenerateCarousel,
   rechazarFicha,
-} from "@/app/contenido/actions"
+} from "@/app/estudio/actions"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {

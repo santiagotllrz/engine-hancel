@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { moverFicha, type DestinoTablero } from "@/app/contenido/actions"
+import { moverFicha, type DestinoTablero } from "@/app/estudio/actions"
 import { Badge } from "@/components/ui/badge"
 import { FichaDialog } from "@/components/kanban/ficha-dialog"
 import type { Etapa, Ficha, Tablero as TableroDatos } from "@/lib/kanban-data"

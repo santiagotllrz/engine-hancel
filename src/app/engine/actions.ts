@@ -20,25 +20,10 @@ function fail(error: unknown, fallback: string): ActionResult {
 }
 
 function refresh() {
-  revalidatePath("/engine")
   revalidatePath("/engine/config")
-  revalidatePath("/engine/routines")
-  revalidatePath("/engine/graph")
 }
 
 
-/** URL vacia se acepta (borrador); si viene, tiene que ser https. */
-function validateWebhook(url: string): string | null {
-  if (!url) return null
-  try {
-    if (new URL(url).protocol !== "https:") {
-      return "El webhook debe ser https: el token viaja en la peticion."
-    }
-  } catch {
-    return "La URL del webhook no es valida."
-  }
-  return null
-}
 
 function text(form: FormData, key: string): string {
   return String(form.get(key) ?? "").trim()
@@ -236,137 +221,6 @@ export async function deleteSegment(id: string): Promise<ActionResult> {
 }
 
 // ----------------------------------------------------------------- rutinas
-
-export async function createRoutine(form: FormData): Promise<ActionResult> {
-  const name = text(form, "name")
-  const webhookUrl = text(form, "webhook_url")
-
-  if (!name) return { ok: false, error: "El nombre es obligatorio." }
-
-  // URL vacia = borrador: la rutina existe pero no se puede invocar todavia.
-  const urlError = validateWebhook(webhookUrl)
-  if (urlError) return { ok: false, error: urlError }
-
-  try {
-    const { error } = await supabaseAdmin().from("engine_routines").insert({
-      name,
-      kind: text(form, "kind") || "analysis",
-      webhook_url: webhookUrl || null,
-      token: text(form, "token") || null,
-      is_active: Boolean(webhookUrl),
-    })
-
-    if (error) throw new Error(error.message)
-    refresh()
-    return { ok: true }
-  } catch (error) {
-    return fail(error, "No se pudo crear la rutina.")
-  }
-}
-
-export async function updateRoutine(form: FormData): Promise<ActionResult> {
-  const id = text(form, "id")
-  const name = text(form, "name")
-  const webhookUrl = text(form, "webhook_url")
-  const token = text(form, "token")
-
-  if (!id) return { ok: false, error: "Falta el id de la rutina." }
-  if (!name) return { ok: false, error: "El nombre es obligatorio." }
-
-  const urlError = validateWebhook(webhookUrl)
-  if (urlError) return { ok: false, error: urlError }
-
-  try {
-    // Token vacio = "dejalo como esta". Para borrarlo hay que escribir "-".
-    const patch: Record<string, unknown> = {
-      name,
-      kind: text(form, "kind") || "analysis",
-      webhook_url: webhookUrl || null,
-      updated_at: new Date().toISOString(),
-    }
-    if (token === "-") patch.token = null
-    else if (token) patch.token = token
-
-    const { error } = await supabaseAdmin().from("engine_routines").update(patch).eq("id", id)
-    if (error) throw new Error(error.message)
-    refresh()
-    return { ok: true }
-  } catch (error) {
-    return fail(error, "No se pudo actualizar la rutina.")
-  }
-}
-
-export async function toggleRoutine(id: string, isActive: boolean): Promise<ActionResult> {
-  try {
-    if (isActive) {
-      // Activar una rutina sin URL la dejaria fallando en cada corrida.
-      const { data } = await supabaseAdmin()
-        .from("engine_routines")
-        .select("webhook_url")
-        .eq("id", id)
-        .single()
-
-      if (!(data as { webhook_url: string | null } | null)?.webhook_url) {
-        return { ok: false, error: "Anade la URL del webhook antes de activarla." }
-      }
-    }
-
-    const { error } = await supabaseAdmin()
-      .from("engine_routines")
-      .update({ is_active: isActive, updated_at: new Date().toISOString() })
-      .eq("id", id)
-
-    if (error) throw new Error(error.message)
-    refresh()
-    return { ok: true }
-  } catch (error) {
-    return fail(error, "No se pudo cambiar el estado.")
-  }
-}
-
-export async function deleteRoutine(id: string): Promise<ActionResult> {
-  try {
-    const { error } = await supabaseAdmin().from("engine_routines").delete().eq("id", id)
-    if (error) throw new Error(error.message)
-    refresh()
-    return { ok: true }
-  } catch (error) {
-    return fail(error, "No se pudo borrar la rutina.")
-  }
-}
-
-/**
- * Llama el webhook con una carga de prueba, para verificar URL y token sin
- * tener que lanzar una ingesta completa.
- */
-export async function testRoutine(id: string): Promise<ActionResult> {
-  try {
-    const { data, error } = await supabaseAdmin()
-      .from("engine_routines")
-      .select("*")
-      .eq("id", id)
-      .single()
-
-    if (error) throw new Error(error.message)
-
-    const { callRoutine } = await import("@/engine/routines")
-    const result = await callRoutine(data as never, {
-      test: true,
-      run_id: null,
-      count: 0,
-      news_ids: [],
-    })
-
-    refresh()
-    return result.ok
-      ? { ok: true }
-      : { ok: false, error: result.error ?? `El webhook respondio ${result.status}.` }
-  } catch (error) {
-    return fail(error, "No se pudo probar la rutina.")
-  }
-}
-
-// ----------------------------------------------------------------- horario
 
 export async function updateSchedule(form: FormData): Promise<ActionResult> {
   const timezone = text(form, "timezone") || "America/Bogota"
