@@ -70,6 +70,39 @@ export async function subirImagenSuelta(
   return `${data.publicUrl}?v=${Date.now().toString(36)}`
 }
 
+/**
+ * Guarda el logo de una cuenta y devuelve su URL publica.
+ *
+ * Vive en el mismo bucket que los carruseles, que ya es publico, pero en su
+ * propia carpeta: `borrarCarrusel` lista por la carpeta del buzon, asi que
+ * ningun descarte de pieza se lo lleva por delante.
+ *
+ * La marca de version es lo que hace que un logo nuevo se vea: la ruta es
+ * siempre la misma y sin ella el navegador seguiria sirviendo el anterior.
+ */
+export async function subirLogo(
+  accountId: string,
+  bytes: Buffer,
+  contentType: string
+): Promise<string> {
+  const supabase = supabaseAdmin()
+  const ruta = `marca/${accountId}/logo`
+
+  const { error } = await supabase.storage.from(BUCKET).upload(ruta, bytes, {
+    contentType,
+    upsert: true,
+  })
+  if (error) throw new Error(`No se pudo subir el logo: ${error.message}`)
+
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(ruta)
+  return `${data.publicUrl}?v=${Date.now().toString(36)}`
+}
+
+/** Quita el logo de una cuenta. */
+export async function borrarLogo(accountId: string): Promise<void> {
+  await supabaseAdmin().storage.from(BUCKET).remove([`marca/${accountId}/logo`])
+}
+
 /** Borra las imagenes de un carrusel. Se usa al descartar una pieza. */
 export async function borrarCarrusel(pieceKey: string): Promise<void> {
   const supabase = supabaseAdmin()

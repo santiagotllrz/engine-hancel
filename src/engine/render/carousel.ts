@@ -93,16 +93,24 @@ export async function generarCarrusel(
   const { caption, hashtags, slides } = parseInstagramResponse(respuesta)
 
   // El cierre es una lamina de marca, no del guion: se añade aqui y no se le
-  // pide al agente. Si el guion ya llega al tope de Instagram, se recorta uno
-  // para hacerle sitio en vez de pasarse.
-  const conCierre = estilo.cierre.activo
-  if (conCierre && slides.length >= MAX_SLIDES) slides.length = MAX_SLIDES - 1
+  // pide al agente. Va siempre, porque la llamada a seguir la cuenta es lo
+  // unico que convierte un carrusel en algo que deja audiencia detras, y
+  // dejarla al criterio de cada generacion era garantizar que faltara. Si el
+  // guion ya llega al tope de Instagram se recorta una lamina para hacerle
+  // sitio, en vez de pasarse.
+  if (slides.length >= MAX_SLIDES) slides.length = MAX_SLIDES - 1
 
   const variantes = repartirVariantes(slides, estilo.usarFotos && pexelsConfigurado())
-  if (conCierre) {
-    slides.push({ n: slides.length + 1, type: "text", title: estilo.cierre.titulo, body: estilo.cierre.texto })
-    variantes.push("cierre")
-  }
+  slides.push({
+    n: slides.length + 1,
+    type: "text",
+    title: estilo.cierre.titulo,
+    body: estilo.cierre.texto,
+  })
+  variantes.push("cierre")
+
+  // El logo se descarga una vez: Satori necesita los bytes, no una URL.
+  const logo = await descargarFoto(estilo.logo)
   const conFoto = necesitanFoto(variantes)
 
   const terminos = terminosDeBusqueda(news, nichos, estilo.fotosLiterales)
@@ -152,7 +160,7 @@ export async function generarCarrusel(
 
     imagenes.push(
       await renderSlide(
-        { slide, variante: variantes[indice], foto, etiqueta },
+        { slide, variante: variantes[indice], foto, etiqueta, logo },
         slides.length,
         estilo
       )

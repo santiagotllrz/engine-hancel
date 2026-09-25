@@ -39,6 +39,8 @@ export type LaminaProps = {
   variante: Variante
   /** Data URI ya descargado, o null. */
   foto: string | null
+  /** El logo de la marca, ya descargado. Solo lo usa la lamina de cierre. */
+  logo?: string | null
   /**
    * Antetitulo de la portada: el tema de la noticia, en versalitas sobre el
    * hook. Es el hueco que en las cuentas que funcionan lleva la seccion, y sirve
@@ -650,7 +652,16 @@ function Lamina({ slide, total, estilo }: LaminaProps) {
  * Centrada y sin paginacion, para que se lea como el final y no como una lamina
  * mas. La foto va muy velada: aqui la imagen es fondo, no contenido.
  */
-export function Cierre({ estilo, foto }: { estilo: Estilo; foto: string | null }) {
+export function Cierre({
+  estilo,
+  foto,
+  logo,
+}: {
+  estilo: Estilo
+  foto: string | null
+  /** Ya descargado. Sin el, la lamina sale con la marca tipografica de siempre. */
+  logo?: string | null
+}) {
   const { paleta, marca, cierre } = estilo
 
   return (
@@ -689,16 +700,27 @@ export function Cierre({ estilo, foto }: { estilo: Estilo; foto: string | null }
           textAlign: "center",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            width: 72,
-            height: 72,
-            borderRadius: 72,
-            background: paleta.acento,
-            marginBottom: 48,
-          }}
-        />
+        {/* El logo si esta subido; si no, el punto de siempre. Dejar el hueco
+            vacio descolgaria el titular del centro optico de la lamina. */}
+        {logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logo}
+            alt=""
+            style={{ width: 200, height: 200, objectFit: "contain", marginBottom: 48 }}
+          />
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              width: 72,
+              height: 72,
+              borderRadius: 72,
+              background: paleta.acento,
+              marginBottom: 48,
+            }}
+          />
+        )}
 
         <div
           style={{
@@ -877,7 +899,7 @@ export function Composicion(props: LaminaProps) {
 
   switch (variante) {
     case "cierre":
-      return <Cierre estilo={props.estilo} foto={foto} />
+      return <Cierre estilo={props.estilo} foto={foto} logo={props.logo} />
     case "portada":
       return <Portada {...props} />
     case "foto_fondo":

@@ -31,7 +31,6 @@ export function CarouselStyleEditor({
   const [paginacion, setPaginacion] = React.useState(estilo.mostrarPaginacion)
   const [usarFotos, setUsarFotos] = React.useState(estilo.usarFotos)
   const [literales, setLiterales] = React.useState(estilo.fotosLiterales)
-  const [cierreActivo, setCierreActivo] = React.useState(estilo.cierre.activo)
   const [cierreTitulo, setCierreTitulo] = React.useState(estilo.cierre.titulo)
   const [cierreTexto, setCierreTexto] = React.useState(estilo.cierre.texto)
   const [pending, startTransition] = React.useTransition()
@@ -44,7 +43,6 @@ export function CarouselStyleEditor({
     paginacion !== estilo.mostrarPaginacion ||
     usarFotos !== estilo.usarFotos ||
     literales !== estilo.fotosLiterales ||
-    cierreActivo !== estilo.cierre.activo ||
     cierreTitulo !== estilo.cierre.titulo ||
     cierreTexto !== estilo.cierre.texto
 
@@ -56,7 +54,6 @@ export function CarouselStyleEditor({
     form.set("mostrarPaginacion", paginacion ? "true" : "false")
     form.set("usarFotos", usarFotos ? "true" : "false")
     form.set("fotosLiterales", literales ? "true" : "false")
-    form.set("cierreActivo", cierreActivo ? "true" : "false")
     form.set("cierreTitulo", cierreTitulo)
     form.set("cierreTexto", cierreTexto)
 
@@ -216,47 +213,35 @@ export function CarouselStyleEditor({
         </div>
 
         <div className="space-y-3 border-t pt-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <Label htmlFor="cierreActivo">Lamina de cierre</Label>
-              <p className="text-muted-foreground mt-1 text-xs">
-                Se añade al final de cada carrusel, con foto de fondo. Es una constante de la
-                marca, asi que no se le pide al agente.
-              </p>
-            </div>
-            <Switch
-              id="cierreActivo"
-              checked={cierreActivo}
-              onCheckedChange={(v) => {
-                setResult(null)
-                setCierreActivo(Boolean(v))
-              }}
-              aria-label="Añadir lamina de cierre"
-            />
+          <div>
+            <Label>Lamina de cierre</Label>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Cierra todos los carruseles, con el logo si lo has subido. Es la llamada a seguir
+              la cuenta, asi que va siempre: es lo unico que convierte un carrusel en audiencia,
+              y dejarlo al criterio de cada generacion era garantizar que faltara.
+            </p>
           </div>
 
-          {cierreActivo ? (
-            <div className="grid gap-3">
-              <Input
-                maxLength={40}
-                placeholder="Siguenos"
-                value={cierreTitulo}
-                onChange={(e) => {
-                  setResult(null)
-                  setCierreTitulo(e.target.value)
-                }}
-              />
-              <Input
-                maxLength={140}
-                placeholder="Analisis de lo que pasa en tecnologia, sin ruido."
-                value={cierreTexto}
-                onChange={(e) => {
-                  setResult(null)
-                  setCierreTexto(e.target.value)
-                }}
-              />
-            </div>
-          ) : null}
+          <div className="grid gap-3">
+            <Input
+              maxLength={40}
+              placeholder="Siguenos"
+              value={cierreTitulo}
+              onChange={(e) => {
+                setResult(null)
+                setCierreTitulo(e.target.value)
+              }}
+            />
+            <Input
+              maxLength={140}
+              placeholder="Analisis de lo que pasa en el campo, sin ruido."
+              value={cierreTexto}
+              onChange={(e) => {
+                setResult(null)
+                setCierreTexto(e.target.value)
+              }}
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

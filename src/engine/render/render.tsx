@@ -59,10 +59,12 @@ export type SlideRender = {
   foto?: string | null
   /** Antetitulo de la portada. Las laminas interiores lo ignoran. */
   etiqueta?: string | null
+  /** El logo ya descargado, para la lamina de cierre. Solo lo usa ella. */
+  logo?: string | null
 }
 
 export async function renderSlide(
-  { slide, variante, foto, etiqueta }: SlideRender,
+  { slide, variante, foto, etiqueta, logo }: SlideRender,
   total: number,
   estilo: Estilo = ESTILO_POR_DEFECTO
 ): Promise<Buffer> {
@@ -76,6 +78,7 @@ export async function renderSlide(
       variante={variante}
       foto={foto ?? null}
       etiqueta={etiqueta ?? null}
+      logo={logo ?? null}
     />,
     { width: ANCHO, height: ALTO, fonts }
   )

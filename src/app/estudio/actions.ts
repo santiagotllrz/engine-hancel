@@ -641,6 +641,18 @@ export async function updateCarouselStyle(form: FormData): Promise<ActionResult>
   const marca = text(form, "marca").slice(0, 40)
 
   try {
+    const accountId = await idDeCuentaActual()
+
+    // El logo no viaja en este formulario —se sube aparte— y esta escritura
+    // reemplaza el documento entero, asi que hay que arrastrarlo: sin esto,
+    // guardar la paleta borraria el logo sin que nadie lo tocara.
+    const { data: previa } = await supabaseAdmin()
+      .from("generation_config")
+      .select("carousel")
+      .eq("account_id", accountId)
+      .maybeSingle()
+    const logo = ((previa as { carousel?: { logo?: string } } | null)?.carousel ?? {}).logo ?? null
+
     const { error } = await supabaseAdmin()
       .from("generation_config")
       .update({
@@ -648,18 +660,18 @@ export async function updateCarouselStyle(form: FormData): Promise<ActionResult>
           paleta,
           fuente,
           marca,
+          logo,
           mostrarPaginacion: form.get("mostrarPaginacion") === "true",
           usarFotos: form.get("usarFotos") === "true",
           fotosLiterales: form.get("fotosLiterales") === "true",
           cierre: {
-            activo: form.get("cierreActivo") === "true",
             titulo: text(form, "cierreTitulo").slice(0, 40),
             texto: text(form, "cierreTexto").slice(0, 140),
           },
         },
         updated_at: new Date().toISOString(),
       })
-      .eq("account_id", await idDeCuentaActual())
+      .eq("account_id", accountId)
 
     if (error) throw new Error(error.message)
     refresh()
@@ -667,6 +679,84 @@ export async function updateCarouselStyle(form: FormData): Promise<ActionResult>
   } catch (error) {
     return fail(error, "No se pudo guardar el aspecto.")
   }
+}
+
+// --------------------------------------------------------------- logo de marca
+
+/** Lo que admite el logo: mapas de bits, que es lo unico que Satori dibuja. */
+const TIPOS_DE_LOGO = ["image/png", "image/jpeg", "image/webp"]
+const MAX_LOGO_BYTES = 2 * 1024 * 1024
+
+/**
+ * Guarda el logo que cierra los carruseles.
+ *
+ * Se guarda la URL en la configuracion y los bytes en el storage. El SVG se
+ * rechaza a proposito: Satori solo dibuja mapas de bits, asi que uno subido
+ * aqui pasaria la subida y desapareceria en la lamina sin decir por que.
+ */
+export async function subirLogoMarca(form: FormData): Promise<ActionResult> {
+  const archivo = form.get("logo")
+  if (!(archivo instanceof File) || archivo.size === 0) {
+    return { ok: false, error: "Elige un archivo." }
+  }
+  if (!TIPOS_DE_LOGO.includes(archivo.type)) {
+    return { ok: false, error: "El logo tiene que ser PNG, JPG o WEBP. El SVG no se puede dibujar." }
+  }
+  if (archivo.size > MAX_LOGO_BYTES) {
+    return { ok: false, error: "El logo no puede pasar de 2 MB." }
+  }
+
+  try {
+    const accountId = await idDeCuentaActual()
+    const { subirLogo } = await import("@/engine/render/storage")
+    const url = await subirLogo(
+      accountId,
+      Buffer.from(await archivo.arrayBuffer()),
+      archivo.type
+    )
+
+    await guardarLogoEnConfig(accountId, url)
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return fail(error, "No se pudo subir el logo.")
+  }
+}
+
+/** Quita el logo. La lamina de cierre sigue saliendo, sin el. */
+export async function quitarLogoMarca(): Promise<ActionResult> {
+  try {
+    const accountId = await idDeCuentaActual()
+    const { borrarLogo } = await import("@/engine/render/storage")
+    await borrarLogo(accountId)
+    await guardarLogoEnConfig(accountId, null)
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return fail(error, "No se pudo quitar el logo.")
+  }
+}
+
+/** Escribe solo la clave del logo, sin tocar el resto del aspecto. */
+async function guardarLogoEnConfig(accountId: string, url: string | null): Promise<void> {
+  const supabase = supabaseAdmin()
+  const { data } = await supabase
+    .from("generation_config")
+    .select("carousel")
+    .eq("account_id", accountId)
+    .maybeSingle()
+
+  const actual = ((data as { carousel?: Record<string, unknown> } | null)?.carousel ?? {}) as Record<
+    string,
+    unknown
+  >
+
+  const { error } = await supabase
+    .from("generation_config")
+    .update({ carousel: { ...actual, logo: url }, updated_at: new Date().toISOString() })
+    .eq("account_id", accountId)
+
+  if (error) throw new Error(error.message)
 }
 
 export async function updateGenerationConfig(form: FormData): Promise<ActionResult> {

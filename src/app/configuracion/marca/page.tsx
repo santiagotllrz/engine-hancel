@@ -1,5 +1,6 @@
 import { CarouselStyleEditor } from "@/components/contenido/carousel-style-editor"
 import { Comunicacion } from "@/components/configuracion/comunicacion"
+import { LogoMarca } from "@/components/configuracion/logo-marca"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { pexelsConfigurado } from "@/engine/render/pexels"
 import { estiloDesdeConfig } from "@/engine/render/theme"
@@ -18,6 +19,7 @@ export const metadata = { title: "Marca · Engine Hancel" }
  */
 export default async function MarcaPage() {
   const config = await configuracionDeGeneracion()
+  const estilo = estiloDesdeConfig(config.carousel)
 
   return (
     <DashboardShell title="Marca">
@@ -29,8 +31,9 @@ export default async function MarcaPage() {
 
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold">Visual</h2>
+          <LogoMarca logo={estilo.logo} />
           <CarouselStyleEditor
-            estilo={estiloDesdeConfig(config.carousel)}
+            estilo={estilo}
             paletaActual={((config.carousel ?? {}) as { paleta?: string }).paleta ?? "negro"}
             pexelsConfigurado={pexelsConfigurado()}
           />

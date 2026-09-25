@@ -185,20 +185,19 @@ export type Variante =
 /**
  * La lamina de cierre.
  *
- * Se añade al final de todos los carruseles cuando esta encendida. Va aparte del
- * guion que escribe el agente a proposito: es una constante de la marca, no
- * contenido de la noticia, y no tiene sentido pedirsela al modelo cada vez.
+ * Cierra todos los carruseles, siempre. Va aparte del guion que escribe el
+ * agente a proposito: es una constante de la marca, no contenido de la
+ * noticia, y no tiene sentido pedirsela al modelo cada vez ni dejar que se le
+ * olvide. Lo unico que se elige es que dice.
  */
 export type Cierre = {
-  activo: boolean
   titulo: string
   texto: string
 }
 
 export const CIERRE_POR_DEFECTO: Cierre = {
-  activo: false,
   titulo: "Siguenos",
-  texto: "Analisis de lo que pasa en tecnologia, sin ruido.",
+  texto: "Analisis de lo que pasa en el campo, sin ruido.",
 }
 
 /** Lo que el usuario puede cambiar desde la interfaz. */
@@ -211,6 +210,13 @@ export type Estilo = {
   mostrarPaginacion: boolean
   /** Meter fotos de banco en las laminas interiores. */
   usarFotos: boolean
+  /**
+   * El logo de la marca, en la lamina de cierre. Vacio = sin logo.
+   *
+   * Es una URL del storage, no un archivo: el render la descarga como hace con
+   * las fotos, porque Satori necesita los bytes y no sabe ir a buscarlos.
+   */
+  logo: string | null
   /**
    * Ilustrar el tema de frente en vez de buscar "el otro lado".
    * En agro la foto util es el cultivo mismo; en tecnologia seria un cliche.
@@ -226,6 +232,7 @@ export const ESTILO_POR_DEFECTO: Estilo = {
   marca: "",
   mostrarPaginacion: true,
   usarFotos: true,
+  logo: null,
   fotosLiterales: false,
   cierre: CIERRE_POR_DEFECTO,
 }
@@ -247,6 +254,7 @@ export function estiloDesdeConfig(valor: unknown): Estilo {
     marca: typeof raw.marca === "string" ? raw.marca.trim().slice(0, 40) : "",
     mostrarPaginacion: raw.mostrarPaginacion !== false,
     usarFotos: raw.usarFotos !== false,
+    logo: typeof raw.logo === "string" && raw.logo.trim().length > 0 ? raw.logo.trim() : null,
     fotosLiterales: raw.fotosLiterales === true,
     cierre: cierreDesdeConfig(raw.cierre),
   }
@@ -260,8 +268,6 @@ function cierreDesdeConfig(valor: unknown): Cierre {
       : porDefecto
 
   return {
-    // Apagado salvo que se diga lo contrario: añade una lamina a cada carrusel.
-    activo: raw.activo === true,
     titulo: texto(raw.titulo, CIERRE_POR_DEFECTO.titulo, 40),
     texto: texto(raw.texto, CIERRE_POR_DEFECTO.texto, 140),
   }
