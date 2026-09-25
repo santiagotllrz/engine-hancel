@@ -251,7 +251,20 @@ export async function generarCarrusel(
   let portadaFacebook: string | undefined
   if (conPortadaFacebook && slides[0]) {
     const png = await renderSlide(
-      { slide: slides[0], variante: variantes[0], foto: fotoPortada, etiqueta },
+      {
+        slide: slides[0],
+        variante: variantes[0],
+        foto: fotoPortada,
+        etiqueta,
+        // La misma portada, con lo mismo encima. Se dibuja aparte solo para
+        // quitarle la numeracion y el "desliza", que en una imagen suelta
+        // invitan a un gesto que no existe; todo lo demas tiene que venir
+        // igual, y el elemento se quedaba fuera por no pasarlo aqui.
+        inserto,
+        insertoPos,
+        insertoForma,
+        insertoAjuste,
+      },
       1,
       { ...estilo, mostrarPaginacion: false }
     )
