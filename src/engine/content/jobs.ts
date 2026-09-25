@@ -251,7 +251,34 @@ export async function enqueueInstagramJob(
   override?: Partial<Variables> | null,
   destinos: DestinoCarrusel[] = ["instagram"]
 ): Promise<string> {
-  const { data, error } = await supabaseAdmin()
+  const supabase = supabaseAdmin()
+
+  // Un angulo produce un solo guion, aunque se pidan sus dos redes por separado
+  // o se arrastre dos veces. Sin esto salian varios buzones del mismo angulo
+  // —llegue a ver tres— y cada uno es una generacion pagada para escribir lo
+  // mismo. Si ya hay uno sin consumir, se le añaden los destinos que falten.
+  const { data: abierto } = await supabase
+    .from("jobs_instagram")
+    .select("id, input")
+    .eq("content_angle_id", angle.id)
+    .is("consumed_at", null)
+    .maybeSingle()
+
+  if (abierto) {
+    const fila = abierto as { id: string; input: { destinos?: DestinoCarrusel[] } }
+    const yaTiene = fila.input?.destinos ?? ["instagram"]
+    const unidos = [...new Set([...yaTiene, ...destinos])]
+
+    if (unidos.length > yaTiene.length) {
+      await supabase
+        .from("jobs_instagram")
+        .update({ input: { ...fila.input, destinos: unidos } })
+        .eq("id", fila.id)
+    }
+    return fila.id
+  }
+
+  const { data, error } = await supabase
     .from("jobs_instagram")
     .insert({
       account_id: angle.account_id,

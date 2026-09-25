@@ -47,6 +47,8 @@ export type LaminaProps = {
   insertoPos?: number
   /** Circulo o cuadrado. Se sortea al generar. */
   insertoForma?: FormaInserto
+  /** Si llena el hueco recortando o se encaja entero. */
+  insertoAjuste?: AjusteInserto
   /** La captura del perfil, ya descargada. Solo la usa el cierre. */
   perfil?: string | null
   /**
@@ -290,19 +292,34 @@ const LADO_INSERTO = 384
  */
 export type FormaInserto = "circulo" | "cuadrado"
 
+/**
+ * Como encaja el elemento en su hueco.
+ *
+ * `llenar` recorta para cubrir, que es lo que luce con una foto o un logo
+ * cuadrado. `encajar` mete la imagen entera y deja margen, que es lo unico que
+ * vale para un logo apaisado: recortado pierde las puntas y deja de leerse
+ * —"Asocolflores" salia como "socolflore"— y un logo que no se lee no cumple
+ * su unica funcion.
+ */
+export type AjusteInserto = "llenar" | "encajar"
+
 function Inserto({
   src,
   estilo,
   posicion,
   forma,
+  ajuste,
 }: {
   src: string
   estilo: Estilo
   posicion: number
   forma: FormaInserto
+  ajuste: AjusteInserto
 }) {
   const sitio = POSICIONES_INSERTO[posicion % POSICIONES_INSERTO.length]
   const redondeo = forma === "circulo" ? LADO_INSERTO : 56
+  // Encajado necesita aire alrededor, o el logo toca el aro y parece pegado.
+  const aire = ajuste === "encajar" ? (forma === "circulo" ? 56 : 36) : 0
 
   return (
     <div
@@ -313,6 +330,9 @@ function Inserto({
         width: LADO_INSERTO,
         height: LADO_INSERTO,
         borderRadius: redondeo,
+        padding: aire,
+        alignItems: "center",
+        justifyContent: "center",
         // El aro despega el circulo de la foto: sin el, un elemento de fondo
         // parecido al de la foto se funde con ella y deja de leerse como pieza.
         border: `8px solid ${estilo.paleta.acento}`,
@@ -333,8 +353,8 @@ function Inserto({
         style={{
           width: "100%",
           height: "100%",
-          objectFit: "cover",
-          borderRadius: redondeo,
+          objectFit: ajuste === "llenar" ? "cover" : "contain",
+          borderRadius: ajuste === "llenar" ? redondeo : 0,
         }}
       />
     </div>
@@ -350,6 +370,7 @@ function Portada({
   inserto,
   insertoPos = 0,
   insertoForma = "circulo",
+  insertoAjuste = "llenar",
 }: LaminaProps) {
   const { paleta } = estilo
   const hook = slide.type === "photo_hook" ? (slide.hook ?? "").trim() : ""
@@ -377,7 +398,13 @@ function Portada({
       <Fundido estilo={estilo} ancho={ANCHO} alto={ALTO} desde={30} />
 
       {inserto ? (
-        <Inserto src={inserto} estilo={estilo} posicion={insertoPos} forma={insertoForma} />
+        <Inserto
+          src={inserto}
+          estilo={estilo}
+          posicion={insertoPos}
+          forma={insertoForma}
+          ajuste={insertoAjuste}
+        />
       ) : null}
 
       <div style={{ display: "flex", position: "absolute", top: 0, left: 0 }}>

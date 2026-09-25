@@ -1064,9 +1064,16 @@ export async function moverFicha(
         // La red la dice la columna donde se solto. Sin ella —un tablero con
         // una sola columna de post— van todas las que esten en marcha.
         const { redesActivas } = await import("@/engine/agents/redes")
-        const redes = canal
-          ? [canal as Red]
-          : ((await redesActivas(accountId)) as Red[])
+        const enMarcha = (await redesActivas(accountId)) as Red[]
+
+        // Soltar en Instagram trae tambien Facebook si esta en marcha: su pieza
+        // sale del mismo guion, sin una sola llamada de mas, asi que dejarla
+        // fuera seria tirar una pieza gratis y obligar a un segundo arrastre.
+        const redes = !canal
+          ? enMarcha
+          : canal === "instagram" && enMarcha.includes("facebook")
+            ? (["instagram", "facebook"] as Red[])
+            : [canal as Red]
 
         if (redes.length === 0) {
           return {

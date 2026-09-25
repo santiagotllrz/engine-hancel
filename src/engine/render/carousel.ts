@@ -162,7 +162,14 @@ export async function generarCarrusel(
   // El elemento de la portada: la cosa concreta de la que habla la noticia,
   // buscada en internet y no en el banco de fotos. Es opcional de verdad: si no
   // aparece nada utilizable la portada sale como siempre, sin hueco raro.
-  const inserto = await buscarInserto(elemento)
+  const hallado = await buscarInserto(elemento)
+  const inserto = hallado?.imagen ?? null
+  // Un logo apaisado recortado a cuadro pierde las puntas y deja de leerse:
+  // "Asocolflores" salia como "socolflore". Lo cuadrado se rellena, que luce
+  // mejor; lo que no lo es se encaja entero aunque queden margenes.
+  const insertoAjuste = hallado && hallado.proporcion > 0.8 && hallado.proporcion < 1.25
+    ? "llenar"
+    : "encajar"
   const insertoPos = Math.floor(Math.random() * 4)
   // La forma tambien se sortea: dos formas evitan que una serie de posts se lea
   // como una plantilla, y las dos funcionan igual de bien.
@@ -228,6 +235,7 @@ export async function generarCarrusel(
           inserto: indice === 0 ? inserto : null,
           insertoPos,
           insertoForma,
+          insertoAjuste,
           perfil,
         },
         slides.length,
@@ -299,17 +307,25 @@ export { MAX_SLIDES, MIN_SLIDES }
  * bloquean la descarga directa o sirven HTML en vez de la imagen, asi que
  * quedarse con la primera sin comprobarla dejaria la portada sin elemento la
  * mitad de las veces.
+ *
+ * Se prueban las mas cuadradas primero: el hueco es cuadrado, y cuanto mas se
+ * aleje la imagen de esa forma peor queda, se recorte o se encaje.
  */
-async function buscarInserto(consulta: string): Promise<string | null> {
+async function buscarInserto(
+  consulta: string
+): Promise<{ imagen: string; proporcion: number } | null> {
   if (!consulta) return null
 
   try {
     const { searchImage } = await import("../serper")
     const candidatas = await searchImage(consulta)
+    const porForma = [...candidatas].sort(
+      (a, b) => Math.abs(Math.log(a.ancho / a.alto)) - Math.abs(Math.log(b.ancho / b.alto))
+    )
 
-    for (const imagen of candidatas.slice(0, 5)) {
+    for (const imagen of porForma.slice(0, 5)) {
       const descargada = await descargarFoto(imagen.url)
-      if (descargada) return descargada
+      if (descargada) return { imagen: descargada, proporcion: imagen.ancho / imagen.alto }
     }
   } catch {
     // Una busqueda caida no puede tumbar el carrusel: es un adorno, no el post.
