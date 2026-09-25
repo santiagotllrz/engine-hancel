@@ -9,6 +9,19 @@ export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
 /**
+ * Cuantos trabajos hace cada pasada.
+ *
+ * Uno. Medido con la cola llena: con dos la pasada tarda 54 segundos y el
+ * limite es 60, demasiado cerca para una red que a veces va lenta. Con uno son
+ * unos 27 y sobra margen.
+ *
+ * Ir despacio no es el problema; quedarse a medias si: una pasada cortada deja
+ * trabajo reclamado y pasos enteros sin ejecutar. El ritmo se compensa con la
+ * frecuencia del cron, que es gratis, no apretando la pasada.
+ */
+const PRESUPUESTO_POR_TICK = 1
+
+/**
  * "Despierta y revisa la cola de contenido".
  *
  * Lo llaman los triggers de Postgres cuando un buzon pasa a 'done' o 'failed',
@@ -29,6 +42,12 @@ async function handle(request: Request) {
     const summary = await runContentTick({
       trigger: trigger === "cron" || trigger === "manual" ? trigger : "trigger",
       signal: request.signal,
+      // El tick tiene un minuto y el trabajo no es barato: una generacion son
+      // unos quince segundos de Claude y dibujar un carrusel casi veinte. Sin
+      // tope intentaba vaciar la cola entera, lo mataban a media faena y lo que
+      // quedaba detras —encolar los angulos que esperan— no llegaba a correr
+      // nunca, por mucho que sus agentes estuvieran en automatico.
+      presupuesto: PRESUPUESTO_POR_TICK,
     })
     return NextResponse.json(summary)
   } catch (error) {

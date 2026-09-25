@@ -52,6 +52,7 @@ export async function guardarActivo(
   try {
     await guardarAjustes(await idDeCuentaActual(), r.agent, canal, { enabled: activo })
     refresh(clave)
+    if (activo) await arrancar(r.agent)
     return { ok: true }
   } catch (error) {
     return fail(error, "No se pudo cambiar el estado del agente.")
@@ -74,9 +75,31 @@ export async function guardarModo(
   try {
     await guardarAjustes(await idDeCuentaActual(), r.agent, canal, { mode: modo })
     refresh(clave)
+
+    // Poner un agente en automatico es decir "esto ya puede correr", asi que
+    // corre. Esperar al siguiente tick para ver si el cambio hizo algo convierte
+    // una decision en una duda de varios minutos.
+    if (modo === "automatico") await arrancar(r.agent)
+
     return { ok: true }
   } catch (error) {
     return fail(error, "No se pudo guardar el modo.")
+  }
+}
+
+/**
+ * Una pasada suelta para que el cambio se note ya.
+ *
+ * Acotada como todas las que alguien espera delante: mueve una pieza, no la
+ * cola entera. El resto lo recoge el tick, que pasa cada dos minutos.
+ */
+async function arrancar(agent: Agente): Promise<void> {
+  try {
+    if (agent === "extraccion") return
+    const { runContentTick } = await import("@/engine/content/tick")
+    await runContentTick({ trigger: "manual", forzar: [agent], presupuesto: 1 })
+  } catch {
+    // Que falle la pasada no invalida el cambio de modo, que ya esta guardado.
   }
 }
 
