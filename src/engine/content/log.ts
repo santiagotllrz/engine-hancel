@@ -16,6 +16,7 @@ export type ContentEventKind =
   | "content.tick.started"
   | "content.angle.queued"
   | "content.angle.repetida"
+  | "content.tick.aplazado"
   | "content.angle.created"
   | "content.angle.failed"
   | "content.linkedin.queued"

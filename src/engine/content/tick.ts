@@ -64,6 +64,25 @@ export const MAX_AUTO_POR_TICK = 5
  */
 const DIAS_DE_HECHOS_CUBIERTOS = 7
 
+/**
+ * Cuantos angulos se miran para encontrar los que faltan por encolar.
+ *
+ * Mas que los que se encolan, a proposito: hay que filtrar los que ya tienen
+ * pieza o buzon vivo, y si el filtro se aplica despues de recortar al cupo, un
+ * puñado de angulos bloqueados en cabeza deja la cola entera sin avanzar.
+ */
+const VENTANA_DE_ANGULOS = 120
+
+/**
+ * A partir de aqui ya no se empieza una generacion en esta pasada.
+ *
+ * La peticion tiene un minuto y una generacion son unos quince segundos. Con
+ * treinta ya gastados, empezarla es apostar a que entra; si no entra, el
+ * trabajo se queda reclamado y nadie lo toca hasta que caduque, media hora
+ * despues. Mejor dejarla para la pasada siguiente, que llega en dos minutos.
+ */
+const MARGEN_PARA_GENERAR = 30_000
+
 /** Tope de publicaciones por pasada: LinkedIn limita el ritmo y no hay prisa. */
 export const MAX_PUBLICAR_POR_TICK = 3
 
@@ -266,30 +285,46 @@ export async function runContentTick(
       const redes = await redesQueGeneranSolas(cuenta.id)
       if (redes.length === 0) continue
 
+      // Se miran muchos mas de los que se van a encolar y se recorta al final.
+      // Al reves —coger cinco y filtrar despues— basta con que los cinco mas
+      // viejos esten bloqueados para que ninguna pasada avance nunca, y eso es
+      // exactamente lo que pasaba: los cinco primeros ya tenian buzon, se
+      // descartaban los cinco, y los que si hacian falta no entraban al cupo.
       const { data: pendientes, error } = await supabase
         .from("content_angles")
         .select("*")
         .eq("account_id", cuenta.id)
         .in("status", ["angled", "pending_generation"])
         .order("created_at", { ascending: true })
-        .limit(MAX_AUTO_POR_TICK)
+        .limit(VENTANA_DE_ANGULOS)
 
       if (error) throw new Error(error.message)
-      const angulos = (pendientes ?? []) as ContentAngle[]
-      if (angulos.length === 0) continue
+      const candidatos = (pendientes ?? []) as ContentAngle[]
+      if (candidatos.length === 0) continue
 
-      const ids = angulos.map((a) => a.id)
+      const ids = candidatos.map((a) => a.id)
       const [{ data: piezasYa }, { data: igYa }, { data: liYa }] = await Promise.all([
         supabase.from("content_pieces").select("content_angle_id, network").in("content_angle_id", ids),
-        supabase.from("jobs_instagram").select("content_angle_id").in("content_angle_id", ids),
-        supabase.from("jobs_linkedin").select("content_angle_id").in("content_angle_id", ids),
+        // Solo los buzones vivos. Uno ya consumido que no dejo pieza —fallo, o
+        // se borro la pieza despues— no puede bloquear el angulo para siempre:
+        // asi es como veintisiete se quedaron parados sin que nada los tocara.
+        supabase
+          .from("jobs_instagram")
+          .select("content_angle_id")
+          .in("content_angle_id", ids)
+          .is("consumed_at", null),
+        supabase
+          .from("jobs_linkedin")
+          .select("content_angle_id")
+          .in("content_angle_id", ids)
+          .is("consumed_at", null),
       ])
 
       const hecho = new Set<string>()
       for (const p of (piezasYa ?? []) as { content_angle_id: string; network: string }[]) {
         hecho.add(`${p.content_angle_id}:${p.network}`)
       }
-      // Un buzon pendiente cuenta como hecho: la pieza esta en camino y
+      // Un buzon sin consumir cuenta como hecho: la pieza esta en camino y
       // encolar otra vez seria pagar dos veces la misma generacion.
       for (const j of (igYa ?? []) as { content_angle_id: string }[]) {
         hecho.add(`${j.content_angle_id}:instagram`)
@@ -298,6 +333,11 @@ export async function runContentTick(
       for (const j of (liYa ?? []) as { content_angle_id: string }[]) {
         hecho.add(`${j.content_angle_id}:linkedin`)
       }
+
+      const angulos = candidatos
+        .filter((a) => redes.some((red) => !hecho.has(`${a.id}:${red}`)))
+        .slice(0, MAX_AUTO_POR_TICK)
+      if (angulos.length === 0) continue
 
       const config = await configDe(cuenta.id)
       const noticias = await loadNews(angulos.map((a) => a.raw_news_id))
@@ -843,8 +883,24 @@ export async function runContentTick(
   // Los agentes de angulo, LinkedIn e Instagram, con una llamada directa a Claude.
   // Llena `respuesta` en los buzones; el drenaje de la proxima pasada lo
   // materializa igual que antes.
+  //
+  // Va al final y solo si queda tiempo. Las dos mitades caras de una pasada son
+  // esta —unos quince segundos de Claude— y dibujar un carrusel, que son casi
+  // veinte: juntas rozan el minuto que hay, y una pasada cortada es peor que
+  // una lenta, porque deja trabajos reclamados que nadie toca en media hora.
+  // Si el drenaje ya gasto el presupuesto de tiempo, esto lo hace la siguiente.
+  const gastado = Date.now() - started.getTime()
+  if (gastado > MARGEN_PARA_GENERAR) {
+    log.emit("content.tick.aplazado", "Se aplaza generar a la siguiente pasada", {
+      gastadoMs: gastado,
+    })
+  }
+
   try {
-    const res = await procesarBuzones(disparoBuzones, presupuesto)
+    const res =
+      gastado > MARGEN_PARA_GENERAR
+        ? { procesadas: 0, fallidas: 0, errores: [] as string[] }
+        : await procesarBuzones(disparoBuzones, presupuesto)
     if (res.procesadas > 0 || res.fallidas > 0) {
       log.emit("content.jobs.procesados", `${res.procesadas} trabajos procesados`, {
         procesadas: res.procesadas,
