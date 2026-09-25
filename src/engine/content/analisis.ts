@@ -19,7 +19,7 @@ import { buscarEnLaWeb } from "./composio"
  * como Hancel, con la misma vara.
  */
 
-const ANALISIS_SYSTEM = `Eres un analista editorial. Te dan una noticia y el material que otro sistema ya recolecto de la web sobre ese hecho. Tu trabajo es consolidar y calificar. NO investigas ni buscas: trabajas solo con lo que se te entrega.
+export const ANALISIS_SYSTEM = `Eres un analista editorial. Te dan una noticia y el material que otro sistema ya recolecto de la web sobre ese hecho. Tu trabajo es consolidar y calificar. NO investigas ni buscas: trabajas solo con lo que se te entrega.
 
 PASO 1: CONSOLIDAR
 Con el titular, el snippet y el material recolectado, escribe un texto limpio y estructurado con la informacion factual del hecho: solo hechos con su contexto, sin opiniones ni relleno, sin referencias tipo [1]. Maximo 8000 caracteres. Si el material es pobre, consolida lo que haya y no inventes nada.

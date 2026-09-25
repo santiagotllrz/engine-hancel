@@ -1,4 +1,8 @@
-import { modelosClaude } from "../claude/modelos"
+import { ajustesDe, type Agente } from "../agents/settings"
+import { modeloDe } from "../agents/modelos"
+import { promptDe } from "../agents/prompts"
+import { leToca } from "../agents/turno"
+import { getSettings } from "../schedule"
 import { supabaseAdmin } from "../supabase-admin"
 import { generarAngulo, generarInstagram, generarLinkedin } from "./agentes"
 import type { AngleJobInput, LinkedinJobInput } from "./types"
@@ -21,26 +25,48 @@ type Buzon = "jobs_angle" | "jobs_linkedin" | "jobs_instagram"
 
 async function procesarBuzon(
   tabla: Buzon,
-  agente: (input: unknown) => Promise<{ respuesta: unknown }>
+  agent: Agente,
+  agente: (input: unknown, accountId: string) => Promise<{ respuesta: unknown }>,
+  disparo: Disparo
 ): Promise<{ procesadas: number; fallidas: number; errores: string[] }> {
   const supabase = supabaseAdmin()
 
   const { data, error } = await supabase
     .from(tabla)
-    .select("id, input")
+    .select("id, input, account_id")
     .eq("status", "pending")
     .is("consumed_at", null)
     .order("created_at", { ascending: true })
     .limit(MAX_POR_TICK)
 
   if (error) throw new Error(`No se pudo leer ${tabla}: ${error.message}`)
-  const jobs = (data ?? []) as { id: string; input: unknown }[]
+  const jobs = (data ?? []) as { id: string; input: unknown; account_id: string }[]
+
+  // El modo es por cuenta, y en un buzon caben trabajos de varias. Se resuelve
+  // una vez por cuenta y no por trabajo: son dos consultas que se repetirian
+  // diez veces por pasada sin cambiar de respuesta.
+  const puede = new Map<string, boolean>()
+  for (const accountId of new Set(jobs.map((j) => j.account_id))) {
+    const [ajustes, ajustesCuenta] = await Promise.all([
+      ajustesDe(accountId, agent),
+      getSettings(accountId),
+    ])
+    puede.set(
+      accountId,
+      leToca(ajustes, ajustesCuenta.timezone, new Date(), disparo).corre
+    )
+  }
 
   let procesadas = 0
   let fallidas = 0
   const errores: string[] = []
 
   for (const job of jobs) {
+    // En manual el trabajo se queda en la cola hasta que alguien lo dispare, y
+    // en programado hasta que llegue su hora. Esa cola es justo lo que hace
+    // util el modo: el trabajo no se pierde, espera.
+    if (!puede.get(job.account_id)) continue
+
     // Reclamo atomico: si otra pasada ya lo tomo, `claimed` viene vacio.
     const { data: claimed } = await supabase
       .from(tabla)
@@ -52,7 +78,7 @@ async function procesarBuzon(
     if (!claimed) continue
 
     try {
-      const { respuesta } = await agente(job.input)
+      const { respuesta } = await agente(job.input, job.account_id)
       const { error: errDone } = await supabase
         .from(tabla)
         .update({ respuesta, status: "done", processed_at: new Date().toISOString() })
@@ -92,23 +118,39 @@ async function reclamarColgados(): Promise<void> {
   }
 }
 
-export async function procesarBuzones(): Promise<{
+/** Que dispara la pasada. A mano se ignora el horario del agente. */
+export type Disparo = "auto" | "manual"
+
+export async function procesarBuzones(
+  disparo: Disparo = "auto"
+): Promise<{
   procesadas: number
   fallidas: number
   errores: string[]
 }> {
   await reclamarColgados()
-  const modelos = await modelosClaude()
 
   const resultados = [
-    await procesarBuzon("jobs_angle", (input) =>
-      generarAngulo(input as AngleJobInput, modelos.angulo)
+    await procesarBuzon("jobs_angle", "angulo", async (input, cuenta) =>
+      generarAngulo(
+        input as AngleJobInput,
+        await modeloDe(cuenta, "angulo"),
+        await promptDe(cuenta, "angulo")
+      ), disparo
     ),
-    await procesarBuzon("jobs_linkedin", (input) =>
-      generarLinkedin(input as LinkedinJobInput, modelos.linkedin)
+    await procesarBuzon("jobs_linkedin", "linkedin", async (input, cuenta) =>
+      generarLinkedin(
+        input as LinkedinJobInput,
+        await modeloDe(cuenta, "linkedin"),
+        await promptDe(cuenta, "linkedin")
+      ), disparo
     ),
-    await procesarBuzon("jobs_instagram", (input) =>
-      generarInstagram(input as LinkedinJobInput, modelos.instagram)
+    await procesarBuzon("jobs_instagram", "instagram", async (input, cuenta) =>
+      generarInstagram(
+        input as LinkedinJobInput,
+        await modeloDe(cuenta, "instagram"),
+        await promptDe(cuenta, "instagram")
+      ), disparo
     ),
   ]
 

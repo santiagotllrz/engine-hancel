@@ -1,0 +1,23 @@
+import { modelosClaude } from "../claude/modelos"
+import { MODELOS_DISPONIBLES } from "@/lib/modelos-ia"
+import { ajustesDe } from "./settings"
+import type { AgenteConPrompt } from "./prompts"
+
+/**
+ * El modelo con el que corre cada agente.
+ *
+ * El modelo se elegia en un bloque aparte, "modelo por paso", que obligaba a
+ * saltar de pantalla para cambiar algo que pertenece al agente. Ahora vive con
+ * el, pero el valor por defecto sigue siendo el global de siempre: una cuenta
+ * que no haya elegido nada corre como corria.
+ */
+export async function modeloDe(accountId: string, agent: AgenteConPrompt): Promise<string> {
+  const ajustes = await ajustesDe(accountId, agent)
+  const elegido = ajustes.model?.trim()
+
+  // Un modelo que ya no esta en la lista —retirado, o un id mal escrito a
+  // mano— se ignora en vez de reventar la pasada con un 404 de la API.
+  if (elegido && MODELOS_DISPONIBLES.some((m) => m.id === elegido)) return elegido
+
+  return (await modelosClaude())[agent]
+}

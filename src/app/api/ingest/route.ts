@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 
 import { todasLasCuentas } from "@/engine/accounts"
 import { runIngestion, type IngestionSummary } from "@/engine/ingest"
+import { ajustesDe, marcarCorrida } from "@/engine/agents/settings"
+import { leToca } from "@/engine/agents/turno"
 import { decide, getSettings, marcarIngesta } from "@/engine/schedule"
 import { authorizeEngineRequest } from "@/lib/api-auth"
 
@@ -47,12 +49,25 @@ async function handle(request: Request) {
     try {
       if (!force) {
         const settings = await getSettings(cuenta.id)
+
+        // El agente de extraccion manda: en manual no sale a buscar nada por su
+        // cuenta, solo desde el boton del tablero. No tiene modo automatico
+        // porque no hay ningun paso antes que le entregue trabajo.
+        const suyo = await ajustesDe(cuenta.id, "extraccion")
+        const turno = leToca(suyo, settings.timezone, ahora)
+        if (!turno.corre) {
+          corridas.push({ cuenta: cuenta.slug, skipped: true, reason: turno.motivo })
+          continue
+        }
+
         const decision = decide(settings, ahora)
         if (!decision.run) {
           corridas.push({ cuenta: cuenta.slug, skipped: true, reason: decision.reason })
           continue
         }
       }
+
+      if (!force) await marcarCorrida(cuenta.id, "extraccion")
 
       // Se marca antes de correr: si la corrida tarda mas que el siguiente
       // disparo del cron, marcar al final dejaria entrar una segunda.

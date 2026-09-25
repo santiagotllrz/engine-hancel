@@ -31,7 +31,7 @@ function bloqueVariables(v: Variables): string {
 
 // ------------------------------------------------------------------- angulo
 
-const ANGULO_SYSTEM = `Eres un analista editorial. Decides el angulo editorial de una noticia: la lectura no obvia del hecho, no lo que paso sino lo que revela sobre algo mas grande (cambio de poder, contradiccion, patron, consecuencia ignorada).
+export const ANGULO_SYSTEM = `Eres un analista editorial. Decides el angulo editorial de una noticia: la lectura no obvia del hecho, no lo que paso sino lo que revela sobre algo mas grande (cambio de poder, contradiccion, patron, consecuencia ignorada).
 
 Por la noticia que se te da, decide:
 
@@ -49,7 +49,8 @@ RESPONDE SOLO con este JSON, sin texto alrededor:
 
 export async function generarAngulo(
   input: AngleJobInput,
-  model: string
+  model: string,
+  system: string = ANGULO_SYSTEM
 ): Promise<{ respuesta: unknown; uso: UsoClaude }> {
   const n = input.raw_news
   const prompt = `NOTICIA
@@ -63,14 +64,14 @@ export async function generarAngulo(
 VARIABLES
 ${bloqueVariables(input.variables)}`
 
-  const r = await llamarClaude({ model, system: ANGULO_SYSTEM, prompt, maxTokens: 800 })
+  const r = await llamarClaude({ model, system, prompt, maxTokens: 800 })
   if (!r.ok) throw new Error(r.error)
   return { respuesta: parsearJSONDeClaude(r.texto), uso: r.uso }
 }
 
 // ------------------------------------------------------------------ linkedin
 
-const LINKEDIN_SYSTEM = `Eres un redactor de posts de LinkedIn. Escribes posts que analizan un hecho con criterio propio y no suenan a IA.
+export const LINKEDIN_SYSTEM = `Eres un redactor de posts de LinkedIn. Escribes posts que analizan un hecho con criterio propio y no suenan a IA.
 
 PROHIBICION ABSOLUTA DE CARACTERES (lo mas importante)
 NUNCA uses el guion largo ni el guion medio en ningun lugar del post, ni para incisos ni para pausas ni para rangos. En espanol se usa coma, punto, dos puntos o parentesis. Antes de terminar, relee el post y elimina cualquiera que se haya colado.
@@ -108,7 +109,8 @@ type LinkedinBruto = { parrafos?: unknown; link_fuente?: unknown; notas?: unknow
 
 export async function generarLinkedin(
   input: LinkedinJobInput,
-  model: string
+  model: string,
+  system: string = LINKEDIN_SYSTEM
 ): Promise<{ respuesta: unknown; uso: UsoClaude }> {
   const n = input.raw_news
   const prompt = `ANGULO
@@ -125,7 +127,7 @@ NOTICIA
 VARIABLES
 ${bloqueVariables(input.variables)}`
 
-  const r = await llamarClaude({ model, system: LINKEDIN_SYSTEM, prompt, maxTokens: 1800 })
+  const r = await llamarClaude({ model, system, prompt, maxTokens: 1800 })
   if (!r.ok) throw new Error(r.error)
 
   // El post llega como parrafos y se arma aqui: asi Claude nunca mete saltos de
@@ -149,7 +151,7 @@ ${bloqueVariables(input.variables)}`
 
 // ----------------------------------------------------------------- instagram
 
-const INSTAGRAM_SYSTEM = `Analizas una noticia y defines el texto de cada slide de un carrusel de Instagram.
+export const INSTAGRAM_SYSTEM = `Analizas una noticia y defines el texto de cada slide de un carrusel de Instagram.
 
 REGLA DE ORO: TODO ES ORACION COMPLETA
 Cada hook y cada titulo de slide DEBE ser una oracion completa, con sujeto y verbo, algo que una persona diria en voz alta. PROHIBIDO el patron de dos fragmentos pegados con coma para dar efecto ("Cuatro incidentes, un evaluador" esta MAL; "Los cuatro incidentes salieron del mismo evaluador" esta BIEN). Si una frase tiene una coma que separa dos pedazos sin verbo cada uno, reescribela como oracion de corrido.
@@ -196,7 +198,8 @@ El array slides va en orden: el primero siempre photo_hook, el resto text. Antes
 
 export async function generarInstagram(
   input: LinkedinJobInput,
-  model: string
+  model: string,
+  system: string = INSTAGRAM_SYSTEM
 ): Promise<{ respuesta: unknown; uso: UsoClaude }> {
   const n = input.raw_news
   const prompt = `ANGULO
@@ -212,7 +215,7 @@ NOTICIA
 VARIABLES
 ${bloqueVariables(input.variables)}`
 
-  const r = await llamarClaude({ model, system: INSTAGRAM_SYSTEM, prompt, maxTokens: 3600 })
+  const r = await llamarClaude({ model, system, prompt, maxTokens: 3600 })
   if (!r.ok) throw new Error(r.error)
   return { respuesta: parsearJSONDeClaude(r.texto), uso: r.uso }
 }

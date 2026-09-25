@@ -1,12 +1,14 @@
 import type { RawNews } from "@/lib/types"
 
 import { todasLasCuentas } from "../accounts"
+import { ajustesDe, marcarCorrida } from "../agents/settings"
+import { leToca } from "../agents/turno"
 import { modelosClaude } from "../claude/modelos"
 import { elegirPorHecho } from "./repetidas"
 import { expirarPendientesViejas } from "./expiry"
 import { getSettings } from "../schedule"
 import { publishPiece, pendingToPublish } from "../publish/publish-piece"
-import { decidirTanda, getPublishSchedules, marcarTanda } from "../publish/schedule"
+import { getPublishSchedules, marcarTanda } from "../publish/schedule"
 import { generarCarrusel, nichosConocidos, noticiaDelAngulo, parseInstagramResponse } from "../render/carousel"
 import { armarPublicacionFacebook } from "../render/facebook"
 import { estiloDesdeConfig } from "../render/theme"
@@ -157,10 +159,19 @@ export async function runContentTick(
   if (!esManual) {
     for (const cuenta of cuentas) {
       try {
+        const ajustesCuenta = await getSettings(cuenta.id)
         // Una cuenta con la automatizacion apagada no se analiza: no tiene
         // sentido gastar el plan investigando noticias que no va a generar ni
         // publicar. Al reactivarla, el analisis se reanuda solo.
-        if (!(await getSettings(cuenta.id)).enabled) continue
+        if (!ajustesCuenta.enabled) continue
+
+        // Y dentro de la cuenta manda el modo del agente: en manual las
+        // noticias se quedan en cola hasta que alguien pulse el boton, y en
+        // programado hasta que llegue su hora.
+        const suyo = await ajustesDe(cuenta.id, "analisis")
+        const turno = leToca(suyo, ajustesCuenta.timezone, new Date())
+        if (!turno.corre) continue
+        if (suyo.mode === "programado") await marcarCorrida(cuenta.id, "analisis")
 
         await expirarPendientesViejas(cuenta.id)
         const res = await analizarPendientes(cuenta.id)
@@ -493,7 +504,16 @@ export async function runContentTick(
 
   for (const cuenta of cuentas) {
     const config = await configDe(cuenta.id)
-    if (config.generation_mode !== "auto" || config.score_threshold === null) continue
+    if (config.score_threshold === null) continue
+
+    // El umbral sigue siendo de la cuenta, pero quien decide si se avanza es el
+    // agente de angulo: antes un unico interruptor mandaba sobre analisis,
+    // angulo y contenido a la vez y no se podia afinar un paso sin tocar los otros.
+    const suyo = await ajustesDe(cuenta.id, "angulo")
+    const ajustesCuenta = await getSettings(cuenta.id)
+    const turno = leToca(suyo, ajustesCuenta.timezone, new Date())
+    if (!turno.corre) continue
+    if (suyo.mode === "programado") await marcarCorrida(cuenta.id, "angulo")
 
     try {
       const { data: candidatas, error } = await supabase
@@ -610,11 +630,17 @@ export async function runContentTick(
       const ajustes = await getSettings(cuenta.id)
 
       for (const programa of await getPublishSchedules(cuenta.id)) {
-        const decision = decidirTanda(programa, ajustes.timezone, new Date())
-        if (!decision.publicar) continue
+        // El modo del agente de publicacion manda sobre el horario viejo: cada
+        // canal puede estar en manual, programado o automatico por separado.
+        const suyo = await ajustesDe(cuenta.id, "publicacion", programa.network)
+        const turno = leToca(suyo, ajustes.timezone, new Date())
+        if (!turno.corre) continue
 
-        const piezas = await pendingToPublish(cuenta.id, programa.network, decision.cantidad)
+        const cuantas = suyo.batch_size ?? programa.batch_size
+        const piezas = await pendingToPublish(cuenta.id, programa.network, cuantas)
         if (piezas.length === 0) continue
+
+        const decision = { motivo: turno.motivo }
 
         for (const pieza of piezas) {
           const result = await publishPiece(pieza.id)
@@ -639,6 +665,9 @@ export async function runContentTick(
         // Se cierra la tanda aunque alguna haya fallado: reintentarla entera
         // cinco minutos despues republicaria las que si salieron.
         await marcarTanda(cuenta.id, programa.network)
+        if (suyo.mode === "programado") {
+          await marcarCorrida(cuenta.id, "publicacion", programa.network)
+        }
       }
     } catch (error) {
       // Cada cuenta en su propio try: que una tenga LinkedIn caducado no puede
