@@ -2,10 +2,12 @@
 
 import * as React from "react"
 
+import { ejecutarAgente } from "@/app/agentes/actions"
 import { moverFicha, type DestinoTablero } from "@/app/estudio/actions"
 import { Badge } from "@/components/ui/badge"
 import { FichaDialog } from "@/components/kanban/ficha-dialog"
-import type { Etapa, Ficha, Tablero as TableroDatos } from "@/lib/kanban-data"
+import type { Etapa, Ficha, ModoDeEtapa, Tablero as TableroDatos } from "@/lib/kanban-data"
+import { PlayIcon } from "lucide-react"
 
 /**
  * El tablero del pipeline.
@@ -204,6 +206,7 @@ export function Tablero({ datos }: { datos: TableroDatos }) {
                     pista={etapa.pista}
                     fichas={datos.fichas[etapa.id]}
                     total={datos.conteos[etapa.id]}
+                    modo={datos.modos[etapa.id]}
                     moviendo={moviendo}
                     // Mientras no se arrastre nada, ninguna columna se ilumina.
                     aceptaLaArrastrada={
@@ -231,6 +234,7 @@ function Columna({
   pista,
   fichas,
   total,
+  modo,
   moviendo,
   aceptaLaArrastrada,
   onAbrir,
@@ -243,6 +247,8 @@ function Columna({
   fichas: Ficha[]
   /** Cuantas hay de verdad: puede ser mas de las que se pintan. */
   total: number
+  /** Como esta el agente que llena esta etapa, si lo hay. */
+  modo?: ModoDeEtapa
   /** El id de la ficha que se esta moviendo, si hay alguna. */
   moviendo: string | null
   aceptaLaArrastrada: boolean
@@ -273,11 +279,16 @@ function Columna({
       }}
     >
       <div className="px-1">
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-baseline justify-between gap-2">
           <h3 className="text-xs font-medium">{titulo}</h3>
-          <span className="text-muted-foreground text-xs tabular-nums">{total}</span>
+          <div className="flex items-center gap-1">
+            {modo ? <IndicadorModo modo={modo} /> : null}
+            <span className="text-muted-foreground text-xs tabular-nums">{total}</span>
+          </div>
         </div>
-        <p className="text-muted-foreground text-[11px]">{pista}</p>
+        <p className="text-muted-foreground text-[11px]">
+          {modo?.modo === "programado" && modo.horario ? `A las ${modo.horario}` : pista}
+        </p>
       </div>
 
       <div
@@ -389,5 +400,68 @@ function Tarjeta({
         ) : null}
       </div>
     </button>
+  )
+}
+
+/**
+ * Como corre el agente de esta etapa, y el gatillo si hay que apretarlo.
+ *
+ * El boton solo aparece en manual. En programado o automatico no haria falta
+ * —el agente ya corre solo— y tenerlo ahi invitaria a forzar pasadas sueltas
+ * que descuadran las tandas.
+ *
+ * Lo que ejecuta es el trabajo que dejo la etapa anterior, no lo que se ve en
+ * esta columna: pulsar en "Angulo" anguliza lo que esta en "Analizadas". Es lo
+ * mismo que haria la pasada automatica; cambia solo quien aprieta.
+ */
+function IndicadorModo({ modo }: { modo: ModoDeEtapa }) {
+  const [pending, startTransition] = React.useTransition()
+  const [aviso, setAviso] = React.useState<string | null>(null)
+
+  const correr = () => {
+    setAviso(null)
+    startTransition(async () => {
+      try {
+        const r = await ejecutarAgente(modo.agente)
+        setAviso(r.ok ? r.resumen : r.error)
+      } catch {
+        setAviso("No respondio. Puede haber tardado de mas.")
+      }
+    })
+  }
+
+  return (
+    <span className="flex items-center gap-1">
+      {aviso ? (
+        <span className="text-muted-foreground max-w-32 truncate text-[10px]" title={aviso}>
+          {aviso}
+        </span>
+      ) : null}
+
+      <Badge
+        variant={modo.modo === "manual" ? "outline" : "secondary"}
+        className="px-1.5 py-0 text-[10px] font-normal"
+        title={`${modo.nombre}: ${modo.modo}`}
+      >
+        {modo.modo === "manual"
+          ? "Manual"
+          : modo.modo === "programado"
+            ? "Programado"
+            : "Automatico"}
+      </Badge>
+
+      {modo.modo === "manual" ? (
+        <button
+          type="button"
+          onClick={correr}
+          disabled={pending}
+          title={`Ejecutar ${modo.nombre} ahora`}
+          aria-label={`Ejecutar ${modo.nombre} ahora`}
+          className="hover:bg-accent rounded p-0.5 transition-colors disabled:opacity-50"
+        >
+          <PlayIcon className={`size-3 ${pending ? "animate-pulse" : ""}`} />
+        </button>
+      ) : null}
+    </span>
   )
 }

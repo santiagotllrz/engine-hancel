@@ -142,3 +142,52 @@ export async function guardarPrompt(clave: string, prompt: string): Promise<Acti
     return fail(error, "No se pudo guardar el prompt.")
   }
 }
+
+/**
+ * Corre un agente ahora, sin cambiarle el modo.
+ *
+ * Es lo que hace el boton de una etapa en el estudio. Trabaja sobre lo que dejo
+ * el paso anterior —lo que esta en cola— igual que haria una pasada automatica;
+ * la diferencia es solo quien aprieta el gatillo. Asi una cuenta puede tener el
+ * pipeline entero en manual y seguir avanzando etapa a etapa.
+ *
+ * Publicacion corre sus tres canales de una: el tablero tiene una sola columna
+ * "Publicado", asi que un boton por canal ahi no tendria donde vivir.
+ */
+export async function ejecutarAgente(
+  clave: string
+): Promise<{ ok: true; resumen: string } | { ok: false; error: string }> {
+  const ficha = fichaDe(clave)
+  if (!ficha) return { ok: false, error: "Ese agente no existe." }
+
+  const accountId = await idDeCuentaActual()
+  const agent = agenteReal((ficha.espejoDe ?? ficha.clave) as ClaveAgente as Agente)
+
+  try {
+    if (agent === "extraccion") {
+      const { runIngestion } = await import("@/engine/ingest")
+      const r = await runIngestion({ accountId })
+      refresh(clave)
+      return { ok: true, resumen: `${r.inserted} noticias nuevas.` }
+    }
+
+    const { runContentTick } = await import("@/engine/content/tick")
+    const r = await runContentTick({ trigger: "manual", forzar: [agent] })
+    refresh(clave)
+
+    // Cada agente informa de lo suyo: un resumen con los seis numeros no dice
+    // nada sobre el boton que se acaba de pulsar.
+    const resumen =
+      agent === "analisis"
+        ? `${r.noticiasAnalizadas} noticias analizadas.`
+        : agent === "angulo"
+          ? `${r.anglesQueued} noticias enviadas a angulo.`
+          : agent === "publicacion"
+            ? `${r.piecesPublished} piezas publicadas.`
+            : `${r.piecesCreated + r.carouselsCreated + r.facebookCreated} piezas generadas.`
+
+    return { ok: true, resumen }
+  } catch (error) {
+    return fail(error, "No se pudo ejecutar el agente.") as { ok: false; error: string }
+  }
+}

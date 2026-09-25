@@ -1,6 +1,7 @@
 import "server-only"
 
 import type { ContentAngle, ContentPiece, PiecePayload } from "@/engine/content/types"
+import { ajustesDe, type Agente } from "@/engine/agents/settings"
 import { supabaseAdmin } from "@/engine/supabase-admin"
 import { idDeCuentaActual } from "@/lib/accounts"
 import type { RawNews } from "@/lib/types"
@@ -75,11 +76,28 @@ export type Ficha = {
   bajoUmbral: boolean
 }
 
+/** Como esta configurado el agente que produce una etapa. */
+export type ModoDeEtapa = {
+  agente: string
+  nombre: string
+  modo: "manual" | "programado" | "automatico"
+  /** Las horas, ya formateadas, cuando es programado. */
+  horario: string | null
+}
+
 export type Tablero = {
   /** Las tarjetas que se pintan: un trozo de cada etapa, no todo. */
   fichas: Record<Etapa, Ficha[]>
   /** Cuantas hay de verdad en cada etapa, aunque no se pinten todas. */
   conteos: Record<Etapa, number>
+  /**
+   * El modo del agente de cada etapa que tiene uno.
+   *
+   * Va con el tablero porque es donde se nota: una columna que no avanza casi
+   * siempre es un agente en manual esperando a que alguien lo dispare, y sin
+   * esto habria que ir a la pagina del agente para descubrirlo.
+   */
+  modos: Partial<Record<Etapa, ModoDeEtapa>>
 }
 
 /**
@@ -161,8 +179,9 @@ export async function getTablero(): Promise<Tablero> {
     descartado_fecha: [],
     repetida: [],
   }
+  const modos = await modosDeEtapa(accountId)
   if (filas.length === 0) {
-    return { fichas: porEtapa, conteos: { ...CONTEOS_VACIOS } }
+    return { fichas: porEtapa, conteos: { ...CONTEOS_VACIOS }, modos }
   }
 
   // Se filtra por cuenta, no por la lista de ids: meter cientos de uuid en un
@@ -257,7 +276,7 @@ export async function getTablero(): Promise<Tablero> {
     fichas[etapa] = porEtapa[etapa].slice(0, VISIBLES)
   }
 
-  return { fichas, conteos }
+  return { fichas, conteos, modos }
 }
 
 const CONTEOS_VACIOS: Record<Etapa, number> = {
@@ -269,4 +288,48 @@ const CONTEOS_VACIOS: Record<Etapa, number> = {
   descartado: 0,
   descartado_fecha: 0,
   repetida: 0,
+}
+
+
+/**
+ * El agente que produce cada etapa, con su modo.
+ *
+ * El mapeo no es uno a uno: "Post" la producen tres agentes de contenido. Se
+ * enseña el de Instagram porque es el que ademas arrastra a Facebook, y porque
+ * en la practica los tres se configuran juntos.
+ */
+const AGENTE_DE_ETAPA: Partial<Record<Etapa, { agente: Agente; nombre: string }>> = {
+  sin_analizar: { agente: "extraccion", nombre: "Extraccion" },
+  analizada: { agente: "analisis", nombre: "Analisis" },
+  angulo: { agente: "angulo", nombre: "Angulo" },
+  post: { agente: "instagram", nombre: "Contenido" },
+  publicado: { agente: "publicacion", nombre: "Publicacion" },
+}
+
+async function modosDeEtapa(accountId: string): Promise<Partial<Record<Etapa, ModoDeEtapa>>> {
+  const salida: Partial<Record<Etapa, ModoDeEtapa>> = {}
+
+  for (const [etapa, quien] of Object.entries(AGENTE_DE_ETAPA) as [
+    Etapa,
+    { agente: Agente; nombre: string },
+  ][]) {
+    // Publicacion tiene una fila por canal; para el tablero vale LinkedIn, que
+    // es el canal que siempre existe.
+    const canal = quien.agente === "publicacion" ? "linkedin" : ""
+    const ajustes = await ajustesDe(accountId, quien.agente, canal)
+
+    salida[etapa] = {
+      agente: quien.agente,
+      nombre: quien.nombre,
+      modo: ajustes.mode,
+      horario:
+        ajustes.mode === "programado" && ajustes.run_hours.length > 0
+          ? ajustes.run_hours
+              .map((h) => `${String(h).padStart(2, "0")}:${String(ajustes.run_minute).padStart(2, "0")}`)
+              .join(", ")
+          : null,
+    }
+  }
+
+  return salida
 }

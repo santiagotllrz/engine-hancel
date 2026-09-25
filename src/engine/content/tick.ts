@@ -1,7 +1,7 @@
 import type { RawNews } from "@/lib/types"
 
 import { todasLasCuentas } from "../accounts"
-import { ajustesDe, marcarCorrida } from "../agents/settings"
+import { ajustesDe, marcarCorrida, type Agente } from "../agents/settings"
 import { leToca } from "../agents/turno"
 import { modelosClaude } from "../claude/modelos"
 import { elegirPorHecho } from "./repetidas"
@@ -96,9 +96,29 @@ async function loadNews(ids: string[]): Promise<Map<string, RawNews>> {
 }
 
 export async function runContentTick(
-  options: { trigger?: TickTrigger; signal?: AbortSignal } = {}
+  options: {
+    trigger?: TickTrigger
+    signal?: AbortSignal
+    /**
+     * Agentes que corren aunque su modo diga que no.
+     *
+     * Es lo que hace el boton de una etapa en el estudio: una pasada suelta sin
+     * tener que cambiar el modo del agente y acordarse de devolverlo.
+     */
+    forzar?: Agente[]
+  } = {}
 ): Promise<TickSummary> {
   const trigger = options.trigger ?? "manual"
+  const forzados = new Set(options.forzar ?? [])
+  const disparoAngulo = forzados.has("angulo") ? ("manual" as const) : ("auto" as const)
+  // Los buzones son tres agentes distintos; forzar cualquiera de ellos abre la
+  // pasada para todos. Es una simplificacion consciente: el coste de escribir
+  // de mas es un post que igualmente se iba a querer, y separarlos pedia un
+  // filtro por buzon que no vale lo que complica.
+  const disparoBuzones =
+    forzados.has("angulo") || forzados.has("instagram") || forzados.has("linkedin")
+      ? ("manual" as const)
+      : ("auto" as const)
   const started = new Date()
   const log = new ContentLog()
   const errors: string[] = []
@@ -154,7 +174,7 @@ export async function runContentTick(
   // En un disparo manual (el usuario le da a "Generar" desde la interfaz) se
   // salta: solo quiere materializar lo que acaba de encolar, no arrancar un
   // analisis con busqueda web de todas las cuentas.
-  if (!esManual) {
+  if (!esManual || forzados.has("analisis")) {
     for (const cuenta of cuentas) {
       try {
         const ajustesCuenta = await getSettings(cuenta.id)
@@ -167,7 +187,12 @@ export async function runContentTick(
         // noticias se quedan en cola hasta que alguien pulse el boton, y en
         // programado hasta que llegue su hora.
         const suyo = await ajustesDe(cuenta.id, "analisis")
-        const turno = leToca(suyo, ajustesCuenta.timezone, new Date())
+        const turno = leToca(
+          suyo,
+          ajustesCuenta.timezone,
+          new Date(),
+          forzados.has("analisis") ? "manual" : "auto"
+        )
         if (!turno.corre) continue
         if (suyo.mode === "programado") await marcarCorrida(cuenta.id, "analisis")
 
@@ -192,7 +217,7 @@ export async function runContentTick(
   // un carrusel de un angulo ya hecho) quede materializado en la misma pasada.
   if (esManual) {
     try {
-      await procesarBuzones()
+      await procesarBuzones(disparoBuzones)
     } catch (error) {
       errors.push(error instanceof Error ? error.message : String(error))
     }
@@ -512,7 +537,7 @@ export async function runContentTick(
     // angulo y contenido a la vez y no se podia afinar un paso sin tocar los otros.
     const suyo = await ajustesDe(cuenta.id, "angulo")
     const ajustesCuenta = await getSettings(cuenta.id)
-    const turno = leToca(suyo, ajustesCuenta.timezone, new Date())
+    const turno = leToca(suyo, ajustesCuenta.timezone, new Date(), disparoAngulo)
     if (!turno.corre) continue
     if (suyo.mode === "programado") await marcarCorrida(cuenta.id, "angulo")
 
@@ -634,7 +659,12 @@ export async function runContentTick(
         // El modo del agente de publicacion manda sobre el horario viejo: cada
         // canal puede estar en manual, programado o automatico por separado.
         const suyo = await ajustesDe(cuenta.id, "publicacion", programa.network)
-        const turno = leToca(suyo, ajustes.timezone, new Date())
+        const turno = leToca(
+          suyo,
+          ajustes.timezone,
+          new Date(),
+          forzados.has("publicacion") ? "manual" : "auto"
+        )
         if (!turno.corre) continue
 
         const cuantas = suyo.batch_size ?? programa.batch_size
@@ -686,7 +716,7 @@ export async function runContentTick(
   // Llena `respuesta` en los buzones; el drenaje de la proxima pasada lo
   // materializa igual que antes.
   try {
-    const res = await procesarBuzones()
+    const res = await procesarBuzones(disparoBuzones)
     if (res.procesadas > 0 || res.fallidas > 0) {
       log.emit("content.jobs.procesados", `${res.procesadas} trabajos procesados`, {
         procesadas: res.procesadas,
