@@ -100,13 +100,16 @@ function etapaDe(
   angulo: Ficha["angulo"],
   piezas: PiezaDelTablero[]
 ): Etapa {
+  // Publicado manda sobre cualquier etiqueta de descarte: si algo salio a la
+  // red, el tablero no puede decir lo contrario aunque despues se marcara como
+  // repetido. Por eso va antes que los motivos.
+  if (piezas.some((p) => p.status === "published")) return "publicado"
   // El hecho ya era viejo al llegar: no se analiza ni se genera nada con el.
   if (estadoNoticia === "discarded_date") return "descartado_fecha"
   // Ese hecho ya lo conto otra: no genera nada y no vuelve a la cola.
   if (estadoNoticia === "duplicate") return "repetida"
-  if (piezas.some((p) => p.status === "published")) return "publicado"
-  // Descartado es solo lo rechazado a mano: lo que no llega por score nunca
-  // genera nada, asi que por aqui no aparece.
+  // Apartado a mano, con o sin piezas generadas.
+  if (estadoNoticia === "discarded") return "descartado"
   if (piezas.length > 0 && piezas.every((p) => p.status === "rejected")) return "descartado"
   if (piezas.length > 0) return "post"
   if (angulo) return angulo.status === "discarded" ? "descartado" : "angulo"

@@ -19,10 +19,17 @@ import {
   generateFromAngle,
   publishPieceNow,
   regenerateCarousel,
-  rejectPiece,
+  rechazarFicha,
 } from "@/app/contenido/actions"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -152,7 +159,7 @@ export function FichaDialog({
 
           {ficha.piezas.map((p) => (
             <TabsContent key={p.id} value={`pieza:${p.id}`} className={PANEL}>
-              <PanelPieza pieza={p} />
+              <PanelPieza pieza={p} newsId={ficha.newsId} />
             </TabsContent>
           ))}
         </Tabs>
@@ -290,7 +297,7 @@ function PanelAngulo({ ficha, redesHechas }: { ficha: Ficha; redesHechas: Set<st
 
 // --------------------------------------------------------------------- pieza
 
-function PanelPieza({ pieza }: { pieza: PiezaDelTablero }) {
+function PanelPieza({ pieza, newsId }: { pieza: PiezaDelTablero; newsId: string }) {
   const { pending, error, correr } = useAccion()
   const [copiado, setCopiado] = React.useState(false)
 
@@ -416,15 +423,31 @@ function PanelPieza({ pieza }: { pieza: PiezaDelTablero }) {
               <SendIcon />
               Publicar
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={pending || rechazada}
-              onClick={() => correr(() => rejectPiece(pieza.id))}
-            >
-              <XIcon />
-              Rechazar
-            </Button>
+            {/* Rechazar aparta el hecho entero, no solo esta pieza: dejar viva
+                la de la otra red mantenia la tarjeta en "Post", que es lo
+                contrario de lo que se pide al pulsar aqui. El motivo decide a
+                que columna de descartados va, y "repetida" es ademas con lo que
+                se revisa si el agrupador de hechos acierta. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button size="sm" variant="ghost" disabled={pending || rechazada} />}
+              >
+                <XIcon />
+                Rechazar
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuLabel>Motivo del descarte</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => correr(() => rechazarFicha(newsId, "repetida"))}>
+                  Repetida
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => correr(() => rechazarFicha(newsId, "fecha"))}>
+                  Por fecha
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => correr(() => rechazarFicha(newsId, "otra"))}>
+                  Otra razon
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         ) : null}
 

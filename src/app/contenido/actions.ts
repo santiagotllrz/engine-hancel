@@ -335,10 +335,6 @@ export async function approvePiece(pieceId: string): Promise<ActionResult> {
   return setPieceStatus(pieceId, "approved")
 }
 
-export async function rejectPiece(pieceId: string): Promise<ActionResult> {
-  return setPieceStatus(pieceId, "rejected")
-}
-
 /** Guarda el texto editado a mano. La revision vive dentro de Hancel. */
 export async function updatePiece(form: FormData): Promise<ActionResult> {
   const pieceId = text(form, "piece_id")
@@ -988,4 +984,85 @@ async function anotarPromocion(news: RawNews): Promise<void> {
     })
     .eq("id", news.id)
     .eq("account_id", news.account_id)
+}
+
+// -------------------------------------------------------- rechazo con motivo
+
+/**
+ * Por que se aparta un hecho del pipeline.
+ *
+ * No es decoracion: cada motivo lo manda a una columna distinta de descartados,
+ * y "repetida" es ademas el material con el que se revisa si el agrupador de
+ * hechos esta acertando. Un cajon unico de "rechazado" no dejaria distinguir un
+ * fallo del sistema de una decision editorial.
+ */
+export type MotivoDescarte = "repetida" | "fecha" | "otra"
+
+const ESTADO_POR_MOTIVO: Record<MotivoDescarte, string> = {
+  repetida: "duplicate",
+  fecha: "discarded_date",
+  otra: "discarded",
+}
+
+/**
+ * Saca un hecho del pipeline entero, no solo una de sus piezas.
+ *
+ * Rechazar la pieza de Instagram y dejar viva la de Facebook mantenia la
+ * tarjeta en "Post", que es justo lo contrario de lo que se pedia al pulsar
+ * rechazar. Aqui se rechazan todas las piezas sin publicar, se descarta el
+ * angulo y la noticia queda con el estado que le toca por su motivo.
+ *
+ * Lo ya publicado no se toca: retirarlo de la red no es algo que pueda hacer
+ * este boton, y marcarlo como descartado dejaria la base diciendo que no salio
+ * algo que si salio.
+ */
+export async function rechazarFicha(
+  newsId: string,
+  motivo: MotivoDescarte
+): Promise<ActionResult> {
+  if (!newsId) return { ok: false, error: "Falta el id de la noticia." }
+  if (!(motivo in ESTADO_POR_MOTIVO)) return { ok: false, error: "Motivo no valido." }
+
+  try {
+    const accountId = await idDeCuentaActual()
+    const supabase = supabaseAdmin()
+
+    const { count } = await supabase
+      .from("raw_news")
+      .select("id", { count: "exact", head: true })
+      .eq("id", newsId)
+      .eq("account_id", accountId)
+
+    if (!count) return { ok: false, error: "Esa noticia no es de esta cuenta." }
+
+    const { error: errorPiezas } = await supabase
+      .from("content_pieces")
+      .update({ status: "rejected", approved_at: null })
+      .eq("raw_news_id", newsId)
+      .eq("account_id", accountId)
+      .is("published_at", null)
+
+    if (errorPiezas) throw new Error(errorPiezas.message)
+
+    const { error: errorAngulo } = await supabase
+      .from("content_angles")
+      .update({ status: "discarded" })
+      .eq("raw_news_id", newsId)
+      .eq("account_id", accountId)
+
+    if (errorAngulo) throw new Error(errorAngulo.message)
+
+    const { error: errorNoticia } = await supabase
+      .from("raw_news")
+      .update({ status: ESTADO_POR_MOTIVO[motivo] })
+      .eq("id", newsId)
+      .eq("account_id", accountId)
+
+    if (errorNoticia) throw new Error(errorNoticia.message)
+
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return fail(error, "No se pudo descartar la noticia.")
+  }
 }
