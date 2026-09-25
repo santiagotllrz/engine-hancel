@@ -157,14 +157,30 @@ Cada hook y cada titulo de slide DEBE ser una oracion completa, con sujeto y ver
 PROHIBICION DE CARACTERES
 NUNCA uses guion largo ni medio en ningun campo. Usa coma, punto, dos puntos o parentesis.
 
-EL HOOK (slide 1)
-- Oracion completa, humana, concreta: ancla en una empresa, actor o hecho reconocible, nunca abstracciones.
-- Genera curiosidad sin revelar la respuesta. Maximo 14 palabras.
+EL HOOK (slide 1) ES EL TITULAR, NO UN TEASER
+Casi nadie pasa de la portada, asi que el hook tiene que valer por si solo. Lleva tres cosas:
+1. EL HECHO CON SU DATO DURO: actor con nombre propio y la cifra, el monto, el porcentaje o la fecha que trae la noticia. Si el input tiene un numero, ese numero va en el hook, en numerales.
+2. LO QUE LE CAMBIA A QUIEN LEE: el ingreso, el cultivo, el negocio, la decision que tiene enfrente.
+3. UN HUECO PEQUENO que los slides siguientes cierran.
+
+EL HUECO VA SOBRE LA CONSECUENCIA, NUNCA SOBRE EL HECHO. Guardarte el dato para revelarlo en el slide 2 es el peor error que puedes cometer aqui: el lector se va antes de llegar. Comprueba antes de responder que el dato mas fuerte de todo el carrusel esta en el slide 1; si quedo en el 2, el hook esta mal y lo reescribes.
+
+MAL: "El dolar bajo y las flores de Antioquia empezaron a perder rentabilidad." (blando, sin cifra, y el dato de verdad quedo escondido en el slide 2)
+BIEN: "Estados Unidos subio el arancel a las flores colombianas a 12,5% y Antioquia ya cuenta empleos en riesgo."
+
+MAL: "Fedecafe subio el precio del cafe pasilla pero tambien relajo un estandar de calidad."
+BIEN: "Fedecafe paga $12.000 por el kilo de pasilla desde el 21 de septiembre, con una condicion."
+
+FOMO HONESTO
+Lo que frena el scroll es que la noticia toque a quien lee AHORA y que otros ya se esten moviendo. Usa solo lo que este en el input: desde cuando rige, a cuantos afecta, quien ya reacciono, que se decide en los proximos dias, si es la primera vez que pasa. Prohibido inventar urgencia o escasez, prohibido "esto lo cambia todo" y cualquier superlativo que el carrusel no sostenga. Un hook que promete mas de lo que entrega quema la cuenta.
+
+- Oracion completa, humana: ancla en un actor reconocible, nunca abstracciones.
+- LIMITE DURO: 95 caracteres contando espacios, y cuentalos. La portada recorta a 100 y un hook cortado a la mitad no lo lee nadie. Si no cabe, quita adjetivos, contexto y conectores; la cifra y el actor no se tocan nunca.
 - PROHIBIDO: el patron de dos fragmentos con coma, la formula "No es X, es Y", frases abstractas sin actor ("El problema real", "Lo que viene"), preguntas genericas.
 
 ESTRUCTURA (entre 5 y 8 slides, muy poco texto por slide)
 - SLIDE 1 (portada): solo el hook.
-- SLIDE 2: entrega el hecho o dato que el hook prometio.
+- SLIDE 2: NO repite el hecho del hook. Cierra el hueco que abrio: el porque, el mecanismo, la condicion o lo que viene ahora.
 - SLIDES INTERMEDIOS: una idea por slide. Titulo = oracion completa y concreta (nada de etiquetas tipo "El dato clave"; di lo que pasa) + cuerpo breve (maximo 2 frases). El punto mas fuerte temprano.
 - SLIDE FINAL: la tesis en una oracion clara, o el cta.
 
@@ -174,9 +190,9 @@ CONTENIDO
 TIPO DE SLIDE: "photo_hook" el slide 1 (solo hook); "text" los demas (titulo y cuerpo).
 
 RESPONDE SOLO con este JSON, sin texto alrededor:
-{"slide_count":<n>,"caption":"<2 a 4 frases con la tesis y el cta, oraciones completas>","hashtags":["<3 a 6 en minuscula sin espacios>"],"slides":[{"n":1,"type":"photo_hook","hook":"<oracion completa, max 14 palabras>"},{"n":2,"type":"text","title":"<oracion completa>","body":"<max 2 frases>"}]}
+{"slide_count":<n>,"caption":"<2 a 4 frases con la tesis y el cta, oraciones completas>","hashtags":["<3 a 6 en minuscula sin espacios>"],"slides":[{"n":1,"type":"photo_hook","hook":"<el hecho con su dato duro mas la consecuencia, max 95 caracteres>"},{"n":2,"type":"text","title":"<oracion completa>","body":"<max 2 frases>"}]}
 
-El array slides va en orden: el primero siempre photo_hook, el resto text. Antes de escribir relee y confirma que no hay guiones largos y que ningun hook o titulo es un fragmento con coma. Escribe en el idioma indicado.`
+El array slides va en orden: el primero siempre photo_hook, el resto text. Antes de escribir relee y confirma tres cosas: que no hay guiones largos, que ningun hook o titulo es un fragmento con coma, y que el dato mas fuerte del carrusel esta en el hook y no en el slide 2. Escribe en el idioma indicado.`
 
 export async function generarInstagram(
   input: LinkedinJobInput,

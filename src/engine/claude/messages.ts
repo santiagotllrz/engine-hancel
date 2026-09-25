@@ -110,6 +110,15 @@ export async function llamarClaude(opciones: LlamadaClaude): Promise<ResultadoCl
     const body: Record<string, unknown> = {
       model: opciones.model,
       max_tokens: opciones.maxTokens,
+      // Sin razonamiento extendido. No es un ahorro cualquiera: el presupuesto
+      // de salida lo comparten el pensamiento y la respuesta, asi que un modelo
+      // que se pone a pensar largo agota el limite y devuelve el JSON cortado, o
+      // directamente ningun texto. Le paso eso al carrusel: gastaba los 3600
+      // tokens pensando y no escribia ni un caracter. Apagado, el mismo trabajo
+      // sale en 764 y el JSON llega entero. Estos agentes piden formato estricto
+      // a partir de material ya recolectado, que es justo lo que no necesita
+      // deliberacion larga.
+      thinking: { type: "disabled" },
       system,
       messages: [{ role: "user", content: opciones.prompt }],
     }
