@@ -65,10 +65,12 @@ export type SlideRender = {
   inserto?: string | null
   /** En cual de las cuatro esquinas va. Se sortea al generar. */
   insertoPos?: number
+  /** La captura del perfil, ya descargada. Solo la usa el cierre. */
+  perfil?: string | null
 }
 
 export async function renderSlide(
-  { slide, variante, foto, etiqueta, logo, inserto, insertoPos }: SlideRender,
+  { slide, variante, foto, etiqueta, logo, inserto, insertoPos, perfil }: SlideRender,
   total: number,
   estilo: Estilo = ESTILO_POR_DEFECTO
 ): Promise<Buffer> {
@@ -85,6 +87,7 @@ export async function renderSlide(
       logo={logo ?? null}
       inserto={inserto ?? null}
       insertoPos={insertoPos ?? 0}
+      perfil={perfil ?? null}
     />,
     { width: ANCHO, height: ALTO, fonts }
   )

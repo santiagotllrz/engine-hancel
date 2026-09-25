@@ -45,6 +45,8 @@ export type LaminaProps = {
   inserto?: string | null
   /** Cual de las cuatro posiciones ocupa. Solo la portada lo usa. */
   insertoPos?: number
+  /** La captura del perfil, ya descargada. Solo la usa el cierre. */
+  perfil?: string | null
   /**
    * Antetitulo de la portada: el tema de la noticia, en versalitas sobre el
    * hook. Es el hueco que en las cuentas que funcionan lleva la seccion, y sirve
@@ -735,16 +737,152 @@ function Lamina({ slide, total, estilo }: LaminaProps) {
  * Centrada y sin paginacion, para que se lea como el final y no como una lamina
  * mas. La foto va muy velada: aqui la imagen es fondo, no contenido.
  */
+/**
+ * El cierre en estilo perfil.
+ *
+ * El titular grande arriba y debajo la captura del propio perfil con el cursor
+ * sobre el boton de seguir. Enseñar donde hay que pulsar convierte mucho mejor
+ * que pedirlo con palabras, y por eso este estilo renuncia a la foto de fondo y
+ * al logo: lo unico que tiene que mirarse es la captura.
+ */
+function CierrePerfil({ estilo, perfil }: { estilo: Estilo; perfil: string }) {
+  const { paleta, cierre, marca } = estilo
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        // Centrado: el bloque es corto y anclado arriba dejaba un tercio de
+        // lamina en negro, que se lee como un fallo de maquetacion.
+        justifyContent: "center",
+        width: ANCHO,
+        height: ALTO,
+        padding: MARGEN,
+        background: paleta.fondo,
+        fontFamily: estilo.fuente,
+        color: paleta.texto,
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          fontSize: 76,
+          fontWeight: 700,
+          lineHeight: 1.08,
+          letterSpacing: -2,
+        }}
+      >
+        {cierre.titulo}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          fontSize: 44,
+          lineHeight: 1.25,
+          marginTop: 18,
+          maxWidth: 820,
+          color: paleta.textoSuave,
+        }}
+      >
+        {cierre.texto}
+      </div>
+
+      {/* La captura, con el cursor encima. Van en el mismo contenedor para que
+          el cursor se coloque en proporcion a la imagen y no al lienzo: la
+          captura puede venir con cualquier tamaño. */}
+      <div
+        style={{
+          display: "flex",
+          position: "relative",
+          width: UTIL,
+          marginTop: 72,
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={perfil}
+          alt=""
+          style={{ width: UTIL, borderRadius: 28, border: `2px solid ${paleta.textoSuave}` }}
+        />
+
+        {/* Sobre el boton de seguir, que en una captura de perfil de Instagram
+            cae siempre en el mismo sitio: abajo a la izquierda. Es una posicion
+            fija en proporcion, no una deteccion: recortar la captura de otra
+            forma la descoloca, y es mas facil recortarla bien que adivinar. */}
+        <div
+          style={{
+            display: "flex",
+            position: "absolute",
+            left: UTIL * 0.3,
+            top: "78%",
+            width: 120,
+            height: 120,
+            borderRadius: 120,
+            background: "rgba(255, 255, 255, 0.28)",
+          }}
+        />
+        <Cursor left={UTIL * 0.33} top="82%" />
+      </div>
+
+      {marca ? (
+        <div
+          style={{
+            display: "flex",
+            marginTop: 72,
+            fontSize: 30,
+            fontWeight: 600,
+            letterSpacing: 6,
+            textTransform: "uppercase",
+            color: paleta.acento,
+          }}
+        >
+          {marca}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/** La flecha del raton. Dibujada a mano: es la forma mas simple que se lee. */
+function Cursor({ left, top }: { left: number; top: string }) {
+  return (
+    <div style={{ display: "flex", position: "absolute", left, top }}>
+      <svg width="86" height="86" viewBox="0 0 24 24">
+        <path
+          d="M5 2 L5 20 L9.5 15.5 L12.5 22 L15.5 20.5 L12.5 14.5 L18.5 14.5 Z"
+          fill="#FFFFFF"
+          stroke="#0A0A0A"
+          strokeWidth="1.2"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  )
+}
+
 export function Cierre({
   estilo,
   foto,
   logo,
+  perfil,
 }: {
   estilo: Estilo
   foto: string | null
   /** Ya descargado. Sin el, la lamina sale con la marca tipografica de siempre. */
   logo?: string | null
+  /** La captura del perfil, ya descargada. Solo la usa el estilo perfil. */
+  perfil?: string | null
 }) {
+  // Sin captura el estilo perfil no tiene nada que enseñar, asi que se cae al
+  // de marca en vez de publicar una lamina con un hueco.
+  if (estilo.cierre.estilo === "perfil" && perfil) {
+    return <CierrePerfil estilo={estilo} perfil={perfil} />
+  }
+
   const { paleta, marca, cierre } = estilo
 
   return (
@@ -982,7 +1120,7 @@ export function Composicion(props: LaminaProps) {
 
   switch (variante) {
     case "cierre":
-      return <Cierre estilo={props.estilo} foto={foto} logo={props.logo} />
+      return <Cierre estilo={props.estilo} foto={foto} logo={props.logo} perfil={props.perfil} />
     case "portada":
       return <Portada {...props} />
     case "foto_fondo":

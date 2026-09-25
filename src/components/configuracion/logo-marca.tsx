@@ -27,12 +27,17 @@ import { Label } from "@/components/ui/label"
 export function LogoMarca({
   claro,
   oscuro,
+  perfil,
   fondoClaro,
+  estiloCierre,
 }: {
   claro: string | null
   oscuro: string | null
+  /** La captura del propio perfil, para el cierre de estilo perfil. */
+  perfil: string | null
   /** La paleta activa tiene fondo claro, asi que manda el logo oscuro. */
   fondoClaro: boolean
+  estiloCierre: "marca" | "perfil"
 }) {
   const [result, setResult] = React.useState<ActionResult | null>(null)
 
@@ -65,6 +70,18 @@ export function LogoMarca({
           onResult={setResult}
         />
 
+        <div className="sm:col-span-2 border-t pt-4">
+          <Ranura
+            version="perfil"
+            titulo="Captura del perfil"
+            pista="Tu perfil tal como se ve en Instagram, con su boton de seguir a la vista. Solo la usa el cierre de estilo perfil; el cursor se dibuja encima."
+            url={perfil}
+            enUso={estiloCierre === "perfil"}
+            onResult={setResult}
+            ancha
+          />
+        </div>
+
         <div className="sm:col-span-2">
           {result?.ok ? <span className="text-sm text-emerald-600">Guardado.</span> : null}
           {result && !result.ok ? (
@@ -83,6 +100,7 @@ function Ranura({
   url,
   enUso,
   onResult,
+  ancha = false,
 }: {
   version: VersionLogo
   titulo: string
@@ -90,6 +108,8 @@ function Ranura({
   url: string | null
   enUso: boolean
   onResult: (r: ActionResult | null) => void
+  /** La captura es apaisada: en un cuadro de 80px no se distingue nada. */
+  ancha?: boolean
 }) {
   const [pending, startTransition] = React.useTransition()
   const input = React.useRef<HTMLInputElement>(null)
@@ -119,11 +139,13 @@ function Ranura({
           {/* Sobre el fondo donde va a ir de verdad: un logo blanco sobre blanco
               se veria vacio y pareceria que no se subio. */}
           <div
-            className="flex size-20 items-center justify-center rounded-md border p-2"
+            className={`flex items-center justify-center rounded-md border p-2 ${
+              ancha ? "h-28 w-56" : "size-20"
+            }`}
             style={{ background: version === "claro" ? "#0A0A0A" : "#FFFFFF" }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt={`Logo ${titulo}`} className="max-h-full max-w-full object-contain" />
+            <img src={url} alt={titulo} className="max-h-full max-w-full object-contain" />
           </div>
           <Button
             variant="outline"

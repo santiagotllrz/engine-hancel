@@ -669,6 +669,7 @@ export async function updateCarouselStyle(form: FormData): Promise<ActionResult>
           usarFotos: form.get("usarFotos") === "true",
           fotosLiterales: form.get("fotosLiterales") === "true",
           cierre: {
+            estilo: form.get("cierreEstilo") === "perfil" ? "perfil" : "marca",
             titulo: text(form, "cierreTitulo").slice(0, 40),
             texto: text(form, "cierreTexto").slice(0, 140),
           },
@@ -698,10 +699,13 @@ const MAX_LOGO_BYTES = 2 * 1024 * 1024
  * rechaza a proposito: Satori solo dibuja mapas de bits, asi que uno subido
  * aqui pasaria la subida y desapareceria en la lamina sin decir por que.
  */
-export type VersionLogo = "claro" | "oscuro"
+/** Las tres imagenes de marca. `perfil` es la captura del cierre. */
+export type VersionLogo = "claro" | "oscuro" | "perfil"
 
 export async function subirLogoMarca(form: FormData): Promise<ActionResult> {
-  const version = form.get("version") === "oscuro" ? "oscuro" : "claro"
+  const pedida = String(form.get("version") ?? "")
+  const version: VersionLogo =
+    pedida === "oscuro" ? "oscuro" : pedida === "perfil" ? "perfil" : "claro"
   const archivo = form.get("logo")
   if (!(archivo instanceof File) || archivo.size === 0) {
     return { ok: false, error: "Elige un archivo." }

@@ -34,7 +34,9 @@ export default async function MarcaPage() {
           <LogoMarca
             claro={estilo.logoClaro}
             oscuro={estilo.logoOscuro}
+            perfil={estilo.perfil}
             fondoClaro={estilo.paleta.fondoClaro === true}
+            estiloCierre={estilo.cierre.estilo}
           />
           <CarouselStyleEditor
             estilo={estilo}

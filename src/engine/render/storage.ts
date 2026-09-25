@@ -82,7 +82,7 @@ export async function subirImagenSuelta(
  */
 export async function subirLogo(
   accountId: string,
-  version: "claro" | "oscuro",
+  version: "claro" | "oscuro" | "perfil",
   bytes: Buffer,
   contentType: string
 ): Promise<string> {
@@ -102,7 +102,7 @@ export async function subirLogo(
 /** Quita una version del logo. */
 export async function borrarLogo(
   accountId: string,
-  version: "claro" | "oscuro"
+  version: "claro" | "oscuro" | "perfil"
 ): Promise<void> {
   await supabaseAdmin().storage.from(BUCKET).remove([`marca/${accountId}/logo-${version}`])
 }

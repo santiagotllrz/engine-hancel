@@ -31,6 +31,7 @@ export function CarouselStyleEditor({
   const [paginacion, setPaginacion] = React.useState(estilo.mostrarPaginacion)
   const [usarFotos, setUsarFotos] = React.useState(estilo.usarFotos)
   const [literales, setLiterales] = React.useState(estilo.fotosLiterales)
+  const [cierreEstilo, setCierreEstilo] = React.useState(estilo.cierre.estilo)
   const [cierreTitulo, setCierreTitulo] = React.useState(estilo.cierre.titulo)
   const [cierreTexto, setCierreTexto] = React.useState(estilo.cierre.texto)
   const [pending, startTransition] = React.useTransition()
@@ -43,6 +44,7 @@ export function CarouselStyleEditor({
     paginacion !== estilo.mostrarPaginacion ||
     usarFotos !== estilo.usarFotos ||
     literales !== estilo.fotosLiterales ||
+    cierreEstilo !== estilo.cierre.estilo ||
     cierreTitulo !== estilo.cierre.titulo ||
     cierreTexto !== estilo.cierre.texto
 
@@ -54,6 +56,7 @@ export function CarouselStyleEditor({
     form.set("mostrarPaginacion", paginacion ? "true" : "false")
     form.set("usarFotos", usarFotos ? "true" : "false")
     form.set("fotosLiterales", literales ? "true" : "false")
+    form.set("cierreEstilo", cierreEstilo)
     form.set("cierreTitulo", cierreTitulo)
     form.set("cierreTexto", cierreTexto)
 
@@ -222,10 +225,43 @@ export function CarouselStyleEditor({
             </p>
           </div>
 
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                ["marca", "Marca", "El logo sobre una foto, con el titular debajo."],
+                ["perfil", "Perfil", "El titular grande y una captura de tu perfil con el cursor sobre seguir."],
+              ] as const
+            ).map(([valor, nombre, pista]) => (
+              <button
+                key={valor}
+                type="button"
+                title={pista}
+                onClick={() => {
+                  setResult(null)
+                  setCierreEstilo(valor)
+                }}
+                aria-pressed={cierreEstilo === valor}
+                className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${
+                  cierreEstilo === valor
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "hover:bg-accent border-input"
+                }`}
+              >
+                {nombre}
+              </button>
+            ))}
+          </div>
+
+          <p className="text-muted-foreground text-xs">
+            {cierreEstilo === "perfil"
+              ? "Enseñar donde hay que pulsar convierte mejor que pedirlo con palabras. Necesita la captura del perfil, que se sube arriba; sin ella el cierre sale en estilo marca."
+              : "Sobrio: el logo sobre una foto de fondo, con el titular y la frase debajo."}
+          </p>
+
           <div className="grid gap-3">
             <Input
               maxLength={40}
-              placeholder="Siguenos"
+              placeholder="Síguenos"
               value={cierreTitulo}
               onChange={(e) => {
                 setResult(null)
@@ -234,7 +270,7 @@ export function CarouselStyleEditor({
             />
             <Input
               maxLength={140}
-              placeholder="Analisis de lo que pasa en el campo, sin ruido."
+              placeholder="para no perderte ningún hecho importante del agro colombiano"
               value={cierreTexto}
               onChange={(e) => {
                 setResult(null)

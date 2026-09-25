@@ -198,14 +198,27 @@ export type Variante =
  * noticia, y no tiene sentido pedirsela al modelo cada vez ni dejar que se le
  * olvide. Lo unico que se elige es que dice.
  */
+export type EstiloCierre = "marca" | "perfil"
+
 export type Cierre = {
+  /**
+   * Como se dibuja.
+   *
+   * `marca` es la lamina sobria: el logo, el titular y la frase sobre una foto.
+   * `perfil` es la que funciona en Instagram: el titular grande arriba y debajo
+   * una captura del propio perfil con el cursor sobre el boton de seguir. La
+   * segunda pide mas, pero enseñar donde hay que pulsar convierte mucho mejor
+   * que pedirlo con palabras.
+   */
+  estilo: EstiloCierre
   titulo: string
   texto: string
 }
 
 export const CIERRE_POR_DEFECTO: Cierre = {
-  titulo: "Siguenos",
-  texto: "Analisis de lo que pasa en el campo, sin ruido.",
+  estilo: "marca",
+  titulo: "Síguenos",
+  texto: "para no perderte ningún hecho importante del agro colombiano",
 }
 
 /** Lo que el usuario puede cambiar desde la interfaz. */
@@ -236,6 +249,14 @@ export type Estilo = {
   logoClaro: string | null
   logoOscuro: string | null
   /**
+   * La captura del propio perfil, para el cierre de estilo `perfil`.
+   *
+   * Es una imagen de la cuenta tal como se ve en Instagram, con su boton de
+   * seguir. Sin ella ese estilo no tiene nada que enseñar, asi que el cierre
+   * cae al de marca en vez de salir vacio.
+   */
+  perfil: string | null
+  /**
    * Ilustrar el tema de frente en vez de buscar "el otro lado".
    * En agro la foto util es el cultivo mismo; en tecnologia seria un cliche.
    */
@@ -253,6 +274,7 @@ export const ESTILO_POR_DEFECTO: Estilo = {
   logo: null,
   logoClaro: null,
   logoOscuro: null,
+  perfil: null,
   fotosLiterales: false,
   cierre: CIERRE_POR_DEFECTO,
 }
@@ -288,6 +310,7 @@ export function estiloDesdeConfig(valor: unknown): Estilo {
     logo: paleta.fondoClaro ? (logoOscuro ?? logoClaro) : (logoClaro ?? logoOscuro),
     logoClaro,
     logoOscuro,
+    perfil: url(logos.perfil),
     fotosLiterales: raw.fotosLiterales === true,
     cierre: cierreDesdeConfig(raw.cierre),
   }
@@ -301,6 +324,7 @@ function cierreDesdeConfig(valor: unknown): Cierre {
       : porDefecto
 
   return {
+    estilo: raw.estilo === "perfil" ? "perfil" : "marca",
     titulo: texto(raw.titulo, CIERRE_POR_DEFECTO.titulo, 40),
     texto: texto(raw.texto, CIERRE_POR_DEFECTO.texto, 140),
   }

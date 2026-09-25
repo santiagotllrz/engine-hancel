@@ -153,8 +153,11 @@ export async function generarCarrusel(
   })
   variantes.push("cierre")
 
-  // El logo se descarga una vez: Satori necesita los bytes, no una URL.
+  // El logo y la captura se descargan una vez: Satori necesita los bytes, no
+  // una URL. La captura solo si el cierre la va a usar.
   const logo = await descargarFoto(estilo.logo)
+  const perfil =
+    estilo.cierre.estilo === "perfil" ? await descargarFoto(estilo.perfil) : null
 
   // El elemento de la portada: la cosa concreta de la que habla la noticia,
   // buscada en internet y no en el banco de fotos. Es opcional de verdad: si no
@@ -221,6 +224,7 @@ export async function generarCarrusel(
           logo,
           inserto: indice === 0 ? inserto : null,
           insertoPos,
+          perfil,
         },
         slides.length,
         estilo
