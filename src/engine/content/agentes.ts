@@ -159,6 +159,12 @@ Cada hook y cada titulo de slide DEBE ser una oracion completa, con sujeto y ver
 PROHIBICION DE CARACTERES
 NUNCA uses guion largo ni medio en ningun campo. Usa coma, punto, dos puntos o parentesis.
 
+ORTOGRAFIA: ESTAS INSTRUCCIONES VAN SIN TILDES, TU TEXTO NO
+Estas leyendo un prompt escrito sin tildes por una convencion del codigo. NO LO IMITES. Lo que escribas va a un carrusel publicado y tiene que estar en español correcto, con todas sus tildes y con la ñ.
+- La ñ NUNCA se escribe como n. "años" no es "anos": son dos palabras distintas y una de ellas no se puede publicar.
+- Escribe "caería", no "caeria". "Atlántico", no "Atlantico". "cayó", no "cayo". "subió", no "subio".
+- Antes de responder relee cada titular y cada cuerpo buscando palabras a las que les falte la tilde o la ñ.
+
 EL HOOK (slide 1) ES EL TITULAR, NO UN TEASER
 Casi nadie pasa de la portada, asi que el hook tiene que valer por si solo. Lleva tres cosas:
 1. EL HECHO CON SU DATO DURO: actor con nombre propio y la cifra, el monto, el porcentaje o la fecha que trae la noticia. Si el input tiene un numero, ese numero va en el hook, en numerales.
@@ -191,10 +197,21 @@ CONTENIDO
 
 TIPO DE SLIDE: "photo_hook" el slide 1 (solo hook); "text" los demas (titulo y cuerpo).
 
-RESPONDE SOLO con este JSON, sin texto alrededor:
-{"slide_count":<n>,"caption":"<2 a 4 frases con la tesis y el cta, oraciones completas>","hashtags":["<3 a 6 en minuscula sin espacios>"],"slides":[{"n":1,"type":"photo_hook","hook":"<el hecho con su dato duro mas la consecuencia, max 95 caracteres>"},{"n":2,"type":"text","title":"<oracion completa>","body":"<max 2 frases>"}]}
+LAS FOTOS: TU DECIDES QUE SE BUSCA
+Cada lamina lleva una foto de banco detras. Las buscas tu, porque eres el unico que sabe de que habla el carrusel. Devuelve "fotos": una lista de 5 a 8 busquedas, EN INGLES, en orden de importancia.
 
-El array slides va en orden: el primero siempre photo_hook, el resto text. Antes de escribir relee y confirma tres cosas: que no hay guiones largos, que ningun hook o titulo es un fragmento con coma, y que el dato mas fuerte del carrusel esta en el hook y no en el slide 2. Escribe en el idioma indicado.`
+REGLAS DE LAS BUSQUEDAS
+- LITERALES AL ASUNTO. Si la noticia es de cannabis, todas las busquedas son de cannabis: "cannabis plant", "medical marijuana pharmacy", "cannabis flower close up". Si es de leche, salen vacas y leche: "dairy cow", "milk bottles", "milking parlor". Si es de pesca: "artisanal fishing boat", "fisherman net", "fresh fish market". Si es de fertilizantes: "fertilizer bags", "crop spraying", "farmer spreading fertilizer".
+- COMBINA LOS DOS LADOS DEL HECHO. Una noticia de perdidas ganaderas por lluvias pide vacas Y lluvia: "cattle in rain", "flooded pasture", "dairy herd", "storm over farmland".
+- COSAS QUE SE PUEDEN FOTOGRAFIAR. Objetos, personas trabajando, lugares, animales, cultivos. Nada de conceptos: "economic impact", "market analysis" o "government policy" no son fotos.
+- DOS O TRES PALABRAS cada una. "coffee farmer harvesting", no "a coffee farmer in Colombia harvesting beans during the season".
+- NADA GENERICO. "nature", "business", "landscape", "people" devuelven cualquier cosa y arruinan el carrusel.
+- Si el asunto no tiene foto obvia (una ley, un decreto, un indice), busca el sector que toca: quien lo sufre, donde se aplica, que se produce.
+
+RESPONDE SOLO con este JSON, sin texto alrededor:
+{"slide_count":<n>,"caption":"<2 a 4 frases con la tesis y el cta, oraciones completas>","hashtags":["<3 a 6 en minuscula sin espacios>"],"fotos":["<5 a 8 busquedas en ingles, literales al asunto>"],"slides":[{"n":1,"type":"photo_hook","hook":"<el hecho con su dato duro mas la consecuencia, max 95 caracteres>"},{"n":2,"type":"text","title":"<oracion completa>","body":"<max 2 frases>"}]}
+
+El array slides va en orden: el primero siempre photo_hook, el resto text. Antes de escribir relee y confirma cuatro cosas: que no hay guiones largos, que ningun hook o titulo es un fragmento con coma, que el dato mas fuerte del carrusel esta en el hook y no en el slide 2, y que el texto lleva todas sus tildes y sus eñes. Escribe en el idioma indicado.`
 
 export async function generarInstagram(
   input: LinkedinJobInput,

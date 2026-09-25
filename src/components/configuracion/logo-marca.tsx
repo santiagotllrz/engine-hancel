@@ -2,97 +2,156 @@
 
 import * as React from "react"
 
-import { quitarLogoMarca, subirLogoMarca, type ActionResult } from "@/app/estudio/actions"
+import {
+  quitarLogoMarca,
+  subirLogoMarca,
+  type ActionResult,
+  type VersionLogo,
+} from "@/app/estudio/actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 /**
- * El logo que cierra los carruseles.
+ * El logo que cierra los carruseles, en sus dos versiones.
  *
- * Va en la ultima lamina, la que invita a seguir la cuenta. Si no hay logo esa
- * lamina sigue saliendo —la llamada es lo que convierte un carrusel en
- * audiencia— pero con la marca tipografica en vez del logo.
+ * Son dos porque un logo no sirve sobre cualquier fondo: el claro va sobre las
+ * paletas oscuras y el oscuro sobre la blanca. Guardar solo uno obligaria a
+ * volver a subirlo cada vez que se cambia de paleta, y el fallo —un logo blanco
+ * sobre fondo blanco— no se ve hasta tener el post delante.
+ *
+ * Se elige solo, por la paleta activa. Si falta la version que toca se usa la
+ * otra: mal contraste se ve y se arregla; sin logo no hay nada que arreglar.
  */
-export function LogoMarca({ logo }: { logo: string | null }) {
-  const [pending, startTransition] = React.useTransition()
+export function LogoMarca({
+  claro,
+  oscuro,
+  fondoClaro,
+}: {
+  claro: string | null
+  oscuro: string | null
+  /** La paleta activa tiene fondo claro, asi que manda el logo oscuro. */
+  fondoClaro: boolean
+}) {
   const [result, setResult] = React.useState<ActionResult | null>(null)
-  const input = React.useRef<HTMLInputElement>(null)
-
-  const subir = (archivo: File) => {
-    const form = new FormData()
-    form.set("logo", archivo)
-    setResult(null)
-    startTransition(async () => {
-      const r = await subirLogoMarca(form)
-      setResult(r)
-      if (r.ok && input.current) input.current.value = ""
-    })
-  }
 
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Logo</CardTitle>
         <p className="text-muted-foreground mt-1 text-sm">
-          Aparece en la lamina de cierre de cada carrusel. PNG, JPG o WEBP, hasta 2 MB. Un PNG con
-          fondo transparente es lo que mejor queda sobre la foto.
+          Aparece en la lamina de cierre de cada carrusel. PNG, JPG o WEBP, hasta 2 MB; un PNG con
+          fondo transparente es lo que mejor queda sobre la foto. Con la paleta de ahora se usa el{" "}
+          <strong>{fondoClaro ? "oscuro" : "claro"}</strong>.
         </p>
       </CardHeader>
 
-      <CardContent className="space-y-3">
-        {logo ? (
-          <div className="flex items-center gap-4">
-            {/* Sobre cuadros: un logo blanco sobre fondo blanco se veria vacio y
-                parecia que no se habia subido. */}
-            <div
-              className="flex size-24 items-center justify-center rounded-md border p-2"
-              style={{
-                backgroundImage:
-                  "linear-gradient(45deg,#ccc 25%,transparent 25%),linear-gradient(-45deg,#ccc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ccc 75%),linear-gradient(-45deg,transparent 75%,#ccc 75%)",
-                backgroundSize: "12px 12px",
-                backgroundPosition: "0 0,0 6px,6px -6px,-6px 0",
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logo} alt="Logo de la marca" className="max-h-full max-w-full object-contain" />
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={pending}
-              onClick={() => {
-                setResult(null)
-                startTransition(async () => setResult(await quitarLogoMarca()))
-              }}
-            >
-              Quitar
-            </Button>
-          </div>
-        ) : (
-          <p className="text-muted-foreground text-sm">
-            Sin logo: el cierre sale con el rotulo de la marca, no con una imagen.
-          </p>
-        )}
-
-        <Input
-          ref={input}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          disabled={pending}
-          onChange={(e) => {
-            const archivo = e.target.files?.[0]
-            if (archivo) subir(archivo)
-          }}
+      <CardContent className="grid gap-5 sm:grid-cols-2">
+        <Ranura
+          version="claro"
+          titulo="Claro"
+          pista="Para fondos oscuros. Es el que se usa con las paletas negro y carbon."
+          url={claro}
+          enUso={!fondoClaro}
+          onResult={setResult}
+        />
+        <Ranura
+          version="oscuro"
+          titulo="Oscuro"
+          pista="Para fondos claros. Es el que se usa con la paleta blanco."
+          url={oscuro}
+          enUso={fondoClaro}
+          onResult={setResult}
         />
 
-        {pending ? <span className="text-muted-foreground text-sm">Subiendo…</span> : null}
-        {result?.ok ? <span className="text-sm text-emerald-600">Guardado.</span> : null}
-        {result && !result.ok ? (
-          <span className="text-destructive text-sm">{result.error}</span>
-        ) : null}
+        <div className="sm:col-span-2">
+          {result?.ok ? <span className="text-sm text-emerald-600">Guardado.</span> : null}
+          {result && !result.ok ? (
+            <span className="text-destructive text-sm">{result.error}</span>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
+  )
+}
+
+function Ranura({
+  version,
+  titulo,
+  pista,
+  url,
+  enUso,
+  onResult,
+}: {
+  version: VersionLogo
+  titulo: string
+  pista: string
+  url: string | null
+  enUso: boolean
+  onResult: (r: ActionResult | null) => void
+}) {
+  const [pending, startTransition] = React.useTransition()
+  const input = React.useRef<HTMLInputElement>(null)
+
+  const subir = (archivo: File) => {
+    const form = new FormData()
+    form.set("logo", archivo)
+    form.set("version", version)
+    onResult(null)
+    startTransition(async () => {
+      const r = await subirLogoMarca(form)
+      onResult(r)
+      if (r.ok && input.current) input.current.value = ""
+    })
+  }
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center gap-2">
+        <Label>{titulo}</Label>
+        {enUso ? <span className="text-muted-foreground text-xs">en uso</span> : null}
+      </div>
+      <p className="text-muted-foreground text-xs">{pista}</p>
+
+      {url ? (
+        <div className="flex items-center gap-3">
+          {/* Sobre el fondo donde va a ir de verdad: un logo blanco sobre blanco
+              se veria vacio y pareceria que no se subio. */}
+          <div
+            className="flex size-20 items-center justify-center rounded-md border p-2"
+            style={{ background: version === "claro" ? "#0A0A0A" : "#FFFFFF" }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt={`Logo ${titulo}`} className="max-h-full max-w-full object-contain" />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={pending}
+            onClick={() => {
+              onResult(null)
+              startTransition(async () => onResult(await quitarLogoMarca(version)))
+            }}
+          >
+            Quitar
+          </Button>
+        </div>
+      ) : (
+        <p className="text-muted-foreground text-xs italic">Sin subir.</p>
+      )}
+
+      <Input
+        ref={input}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        disabled={pending}
+        onChange={(e) => {
+          const archivo = e.target.files?.[0]
+          if (archivo) subir(archivo)
+        }}
+      />
+      {pending ? <span className="text-muted-foreground text-xs">Subiendo…</span> : null}
+    </div>
   )
 }

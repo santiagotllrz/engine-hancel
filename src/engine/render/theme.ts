@@ -31,6 +31,13 @@ export type Paleta = {
   fundido: [string, string, string]
   /** Banda superior sobre la foto, para que la marca se lea sobre un cielo claro. */
   veloTecho: string
+  /**
+   * El fondo es claro.
+   *
+   * Lo unico que decide es que version del logo se usa: un logo blanco sobre
+   * fondo blanco no se ve, y es un fallo que no se descubre hasta publicar.
+   */
+  fondoClaro?: boolean
 }
 
 export const PALETA: Paleta = {
@@ -69,6 +76,7 @@ export const PALETAS: Record<string, Paleta> = {
     veloFuerte: "rgba(255, 255, 255, 0.88)",
     fundido: ["rgba(255, 255, 255, 0)", "rgba(255, 255, 255, 0.94)", "#FFFFFF"],
     veloTecho: "rgba(255, 255, 255, 0.62)",
+    fondoClaro: true,
   },
   carbon: {
     fondo: "#1C1C1C",
@@ -211,12 +219,22 @@ export type Estilo = {
   /** Meter fotos de banco en las laminas interiores. */
   usarFotos: boolean
   /**
-   * El logo de la marca, en la lamina de cierre. Vacio = sin logo.
+   * El logo que toca a esta paleta, ya elegido. Vacio = sin logo.
    *
    * Es una URL del storage, no un archivo: el render la descarga como hace con
    * las fotos, porque Satori necesita los bytes y no sabe ir a buscarlos.
    */
   logo: string | null
+  /**
+   * Las dos versiones subidas, para la interfaz.
+   *
+   * Hay dos porque un logo no sirve sobre cualquier fondo: el claro va sobre
+   * las paletas oscuras y el oscuro sobre la blanca. Guardar solo uno obligaria
+   * a volver a subirlo cada vez que se cambia de paleta, y a descubrir el
+   * problema con el post ya publicado.
+   */
+  logoClaro: string | null
+  logoOscuro: string | null
   /**
    * Ilustrar el tema de frente en vez de buscar "el otro lado".
    * En agro la foto util es el cultivo mismo; en tecnologia seria un cliche.
@@ -233,6 +251,8 @@ export const ESTILO_POR_DEFECTO: Estilo = {
   mostrarPaginacion: true,
   usarFotos: true,
   logo: null,
+  logoClaro: null,
+  logoOscuro: null,
   fotosLiterales: false,
   cierre: CIERRE_POR_DEFECTO,
 }
@@ -245,6 +265,15 @@ export function estiloDesdeConfig(valor: unknown): Estilo {
       ? PALETAS[raw.paleta]
       : PALETAS[PALETA_POR_DEFECTO]
 
+  const logos = (raw.logos ?? {}) as Record<string, unknown>
+  const url = (valor: unknown) =>
+    typeof valor === "string" && valor.trim().length > 0 ? valor.trim() : null
+
+  // `logo` a secas es de cuando solo habia uno: se lee como el claro, que es el
+  // que servia para las paletas oscuras que habia entonces.
+  const logoClaro = url(logos.claro) ?? url(raw.logo)
+  const logoOscuro = url(logos.oscuro)
+
   return {
     paleta,
     fuente:
@@ -254,7 +283,11 @@ export function estiloDesdeConfig(valor: unknown): Estilo {
     marca: typeof raw.marca === "string" ? raw.marca.trim().slice(0, 40) : "",
     mostrarPaginacion: raw.mostrarPaginacion !== false,
     usarFotos: raw.usarFotos !== false,
-    logo: typeof raw.logo === "string" && raw.logo.trim().length > 0 ? raw.logo.trim() : null,
+    // Sobre fondo claro manda el logo oscuro y al reves. Si solo hay uno se usa
+    // ese: mal contraste se ve y se arregla; sin logo no hay nada que arreglar.
+    logo: paleta.fondoClaro ? (logoOscuro ?? logoClaro) : (logoClaro ?? logoOscuro),
+    logoClaro,
+    logoOscuro,
     fotosLiterales: raw.fotosLiterales === true,
     cierre: cierreDesdeConfig(raw.cierre),
   }

@@ -651,7 +651,7 @@ export async function updateCarouselStyle(form: FormData): Promise<ActionResult>
       .select("carousel")
       .eq("account_id", accountId)
       .maybeSingle()
-    const logo = ((previa as { carousel?: { logo?: string } } | null)?.carousel ?? {}).logo ?? null
+    const logos = ((previa as { carousel?: { logos?: unknown } } | null)?.carousel ?? {}).logos ?? {}
 
     const { error } = await supabaseAdmin()
       .from("generation_config")
@@ -660,7 +660,7 @@ export async function updateCarouselStyle(form: FormData): Promise<ActionResult>
           paleta,
           fuente,
           marca,
-          logo,
+          logos,
           mostrarPaginacion: form.get("mostrarPaginacion") === "true",
           usarFotos: form.get("usarFotos") === "true",
           fotosLiterales: form.get("fotosLiterales") === "true",
@@ -694,7 +694,10 @@ const MAX_LOGO_BYTES = 2 * 1024 * 1024
  * rechaza a proposito: Satori solo dibuja mapas de bits, asi que uno subido
  * aqui pasaria la subida y desapareceria en la lamina sin decir por que.
  */
+export type VersionLogo = "claro" | "oscuro"
+
 export async function subirLogoMarca(form: FormData): Promise<ActionResult> {
+  const version = form.get("version") === "oscuro" ? "oscuro" : "claro"
   const archivo = form.get("logo")
   if (!(archivo instanceof File) || archivo.size === 0) {
     return { ok: false, error: "Elige un archivo." }
@@ -711,11 +714,12 @@ export async function subirLogoMarca(form: FormData): Promise<ActionResult> {
     const { subirLogo } = await import("@/engine/render/storage")
     const url = await subirLogo(
       accountId,
+      version,
       Buffer.from(await archivo.arrayBuffer()),
       archivo.type
     )
 
-    await guardarLogoEnConfig(accountId, url)
+    await guardarLogoEnConfig(accountId, version, url)
     refresh()
     return { ok: true }
   } catch (error) {
@@ -724,12 +728,12 @@ export async function subirLogoMarca(form: FormData): Promise<ActionResult> {
 }
 
 /** Quita el logo. La lamina de cierre sigue saliendo, sin el. */
-export async function quitarLogoMarca(): Promise<ActionResult> {
+export async function quitarLogoMarca(version: VersionLogo): Promise<ActionResult> {
   try {
     const accountId = await idDeCuentaActual()
     const { borrarLogo } = await import("@/engine/render/storage")
-    await borrarLogo(accountId)
-    await guardarLogoEnConfig(accountId, null)
+    await borrarLogo(accountId, version)
+    await guardarLogoEnConfig(accountId, version, null)
     refresh()
     return { ok: true }
   } catch (error) {
@@ -737,8 +741,12 @@ export async function quitarLogoMarca(): Promise<ActionResult> {
   }
 }
 
-/** Escribe solo la clave del logo, sin tocar el resto del aspecto. */
-async function guardarLogoEnConfig(accountId: string, url: string | null): Promise<void> {
+/** Escribe solo una version del logo, sin tocar el resto del aspecto. */
+async function guardarLogoEnConfig(
+  accountId: string,
+  version: VersionLogo,
+  url: string | null
+): Promise<void> {
   const supabase = supabaseAdmin()
   const { data } = await supabase
     .from("generation_config")
@@ -751,9 +759,18 @@ async function guardarLogoEnConfig(accountId: string, url: string | null): Promi
     unknown
   >
 
+  const logos = ((actual.logos ?? {}) as Record<string, unknown>) ?? {}
+  // `logo` a secas, de cuando solo habia uno, se retira al escribir: dejarlo
+  // haria que una version borrada resucitara desde el campo viejo.
+  const resto = { ...actual }
+  delete resto.logo
+
   const { error } = await supabase
     .from("generation_config")
-    .update({ carousel: { ...actual, logo: url }, updated_at: new Date().toISOString() })
+    .update({
+      carousel: { ...resto, logos: { ...logos, [version]: url } },
+      updated_at: new Date().toISOString(),
+    })
     .eq("account_id", accountId)
 
   if (error) throw new Error(error.message)

@@ -82,11 +82,12 @@ export async function subirImagenSuelta(
  */
 export async function subirLogo(
   accountId: string,
+  version: "claro" | "oscuro",
   bytes: Buffer,
   contentType: string
 ): Promise<string> {
   const supabase = supabaseAdmin()
-  const ruta = `marca/${accountId}/logo`
+  const ruta = `marca/${accountId}/logo-${version}`
 
   const { error } = await supabase.storage.from(BUCKET).upload(ruta, bytes, {
     contentType,
@@ -98,9 +99,12 @@ export async function subirLogo(
   return `${data.publicUrl}?v=${Date.now().toString(36)}`
 }
 
-/** Quita el logo de una cuenta. */
-export async function borrarLogo(accountId: string): Promise<void> {
-  await supabaseAdmin().storage.from(BUCKET).remove([`marca/${accountId}/logo`])
+/** Quita una version del logo. */
+export async function borrarLogo(
+  accountId: string,
+  version: "claro" | "oscuro"
+): Promise<void> {
+  await supabaseAdmin().storage.from(BUCKET).remove([`marca/${accountId}/logo-${version}`])
 }
 
 /** Borra las imagenes de un carrusel. Se usa al descartar una pieza. */

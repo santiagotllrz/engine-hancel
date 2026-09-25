@@ -52,6 +52,8 @@ export function parseInstagramResponse(respuesta: unknown): {
   caption: string
   hashtags: string[]
   slides: Slide[]
+  /** Las busquedas de foto que eligio quien escribio el carrusel. */
+  fotos: string[]
 } {
   const raiz = (respuesta ?? {}) as Record<string, unknown>
 
@@ -71,7 +73,18 @@ export function parseInstagramResponse(respuesta: unknown): {
         .map((h) => (h.trim().startsWith("#") ? h.trim() : `#${h.trim()}`))
     : []
 
-  return { caption, hashtags, slides }
+  // Las busquedas de foto las decide quien escribe el carrusel: es el unico
+  // que sabe de que va cada lamina. Antes salian de las palabras del titular,
+  // y eso daba montañas para una noticia de cannabis o un puesto de fruta para
+  // una de leche, porque el titular casi nunca nombra lo que hay que fotografiar.
+  const fotos = Array.isArray(raiz.fotos)
+    ? raiz.fotos
+        .filter((f): f is string => typeof f === "string" && f.trim().length > 2)
+        .map((f) => f.trim().toLowerCase())
+        .slice(0, 8)
+    : []
+
+  return { caption, hashtags, slides, fotos }
 }
 
 /**
@@ -90,7 +103,7 @@ export async function generarCarrusel(
   /** Dibuja ademas la portada suelta que usa Facebook. */
   conPortadaFacebook = false
 ): Promise<CarouselPayload> {
-  const { caption, hashtags, slides } = parseInstagramResponse(respuesta)
+  const { caption, hashtags, slides, fotos } = parseInstagramResponse(respuesta)
 
   // El cierre es una lamina de marca, no del guion: se añade aqui y no se le
   // pide al agente. Va siempre, porque la llamada a seguir la cuenta es lo
@@ -113,7 +126,10 @@ export async function generarCarrusel(
   const logo = await descargarFoto(estilo.logo)
   const conFoto = necesitanFoto(variantes)
 
-  const terminos = terminosDeBusqueda(news, nichos, estilo.fotosLiterales)
+  // Lo que pidio el agente manda; el rastreo del titular queda de respaldo por
+  // si la respuesta viene sin busquedas.
+  const terminos =
+    fotos.length > 0 ? fotos : terminosDeBusqueda(news, nichos, estilo.fotosLiterales)
   const banco = new BancoDeFotos(terminos)
   const creditos: { autor: string; url: string }[] = []
 

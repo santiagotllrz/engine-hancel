@@ -31,7 +31,11 @@ export default async function MarcaPage() {
 
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold">Visual</h2>
-          <LogoMarca logo={estilo.logo} />
+          <LogoMarca
+            claro={estilo.logoClaro}
+            oscuro={estilo.logoOscuro}
+            fondoClaro={estilo.paleta.fondoClaro === true}
+          />
           <CarouselStyleEditor
             estilo={estilo}
             paletaActual={((config.carousel ?? {}) as { paleta?: string }).paleta ?? "negro"}
