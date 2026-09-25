@@ -1,6 +1,7 @@
 import type { RawNews } from "@/lib/types"
 
 import { todasLasCuentas } from "../accounts"
+import { redesQueGeneranSolas } from "../agents/redes"
 import { ajustesDe, marcarCorrida, type Agente } from "../agents/settings"
 import { leToca } from "../agents/turno"
 import { modelosClaude } from "../claude/modelos"
@@ -28,8 +29,7 @@ import { analizarPendientes } from "./analisis"
 import { procesarBuzones } from "./procesar"
 import { ContentLog } from "./log"
 import { parseAngleResponse, parseLinkedinResponse } from "./parse"
-import { REDES } from "./types"
-import type { ContentAngle, DestinoCarrusel, JobAngle, JobLinkedin, Red, Variables } from "./types"
+import type { ContentAngle, DestinoCarrusel, JobAngle, JobLinkedin, Variables } from "./types"
 
 /**
  * Una pasada del pipeline de contenido.
@@ -660,6 +660,100 @@ export async function runContentTick(
     }
   }
 
+  // ------------------------------------------- angulos que esperan contenido
+  //
+  // El encolado de contenido vivia solo dentro del drenaje del trabajo de
+  // angulo: se generaba en la misma pasada en que nacia el angulo, y si no, no
+  // se generaba nunca. Bastaba con que el agente de la red estuviera apagado o
+  // en manual ese dia, o con borrar una pieza para rehacerla, para que el
+  // angulo se quedara ahi parado para siempre sin que nada volviera a mirarlo.
+  //
+  // Esto lo recoge: los angulos sin pieza ni buzon de una red cuyo agente si
+  // corre solo. Es la misma decision de antes, pero tomada cada pasada en vez
+  // de una sola vez.
+  for (const cuenta of cuentas) {
+    try {
+      const redes = await redesQueGeneranSolas(cuenta.id)
+      if (redes.length === 0) continue
+
+      const { data: pendientes, error } = await supabase
+        .from("content_angles")
+        .select("*")
+        .eq("account_id", cuenta.id)
+        .in("status", ["angled", "pending_generation"])
+        .order("created_at", { ascending: true })
+        .limit(MAX_AUTO_POR_TICK)
+
+      if (error) throw new Error(error.message)
+      const angulos = (pendientes ?? []) as ContentAngle[]
+      if (angulos.length === 0) continue
+
+      const ids = angulos.map((a) => a.id)
+      const [{ data: piezasYa }, { data: igYa }, { data: liYa }] = await Promise.all([
+        supabase.from("content_pieces").select("content_angle_id, network").in("content_angle_id", ids),
+        supabase.from("jobs_instagram").select("content_angle_id").in("content_angle_id", ids),
+        supabase.from("jobs_linkedin").select("content_angle_id").in("content_angle_id", ids),
+      ])
+
+      const hecho = new Set<string>()
+      for (const p of (piezasYa ?? []) as { content_angle_id: string; network: string }[]) {
+        hecho.add(`${p.content_angle_id}:${p.network}`)
+      }
+      // Un buzon pendiente cuenta como hecho: la pieza esta en camino y
+      // encolar otra vez seria pagar dos veces la misma generacion.
+      for (const j of (igYa ?? []) as { content_angle_id: string }[]) {
+        hecho.add(`${j.content_angle_id}:instagram`)
+        hecho.add(`${j.content_angle_id}:facebook`)
+      }
+      for (const j of (liYa ?? []) as { content_angle_id: string }[]) {
+        hecho.add(`${j.content_angle_id}:linkedin`)
+      }
+
+      const config = await configDe(cuenta.id)
+      const noticias = await loadNews(angulos.map((a) => a.raw_news_id))
+
+      for (const angle of angulos) {
+        const news = noticias.get(angle.raw_news_id)
+        if (!news) continue
+
+        if (redes.includes("linkedin") && !hecho.has(`${angle.id}:linkedin`)) {
+          try {
+            await enqueueLinkedinJob(angle, news, config.variables)
+            linkedinQueued++
+            log.emit("content.linkedin.queued", "Post encolado desde un angulo a la espera", {
+              accountId: cuenta.id,
+              angleId: angle.id,
+            })
+          } catch (e) {
+            errors.push(e instanceof Error ? e.message : String(e))
+          }
+        }
+
+        // Instagram y Facebook comparten guion: un solo encolado con los
+        // destinos que falten, no uno por red.
+        const destinos = redes.filter(
+          (red): red is DestinoCarrusel =>
+            (red === "instagram" || red === "facebook") && !hecho.has(`${angle.id}:${red}`)
+        )
+        if (destinos.length > 0) {
+          try {
+            await enqueueInstagramJob(angle, news, config.variables, null, destinos)
+            log.emit("content.instagram.queued", "Carrusel encolado desde un angulo a la espera", {
+              accountId: cuenta.id,
+              angleId: angle.id,
+              destinos,
+            })
+          } catch (e) {
+            errors.push(e instanceof Error ? e.message : String(e))
+          }
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      errors.push(`[${cuenta.slug}] ${message}`)
+    }
+  }
+
   // -------------------------------------------------------------- publicacion
   //
   // Se publica aqui y no al generar la pieza para que las tandas funcionen sin
@@ -777,22 +871,3 @@ export async function runContentTick(
 export { MAX_DRENAJE_POR_TICK }
 
 
-/**
- * Las redes cuyo agente genera sin que nadie se lo pida.
- *
- * Sustituye a la lista `auto_networks`, que era una segunda forma de decir lo
- * mismo que el modo del agente y podia contradecirla: una red marcada ahi con
- * su agente en manual dejaba al usuario esperando una pieza que nadie iba a
- * escribir.
- */
-async function redesQueGeneranSolas(accountId: string): Promise<Red[]> {
-  const redes: Red[] = []
-  for (const red of REDES) {
-    // Facebook no tiene agente propio: viaja con el guion de Instagram, asi que
-    // hereda su modo.
-    const agente = red === "facebook" ? "instagram" : red
-    const ajustes = await ajustesDe(accountId, agente)
-    if (ajustes.mode !== "manual") redes.push(red)
-  }
-  return redes
-}

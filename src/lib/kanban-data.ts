@@ -1,8 +1,8 @@
 import "server-only"
 
 import type { ContentAngle, ContentPiece, PiecePayload } from "@/engine/content/types"
+import { redesActivas as redesActivas_ } from "@/engine/agents/redes"
 import { ajustesDe, type Agente } from "@/engine/agents/settings"
-import { getLinkedinStatus } from "@/engine/publish/linkedin"
 import { supabaseAdmin } from "@/engine/supabase-admin"
 import { idDeCuentaActual } from "@/lib/accounts"
 import type { RawNews } from "@/lib/types"
@@ -196,7 +196,7 @@ export async function getTablero(): Promise<Tablero> {
     repetida: [],
   }
   const modos = await modosDeEtapa(accountId)
-  const redesActivas = await redesEnElTablero(accountId)
+  const redesActivas = await redesActivas_(accountId)
   if (filas.length === 0) {
     return { fichas: porEtapa, conteos: { ...CONTEOS_VACIOS }, modos, redes: redesActivas }
   }
@@ -292,7 +292,7 @@ export async function getTablero(): Promise<Tablero> {
     // donde caer y la columna no existe.
     if (etapa === "post") {
       for (const pieza of misPiezas) {
-        if (!redesActivas.includes(pieza.network)) continue
+        if (!(redesActivas as string[]).includes(pieza.network)) continue
         const columna = `post_${pieza.network}` as Etapa
         if (!(columna in porEtapa)) continue
         porEtapa[columna].push({
@@ -379,44 +379,3 @@ async function modosDeEtapa(accountId: string): Promise<Partial<Record<Etapa, Mo
   return salida
 }
 
-/**
- * Las redes que tienen columna en el tablero.
- *
- * Dos condiciones, y las dos hacen falta: el agente en servicio y el canal
- * conectado. Una columna de LinkedIn sin cuenta enlazada seria un sitio donde
- * las piezas se acumulan sin poder salir nunca, que es peor que no tenerla.
- */
-async function redesEnElTablero(accountId: string): Promise<string[]> {
-  const supabase = supabaseAdmin()
-
-  const { data: cuenta } = await supabase
-    .from("accounts")
-    .select("buffer_instagram_channel_id, buffer_facebook_channel_id")
-    .eq("id", accountId)
-    .maybeSingle()
-
-  const canales = (cuenta ?? {}) as {
-    buffer_instagram_channel_id: string | null
-    buffer_facebook_channel_id: string | null
-  }
-
-  // Expirada cuenta como no conectada: el token caducado no publica, y una
-  // columna que acumula piezas que no van a salir engaña mas que informar.
-  const linkedin = await getLinkedinStatus(accountId)
-
-  const conectada: Record<string, boolean> = {
-    linkedin: linkedin.connected && !linkedin.expired,
-    instagram: Boolean(canales.buffer_instagram_channel_id),
-    facebook: Boolean(canales.buffer_facebook_channel_id),
-  }
-
-  const activas: string[] = []
-  for (const red of ["linkedin", "instagram", "facebook"]) {
-    if (!conectada[red]) continue
-    // Facebook no tiene agente propio: viaja con el guion de Instagram.
-    const ajustes = await ajustesDe(accountId, red === "facebook" ? "instagram" : (red as Agente))
-    if (ajustes.enabled) activas.push(red)
-  }
-
-  return activas
-}
