@@ -54,6 +54,16 @@ function refresh() {
   revalidatePath("/configuracion/marca")
 }
 
+/**
+ * Cuanto trabajo hace una pasada que alguien espera delante.
+ *
+ * Uno por buzon. Generar es caro —unos quince segundos de Claude y casi veinte
+ * dibujando el carrusel— y la peticion tiene un minuto. Con la cola llena, una
+ * pasada sin tope se lo comia entero y el navegador recibia una respuesta que
+ * no era la de la accion: "An unexpected response was received from the server".
+ */
+const PRESUPUESTO_A_MANO = 1
+
 function text(form: FormData, key: string): string {
   return String(form.get(key) ?? "").trim()
 }
@@ -190,7 +200,7 @@ export async function encolarContenido(rawNewsId: string): Promise<ActionResult>
     // una sugerencia: sin esto, con el agente en manual o esperando su hora, lo
     // que acabas de arrastrar se quedaba en la cola con todo lo demas y no
     // pasaba nada visible al soltarlo.
-    await runContentTick({ trigger: "manual", forzar: ["angulo"] })
+    await runContentTick({ trigger: "manual", forzar: ["angulo"], presupuesto: PRESUPUESTO_A_MANO })
     refresh()
     return { ok: true, warning: await avisoSiFaltaToken() }
   } catch (error) {
@@ -214,7 +224,7 @@ export async function encolarContenidoConOverride(form: FormData): Promise<Actio
     if (repetido) return { ok: false, error: repetido }
 
     await enqueueAngleJob(news, config.variables, override)
-    await runContentTick({ trigger: "manual", forzar: ["angulo"] })
+    await runContentTick({ trigger: "manual", forzar: ["angulo"], presupuesto: PRESUPUESTO_A_MANO })
     refresh()
     return { ok: true, warning: await avisoSiFaltaToken() }
   } catch (error) {
@@ -283,7 +293,11 @@ export async function generateFromAngle(
 
     // Igual que al encolar un angulo: pedir una pieza a mano la adelanta a lo
     // que haya en cola, sea cual sea el modo de su agente.
-    await runContentTick({ trigger: "manual", forzar: ["instagram", "linkedin"] })
+    await runContentTick({
+      trigger: "manual",
+      forzar: ["instagram", "linkedin"],
+      presupuesto: PRESUPUESTO_A_MANO,
+    })
     refresh()
     return { ok: true, warning: await avisoSiFaltaToken() }
   } catch (error) {
@@ -988,7 +1002,15 @@ export type DestinoTablero = "analizada" | "angulo" | "post" | "publicado" | "de
 
 export async function moverFicha(
   newsId: string,
-  destino: DestinoTablero
+  destino: DestinoTablero,
+  /**
+   * La red de la columna en la que se solto, cuando hay varias.
+   *
+   * Post es una columna por red, asi que soltar en Instagram significa
+   * Instagram y nada mas. Sin esto habia que adivinarlo desde la
+   * configuracion, y se generaba para una red que no era la que se señalo.
+   */
+  canal = ""
 ): Promise<ActionResult> {
   if (!newsId) return { ok: false, error: "Falta el id de la noticia." }
 
@@ -1039,11 +1061,19 @@ export async function moverFicha(
         }
         if (misPiezas.length > 0) return { ok: false, error: "Esta noticia ya tiene piezas." }
 
-        // Sin red elegida manda la configuracion: es la misma decision que toma
-        // la seleccion automatica, y es lo unico que se puede deducir de soltar
-        // la tarjeta en una columna que no pregunta por red.
-        const config = await configuracionDeGeneracion()
-        const redes = config.auto_networks.length > 0 ? config.auto_networks : (["linkedin"] as Red[])
+        // La red la dice la columna donde se solto. Sin ella —un tablero con
+        // una sola columna de post— van todas las que esten en marcha.
+        const { redesActivas } = await import("@/engine/agents/redes")
+        const redes = canal
+          ? [canal as Red]
+          : ((await redesActivas(accountId)) as Red[])
+
+        if (redes.length === 0) {
+          return {
+            ok: false,
+            error: "No hay ninguna red en marcha: revisa sus agentes y sus conexiones.",
+          }
+        }
 
         await anotarPromocion(news)
         for (const red of redes) {

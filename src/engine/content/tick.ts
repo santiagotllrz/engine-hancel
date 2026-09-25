@@ -114,10 +114,23 @@ export async function runContentTick(
      * piezas que nadie habia mirado.
      */
     forzarCanal?: string
+    /**
+     * Cuanto trabajo hace esta pasada, cuando alguien la espera delante.
+     *
+     * Una pasada a mano corre dentro del limite de tiempo de una peticion, y el
+     * trabajo de aqui no es barato: una generacion son unos quince segundos de
+     * Claude y dibujar un carrusel casi veinte. Sin tope, arrastrar una tarjeta
+     * con treinta en cola intentaba vaciarlas todas, agotaba el limite a la
+     * mitad y el navegador recibia una respuesta que no era la de la accion.
+     *
+     * Lo que no entra no se pierde: sigue en la cola para la proxima pasada.
+     */
+    presupuesto?: number
   } = {}
 ): Promise<TickSummary> {
   const trigger = options.trigger ?? "manual"
   const forzados = new Set(options.forzar ?? [])
+  const presupuesto = options.presupuesto
   const disparoAngulo = forzados.has("angulo") ? ("manual" as const) : ("auto" as const)
   // Los buzones son tres agentes distintos; forzar cualquiera de ellos abre la
   // pasada para todos. Es una simplificacion consciente: el coste de escribir
@@ -225,14 +238,14 @@ export async function runContentTick(
   // un carrusel de un angulo ya hecho) quede materializado en la misma pasada.
   if (esManual) {
     try {
-      await procesarBuzones(disparoBuzones)
+      await procesarBuzones(disparoBuzones, presupuesto)
     } catch (error) {
       errors.push(error instanceof Error ? error.message : String(error))
     }
   }
 
   // ------------------------------------------------------------ angulos hechos
-  const angleJobs = await claimAngleJobs()
+  const angleJobs = await claimAngleJobs(presupuesto)
   angleJobsConsumed = angleJobs.length
 
   for (const job of angleJobs as JobAngle[]) {
@@ -355,7 +368,7 @@ export async function runContentTick(
   }
 
   // ------------------------------------------------------------- posts hechos
-  const linkedinJobs = await claimLinkedinJobs()
+  const linkedinJobs = await claimLinkedinJobs(presupuesto)
   linkedinJobsConsumed = linkedinJobs.length
 
   for (const job of linkedinJobs as JobLinkedin[]) {
@@ -435,7 +448,7 @@ export async function runContentTick(
   // que dibujar las imagenes y subirlas. Ese trabajo puede fallar por motivos
   // ajenos al texto —una foto caida, el storage— y por eso va en su propio
   // try/catch: un carrusel roto no puede llevarse por delante la pasada.
-  const instagramJobs = await claimInstagramJobs()
+  const instagramJobs = await claimInstagramJobs(presupuesto)
   instagramJobsConsumed = instagramJobs.length
 
   for (const job of instagramJobs) {
@@ -825,7 +838,7 @@ export async function runContentTick(
   // Llena `respuesta` en los buzones; el drenaje de la proxima pasada lo
   // materializa igual que antes.
   try {
-    const res = await procesarBuzones(disparoBuzones)
+    const res = await procesarBuzones(disparoBuzones, presupuesto)
     if (res.procesadas > 0 || res.fallidas > 0) {
       log.emit("content.jobs.procesados", `${res.procesadas} trabajos procesados`, {
         procesadas: res.procesadas,

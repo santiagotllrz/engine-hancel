@@ -26,7 +26,8 @@ async function procesarBuzon(
   tabla: Buzon,
   agent: Agente,
   agente: (input: unknown, accountId: string) => Promise<{ respuesta: unknown }>,
-  disparo: Disparo
+  disparo: Disparo,
+  limite: number
 ): Promise<{ procesadas: number; fallidas: number; errores: string[] }> {
   const supabase = supabaseAdmin()
 
@@ -36,7 +37,7 @@ async function procesarBuzon(
     .eq("status", "pending")
     .is("consumed_at", null)
     .order("created_at", { ascending: true })
-    .limit(MAX_POR_TICK)
+    .limit(limite)
 
   if (error) throw new Error(`No se pudo leer ${tabla}: ${error.message}`)
   const jobs = (data ?? []) as { id: string; input: unknown; account_id: string }[]
@@ -121,7 +122,15 @@ async function reclamarColgados(): Promise<void> {
 export type Disparo = "auto" | "manual"
 
 export async function procesarBuzones(
-  disparo: Disparo = "auto"
+  disparo: Disparo = "auto",
+  /**
+   * Cuantos trabajos toma de cada buzon.
+   *
+   * Se acota cuando alguien espera delante: una pasada a mano corre dentro del
+   * limite de tiempo de una peticion, y vaciar una cola de treinta lo agota
+   * mucho antes de terminar. La cola no se pierde, la recoge el tick.
+   */
+  maxPorBuzon: number = MAX_POR_TICK
 ): Promise<{
   procesadas: number
   fallidas: number
@@ -135,21 +144,21 @@ export async function procesarBuzones(
         input as AngleJobInput,
         await modeloDe(cuenta, "angulo"),
         await promptDe(cuenta, "angulo")
-      ), disparo
+      ), disparo, maxPorBuzon
     ),
     await procesarBuzon("jobs_linkedin", "linkedin", async (input, cuenta) =>
       generarLinkedin(
         input as LinkedinJobInput,
         await modeloDe(cuenta, "linkedin"),
         await promptDe(cuenta, "linkedin")
-      ), disparo
+      ), disparo, maxPorBuzon
     ),
     await procesarBuzon("jobs_instagram", "instagram", async (input, cuenta) =>
       generarInstagram(
         input as LinkedinJobInput,
         await modeloDe(cuenta, "instagram"),
         await promptDe(cuenta, "instagram")
-      ), disparo
+      ), disparo, maxPorBuzon
     ),
   ]
 

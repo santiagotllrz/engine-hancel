@@ -196,7 +196,10 @@ export function Tablero({ datos }: { datos: TableroDatos }) {
     setAviso(null)
     setMoviendo(f.newsId)
     try {
-      const r = await moverFicha(f.newsId, destino)
+      // La red sale de la columna donde se solto, no de la tarjeta: soltar en
+      // Instagram significa Instagram, aunque la tarjeta venga de Angulo.
+      const canal = etapa.startsWith("post_") ? etapa.slice("post_".length) : ""
+      const r = await moverFicha(f.newsId, destino, canal)
       if (!r.ok) setAviso({ tipo: "error", texto: r.error })
       else if (r.warning) setAviso({ tipo: "error", texto: r.warning })
       else setAviso({ tipo: "ok", texto: "Hecho." })
