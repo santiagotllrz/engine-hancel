@@ -6,7 +6,7 @@ import type { Variables } from "./types"
  * La capa de variables no es texto libre que se le pasa al modelo como
  * instruccion: son selectores y campos acotados. Esa es justamente la defensa
  * contra que se rompa el criterio editorial o se inyecten instrucciones en el
- * prompt base, que vive en la rutina y no aqui.
+ * prompt base, que vive en la ficha de cada agente y no aqui.
  */
 
 export const TONOS = ["profesional", "cercano", "provocador", "tecnico"] as const

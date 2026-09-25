@@ -13,7 +13,7 @@ import { FUENTES, PALETAS, type Estilo } from "@/engine/render/theme"
 /**
  * El aspecto de las imagenes del carrusel.
  *
- * Cambia lo que se ve, no lo que se dice: el texto lo escribe la rutina y estas
+ * Cambia lo que se ve, no lo que se dice: el texto lo escribe el agente y estas
  * son las decisiones visuales de quien publica.
  */
 export function CarouselStyleEditor({
@@ -221,7 +221,7 @@ export function CarouselStyleEditor({
               <Label htmlFor="cierreActivo">Lamina de cierre</Label>
               <p className="text-muted-foreground mt-1 text-xs">
                 Se añade al final de cada carrusel, con foto de fondo. Es una constante de la
-                marca, asi que no se le pide a la rutina.
+                marca, asi que no se le pide al agente.
               </p>
             </div>
             <Switch

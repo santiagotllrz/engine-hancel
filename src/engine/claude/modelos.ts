@@ -6,7 +6,7 @@ import { supabaseAdmin } from "../supabase-admin"
  * Que modelo usa cada paso de IA.
  *
  * Global, no por cuenta: es una sola cuenta de Claude. Se elige desde la
- * interfaz, como en Houston. Los defaults replican lo que usaban las rutinas.
+ * interfaz. Cada agente puede sobreescribirlo desde su ficha.
  * Las constantes (lista y pasos) viven en `@/lib/modelos-ia`, sin service role,
  * para que el selector de cliente las pueda importar.
  */

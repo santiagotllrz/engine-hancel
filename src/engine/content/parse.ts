@@ -1,14 +1,14 @@
 import type { AnglePayload, PiecePayload } from "./types"
 
 /**
- * Lectura de lo que devuelve la rutina.
+ * Lectura de lo que devuelve el agente.
  *
  * Es la unica frontera del sistema cuyo contrato no controla el codigo: el
  * prompt vive en Claude y puede cambiar de forma sin avisar. La postura es ser
  * tolerante con la forma y explicito al fallar — se aceptan las variantes
  * plausibles y, si nada cuadra, se lanza diciendo que se esperaba. Quien llama
  * marca el job 'failed' con ese motivo y conserva siempre la `respuesta` cruda,
- * asi que nunca se pierde lo que dijo la rutina.
+ * asi que nunca se pierde lo que dijo el agente.
  */
 
 function asArray(value: unknown): unknown[] | null {
@@ -29,7 +29,7 @@ function texto(value: unknown): string | null {
 }
 
 /**
- * Cuantos angulos vengan lo decide la rutina, no este codigo: se materializa
+ * Cuantos angulos vengan lo decide el agente, no este codigo: se materializa
  * uno por cada elemento de la respuesta.
  */
 export function parseAngleResponse(respuesta: unknown): AnglePayload[] {
@@ -40,7 +40,7 @@ export function parseAngleResponse(respuesta: unknown): AnglePayload[] {
 
   if (!bruto || bruto.length === 0) {
     throw new Error(
-      "La rutina de angulo no devolvio ningun angulo. Se esperaba " +
+      "El agente de angulo no devolvio ningun angulo. Se esperaba " +
         '{"angles":[{"angle":"...","thesis":"...","playbook_format":"..."}]}.'
     )
   }
@@ -60,7 +60,7 @@ export function parseAngleResponse(respuesta: unknown): AnglePayload[] {
 
   if (angulos.length === 0) {
     throw new Error(
-      'La rutina de angulo devolvio elementos sin campo "angle" con texto. ' +
+      'El agente de angulo devolvio elementos sin campo "angle" con texto. ' +
         'Se esperaba {"angles":[{"angle":"...","thesis":"...","playbook_format":"..."}]}.'
     )
   }
@@ -99,7 +99,7 @@ export function parseLinkedinResponse(respuesta: unknown): PiecePayload {
 
   if (!body) {
     throw new Error(
-      "La rutina de LinkedIn no devolvio el cuerpo del post. Se esperaba " +
+      "El agente de LinkedIn no devolvio el cuerpo del post. Se esperaba " +
         '{"post":{"hook":"...","body":"...","hashtags":["..."],"cta":"..."}} ' +
         'o {"hook":"...","post":"<el texto>"}.'
     )

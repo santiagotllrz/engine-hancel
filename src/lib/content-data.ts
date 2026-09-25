@@ -50,7 +50,7 @@ export type PieceView = ContentPiece & {
 }
 
 /**
- * Que rutinas estan montadas.
+ * Si el motor puede llamar a la IA.
  *
  * Solo dice si hay configuracion, nunca los valores: el token no puede salir
  * del servidor. Sirve para que la interfaz avise en vez de dejar trabajos

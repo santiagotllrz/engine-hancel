@@ -4,7 +4,7 @@ import type { AngleJobInput, LinkedinJobInput, Variables } from "./types"
 /**
  * Los agentes de contenido: angulo, LinkedIn e Instagram.
  *
- * Son lo que antes eran rutinas de Claude Code. Ahora es una llamada directa:
+ * Una llamada directa a Claude por agente:
  * el motor arma el prompt con los datos del buzon, Claude devuelve el JSON, y el
  * motor lo escribe.
  *

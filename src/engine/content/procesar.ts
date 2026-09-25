@@ -10,8 +10,7 @@ import type { AngleJobInput, LinkedinJobInput } from "./types"
 /**
  * Procesa los buzones llamando a los agentes.
  *
- * Antes esto lo hacia una rutina externa: leia `pending`, escribia `respuesta`,
- * marcaba `done`. Ahora lo hace el motor, con una llamada directa a Claude. El
+ * Lee `pending`, llama al agente, escribe `respuesta` y marca `done`. El
  * resto del tick (drenaje, parseo, materializacion) no cambia: sigue leyendo
  * `respuesta` igual que antes.
  *

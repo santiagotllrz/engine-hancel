@@ -186,7 +186,7 @@ export type Variante =
  * La lamina de cierre.
  *
  * Se añade al final de todos los carruseles cuando esta encendida. Va aparte del
- * guion que escribe la rutina a proposito: es una constante de la marca, no
+ * guion que escribe el agente a proposito: es una constante de la marca, no
  * contenido de la noticia, y no tiene sentido pedirsela al modelo cada vez.
  */
 export type Cierre = {

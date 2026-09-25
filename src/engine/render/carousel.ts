@@ -17,9 +17,9 @@ import type { Slide } from "./templates"
 import { ESTILO_POR_DEFECTO, type Estilo } from "./theme"
 
 /**
- * De la respuesta de la rutina de Instagram al carrusel subido.
+ * De la respuesta del agente de Instagram al carrusel subido.
  *
- * Igual que con las otras redes, la app es la que materializa: la rutina solo
+ * Igual que con las otras redes, la app es la que materializa: el agente solo
  * escribe su buzon. Aqui ademas hay dos pasos que las otras no tienen —buscar
  * fotos y dibujar— que pueden fallar por motivos ajenos al texto.
  */
@@ -38,7 +38,7 @@ export type CarouselPayload = {
   creditos: { autor: string; url: string }[]
 }
 
-/** Lo que la rutina deja en `jobs_instagram.respuesta`. */
+/** Lo que el agente deja en `jobs_instagram.respuesta`. */
 export function parseInstagramResponse(respuesta: unknown): {
   caption: string
   hashtags: string[]
@@ -49,7 +49,7 @@ export function parseInstagramResponse(respuesta: unknown): {
   const slides = parseSlides(raiz.slides)
   if (slides.length < MIN_SLIDES) {
     throw new Error(
-      `La rutina de Instagram devolvio ${slides.length} slides utiles y hacen falta al menos ` +
+      `El agente de Instagram devolvio ${slides.length} slides utiles y hacen falta al menos ` +
         `${MIN_SLIDES}. Se esperaba {"caption":"...","hashtags":[...],"slides":[{"n":1,` +
         `"type":"photo_hook","hook":"..."},{"n":2,"type":"text","title":"...","body":"..."}]}.`
     )
@@ -82,7 +82,7 @@ export async function generarCarrusel(
   const { caption, hashtags, slides } = parseInstagramResponse(respuesta)
 
   // El cierre es una lamina de marca, no del guion: se añade aqui y no se le
-  // pide a la rutina. Si el guion ya llega al tope de Instagram, se recorta uno
+  // pide al agente. Si el guion ya llega al tope de Instagram, se recorta uno
   // para hacerle sitio en vez de pasarse.
   const conCierre = estilo.cierre.activo
   if (conCierre && slides.length >= MAX_SLIDES) slides.length = MAX_SLIDES - 1

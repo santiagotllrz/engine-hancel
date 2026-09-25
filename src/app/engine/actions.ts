@@ -220,7 +220,6 @@ export async function deleteSegment(id: string): Promise<ActionResult> {
   }
 }
 
-// ----------------------------------------------------------------- rutinas
 
 export async function updateSchedule(form: FormData): Promise<ActionResult> {
   const timezone = text(form, "timezone") || "America/Bogota"

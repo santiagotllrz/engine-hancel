@@ -29,7 +29,6 @@ export type IngestionSummary = {
   /** Filas borradas por hablar del mismo hecho que otra del mismo dia. */
   duplicatesRemoved: number
   failedSearches: number
-  /** Rutinas de analisis invocadas al terminar. */
 }
 
 export type DryRunSummary = {

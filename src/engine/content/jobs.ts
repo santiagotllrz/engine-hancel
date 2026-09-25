@@ -18,8 +18,8 @@ import type {
 /**
  * Encolado y drenaje de los buzones.
  *
- * El contrato con la rutina externa: la app escribe `input` y deja la fila en
- * 'pending'; la rutina escribe `respuesta` y marca 'done' o 'failed'. La app
+ * El contrato del buzon: quien encola escribe `input` y deja la fila en
+ * 'pending'; el agente escribe `respuesta` y marca 'done' o 'failed'. La app
  * nunca toca `status` despues de crearla — solo `consumed_at` — y de ahi que el
  * trigger de aviso, que vigila `status`, no se despierte a si mismo en bucle.
  */
@@ -253,7 +253,7 @@ export async function enqueueInstagramJob(
 }
 
 /**
- * Marca un buzon como fallido por culpa de la respuesta, no de la rutina.
+ * Marca un buzon como fallido por culpa de la respuesta, no de la llamada.
  *
  * La `respuesta` cruda se conserva: es la unica pista para arreglar el prompt.
  */
@@ -268,7 +268,7 @@ export async function markJobUnreadable(
     .eq("id", jobId)
 }
 
-/** Cuantos trabajos esperan a que la rutina los recoja. */
+/** Cuantos trabajos esperan a que su agente los recoja. */
 export async function countPending(
   tabla: "jobs_angle" | "jobs_linkedin" | "jobs_instagram"
 ): Promise<number> {

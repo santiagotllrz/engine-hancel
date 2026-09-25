@@ -38,7 +38,7 @@ create table if not exists public.raw_news (
 
   status               text        not null default 'pending_analysis',
 
-  -- Los rellena la rutina de analisis, no la ingesta.
+  -- Los rellena el agente de analisis, no la ingesta.
   relevance_score      numeric,
   keywords_matched     text[],
   analysis_notes       text,
@@ -153,33 +153,48 @@ create table if not exists public.engine_segments (
 
 create index if not exists engine_segments_category_id_idx on public.engine_segments (category_id);
 
--- ------------------------------------------------------------------- rutinas
+-- ------------------------------------------------------------------ agentes
 
--- Webhooks de Claude que el motor invoca. `webhook_url` NULL = borrador a la
--- espera de sus claves, y por eso is_active nace en false.
-create table if not exists public.engine_routines (
-  id             uuid primary key default gen_random_uuid(),
-  name           text        not null,
-  kind           text        not null default 'analysis',
-  webhook_url    text,
-  token          text,
-  is_active      boolean     not null default false,
-  last_called_at timestamptz,
-  last_status    text,
-  last_error     text,
-  created_at     timestamptz not null default now(),
-  updated_at     timestamptz not null default now(),
+-- Como se comporta cada agente del motor.
+--
+-- Antes esto estaba repartido en tres sitios que no se hablaban:
+-- engine_settings mandaba sobre la ingesta, generation_config.generation_mode
+-- sobre toda la generacion y publish_schedule sobre cada red. Con un solo
+-- interruptor para analisis, angulo y contenido no se podia afinar un paso sin
+-- tocar los otros.
+--
+--   manual       solo corre cuando alguien lo dispara desde el estudio
+--   programado   corre a las horas marcadas, y entre medias acumula cola
+--   automatico   corre en cuanto el paso anterior le entrega trabajo
+--
+-- `canal` solo lo usa publicacion, que tiene un horario por red; para el resto
+-- va vacio y la clave primaria queda en (cuenta, agente).
+create table if not exists public.agent_settings (
+  account_id  uuid        not null references public.accounts (id) on delete cascade,
+  agent       text        not null,
+  canal       text        not null default '',
 
-  constraint engine_routines_kind_check check (kind in ('analysis', 'writing', 'other'))
+  mode        text        not null default 'automatico',
+  run_hours   integer[]   not null default '{}',
+  run_minute  integer     not null default 0,
+  batch_size  integer,
+  last_run_at timestamptz,
+
+  -- NULL significa "el que trae el codigo". Asi el prompt por defecto sigue
+  -- versionado en git y la fila solo existe cuando alguien lo cambio de verdad.
+  prompt      text,
+  model       text,
+
+  updated_at  timestamptz not null default now(),
+
+  primary key (account_id, agent, canal),
+  constraint agent_settings_mode_check
+    check (mode in ('manual', 'programado', 'automatico')),
+  constraint agent_settings_agent_check
+    check (agent in ('extraccion', 'analisis', 'angulo', 'instagram', 'linkedin', 'publicacion'))
 );
 
-create index if not exists engine_routines_kind_idx on public.engine_routines (kind, is_active);
-
--- ------------------------------------------------------------------- horario
-
--- Tabla de una sola fila: el `check (id)` sobre una PK booleana impide que
--- exista mas de un registro de configuracion. El codigo la lee y escribe
--- siempre con .eq("id", true), asi que la fila tiene que existir (ver semilla).
+-- -------------------------------------------------------------------- motor
 create table if not exists public.engine_settings (
   id         boolean primary key default true,
   run_hours  integer[]   not null default '{11,18}',
@@ -211,7 +226,6 @@ alter table public.pipeline_runs disable row level security;
 alter table public.pipeline_events   enable row level security;
 alter table public.engine_categories enable row level security;
 alter table public.engine_segments   enable row level security;
-alter table public.engine_routines   enable row level security;
 alter table public.engine_settings   enable row level security;
 
 -- ------------------------------------------------------------------ semillas
@@ -413,7 +427,7 @@ insert into public.generation_config (id) values (true) on conflict (id) do noth
 -- Guarda el token porque la app publica en nombre del miembro cuando el ya no
 -- esta delante: un flujo que solo viviera en la sesion del navegador no serviria
 -- para el modo automatico. De ahi RLS activo y solo service_role, igual que
--- engine_routines, que tambien custodia credenciales.
+-- engine_secrets, que custodia credenciales.
 --
 -- LinkedIn emite tokens de 60 dias y los refresh programaticos estan
 -- restringidos a partners, asi que `expires_at` no es informativo: cuando pasa,
@@ -744,15 +758,26 @@ alter table public.generation_config
 -- Secretos del motor (no cuelgan de una cuenta)
 -- =========================================================================
 --
--- El token de Claude que corre toda la IA: uno solo para todas las cuentas y
--- los cuatro pasos, porque es una unica cuenta de Claude la que mueve el motor.
--- Sustituye a los tokens de las rutinas. Tiene que ser el de `claude
--- setup-token` (scope de inferencia); el de las rutinas viejas no sirve.
--- Tabla de una fila; RLS activo y sin politicas: solo la service role la lee.
+-- Las credenciales del motor. Tabla de una fila; RLS activo y sin politicas,
+-- asi que solo la service role la lee.
+--
+-- El token de Claude corre toda la IA: uno solo para todas las cuentas y todos
+-- los agentes, porque es una unica cuenta de Claude la que mueve el motor.
+-- Tiene que tener scope de inferencia: el de `claude setup-token` o una API key
+-- de consola.
+--
+-- La de Serper vive aqui y no en el entorno porque es la que mas se rota y
+-- cambiarla no deberia obligar a redesplegar; SERPER_API_KEY queda de respaldo.
 create table if not exists public.engine_secrets (
   id                       boolean primary key default true,
   claude_oauth_token       text,
   claude_token_updated_at  timestamptz,
+  model_analisis           text,
+  model_angulo             text,
+  model_linkedin           text,
+  model_instagram          text,
+  composio_api_key         text,
+  serper_api_key           text,
   updated_at               timestamptz not null default now(),
   constraint engine_secrets_singleton check (id)
 );

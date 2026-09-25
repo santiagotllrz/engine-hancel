@@ -711,8 +711,7 @@ export async function runContentTick(
 
   // --------------------------------------------------------- procesar buzones
   //
-  // Los agentes de angulo, LinkedIn e Instagram: lo que antes disparaba una
-  // rutina externa ahora lo hace el motor con una llamada directa a Claude.
+  // Los agentes de angulo, LinkedIn e Instagram, con una llamada directa a Claude.
   // Llena `respuesta` en los buzones; el drenaje de la proxima pasada lo
   // materializa igual que antes.
   try {

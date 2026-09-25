@@ -6,7 +6,7 @@ import { supabaseAdmin } from "./supabase-admin"
  * Una cuenta es un espacio de trabajo completo: su taxonomia, sus noticias, su
  * contenido, su LinkedIn y su Instagram. Lo unico que comparten todas son las
  * credenciales de las herramientas —Serper, Pexels, la app de LinkedIn, las
- * rutinas de Claude— porque son la misma maquinaria trabajando para clientes
+ * agentes— porque son la misma maquinaria trabajando para clientes
  * distintos. De ahi que esas vivan en el entorno y todo lo demas en la base,
  * colgando de `account_id`.
  *

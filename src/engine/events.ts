@@ -14,9 +14,6 @@ export type EngineEventKind =
   | "insert.done"
   | "dedupe.scanned"
   | "dedupe.removed"
-  | "routine.called"
-  | "routine.skipped"
-  | "routine.failed"
   | "run.completed"
   | "run.failed"
 

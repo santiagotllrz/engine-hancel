@@ -4,7 +4,7 @@ import type { Slide } from "./templates"
 /**
  * La version de Facebook de un carrusel.
  *
- * Facebook no tiene rutina propia: se hace con lo que ya escribio la de
+ * Facebook no tiene agente propio: se hace con lo que ya escribio el de
  * Instagram. La idea es que el mismo contenido cambie de forma con la red. En
  * Instagram se lee lamina a lamina; en Facebook se lee de un tiron, con una
  * imagen y un texto largo debajo, que es como esta hecho el feed.

@@ -77,7 +77,7 @@ export function ClaudeConnection({ estado }: { estado: EstadoTokenClaude }) {
           />
           <p className="text-muted-foreground text-xs">
             Tiene que ser el de <code className="text-[11px]">claude setup-token</code> (tu
-            suscripcion). El de las rutinas viejas no sirve: no tiene permiso de inferencia. Si se
+            suscripcion). Una API key de consola tambien vale. Si se
             revoca, generas uno nuevo y lo pegas otra vez.
           </p>
         </div>

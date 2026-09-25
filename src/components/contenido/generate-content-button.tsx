@@ -13,8 +13,8 @@ import { Loader2Icon, PenLineIcon } from "lucide-react"
  * es una accion del usuario, no de la seleccion automatica. Por eso vive tanto
  * en la lista de candidatas como en el estudio.
  *
- * No espera a que la rutina trabaje, solo a que el trabajo quede encolado: el
- * angulo aparece despues, cuando la rutina responde y el tick lo materializa.
+ * No espera a que el agente trabaje, solo a que el trabajo quede encolado: el
+ * angulo aparece despues, cuando el agente responde y el tick lo materializa.
  */
 export function GenerateContentButton({
   rawNewsId,

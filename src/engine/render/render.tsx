@@ -170,7 +170,7 @@ export function necesitanFoto(variantes: Variante[]): boolean[] {
 /**
  * Normaliza lo que venga en `respuesta.slides`.
  *
- * Igual que con las otras rutinas, el contrato lo escribe un prompt y puede
+ * Igual que con los otros agentes, el contrato lo escribe un prompt y puede
  * llegar torcido: se aceptan las variantes plausibles y se recorta al maximo que
  * Instagram admite en vez de fallar por un slide de mas.
  */

@@ -35,7 +35,7 @@ export type Network = Red
 
 /**
  * `warning` es para lo que salio bien pero no va a llegar a ninguna parte: el
- * trabajo quedo encolado y la rutina que deberia recogerlo no esta montada.
+ * trabajo quedo encolado y el agente que deberia recogerlo no puede trabajar.
  * Decir que fue un error seria mentir; callarlo dejaria al usuario esperando.
  */
 export type ActionResult =
@@ -186,8 +186,8 @@ export async function encolarContenido(rawNewsId: string): Promise<ActionResult>
     if (repetido) return { ok: false, error: repetido }
 
     await enqueueAngleJob(news, config.variables)
-    // La rutina no espera al webhook para trabajar, pero el tick tambien drena
-    // lo que ya estuviera hecho y avisa a las dos rutinas de una vez.
+    // El tick tambien drena lo que ya estuviera hecho, asi que una sola
+    // pasada encola y materializa.
     await runContentTick({ trigger: "manual" })
     refresh()
     return { ok: true, warning: await avisoSiFaltaToken() }
@@ -255,7 +255,7 @@ export async function generateFromAngle(
     // angulo se decida una sola vez y por separado.
     if (network === "facebook") {
       // Si ya hay carrusel de este angulo, Facebook sale de el ahora mismo, sin
-      // pedirle otro guion a la rutina. Si no, se encola el buzon de Instagram
+      // pedirle otro guion al agente. Si no, se encola el buzon de Instagram
       // con Facebook como unico destino.
       const hecha = await facebookDesdeCarruselExistente(angle.id)
       if (hecha) {
@@ -400,7 +400,7 @@ export async function publishPieceNow(pieceId: string): Promise<ActionResult> {
  * reparto de composiciones depende del indice, no del azar. Sirve cuando las
  * imagenes ya no estan en el storage —Buffer responde entonces "Image could not
  * be read from its URL"— y tambien para reaplicar un cambio de aspecto sin
- * volver a gastar una generacion de la rutina.
+ * volver a gastar una generacion del agente.
  */
 export async function regenerateCarousel(pieceId: string): Promise<ActionResult> {
   if (!pieceId) return { ok: false, error: "Falta el id de la pieza." }
@@ -456,7 +456,7 @@ export async function regenerateCarousel(pieceId: string): Promise<ActionResult>
       await nichosConocidos(pieza.account_id)
     )
 
-    // El texto lo escribio la rutina y no cambia porque se redibujen las imagenes.
+    // El texto lo escribio el agente y no cambia porque se redibujen las imagenes.
     const { error } = await supabase
       .from("content_pieces")
       .update({

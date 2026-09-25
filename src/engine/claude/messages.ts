@@ -3,7 +3,7 @@ import { supabaseAdmin } from "../supabase-admin"
 /**
  * Llamada directa a Claude con el token de tu cuenta.
  *
- * Reemplaza a las rutinas: en vez de disparar un webhook y esperar a que una
+ * En vez de disparar un webhook y esperar a que una
  * sesion agentica en la nube escriba en el buzon, aqui se le pide a Claude una
  * respuesta de un tiro y se recibe en el acto. Un solo token para los cuatro
  * pasos (analisis, angulo, LinkedIn, Instagram), guardado en `engine_secrets`.
@@ -11,7 +11,7 @@ import { supabaseAdmin } from "../supabase-admin"
  * La autenticacion es la misma que usa Claude Code: el token OAuth de la
  * suscripcion (`sk-ant-oat01`, de `claude setup-token`) viaja como `Bearer` y la
  * cabecera beta identifica la peticion como Claude Code. Verificado contra la
- * API: sin el scope de inferencia, responde 403 —por eso el token de las rutinas
+ * API: sin el scope de inferencia, responde 403 —por eso un token de otro tipo
  * viejas no sirve, era de otro tipo—. Tambien acepta una API key de consola
  * (`sk-ant-api03`) por la ruta estandar, por si algun dia se cambia.
  */
@@ -41,7 +41,7 @@ export type LlamadaClaude = {
   /**
    * Activa la busqueda web del lado servidor. Anthropic corre las busquedas
    * dentro de la misma llamada y devuelve la respuesta ya con las fuentes: es lo
-   * que reemplaza al research que hacia la rutina de analisis, sin agente.
+   * que hace el research del analisis, sin agente.
    */
   buscarWeb?: boolean
   /** Tope de busquedas cuando `buscarWeb` esta activo. */
@@ -70,7 +70,7 @@ export async function tokenClaude(): Promise<string | null> {
 
 /**
  * Pide una respuesta a Claude. No lanza: el fallo viaja en el resultado, igual
- * que las rutinas, para que un tropiezo no tumbe la pasada que ya hizo trabajo.
+ * de sobra, para que un tropiezo no tumbe la pasada que ya hizo trabajo.
  */
 export async function llamarClaude(opciones: LlamadaClaude): Promise<ResultadoClaude> {
   const token = await tokenClaude()
@@ -215,7 +215,7 @@ function mensajeDeError(status: number, cuerpo: string): string {
   if (status === 403 && recorte.includes("scope")) {
     return (
       "El token no tiene permiso de inferencia. Tiene que ser el de `claude setup-token` " +
-      "(suscripcion), no el de una rutina ni otro. Vuelve a generarlo con ese comando."
+      "(suscripcion) o una API key de consola. Vuelve a generarlo con ese comando."
     )
   }
   if (status === 429) {

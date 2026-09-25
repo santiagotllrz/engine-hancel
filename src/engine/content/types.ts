@@ -2,12 +2,12 @@
  * Tipos de la etapa 2: de una noticia analizada a una pieza de LinkedIn.
  *
  * Dos clases de tabla, separadas a proposito:
- *   jobs_*      buzones. El mecanismo de ejecucion de las rutinas de Claude.
+ *   jobs_*      buzones. El mecanismo de ejecucion de los agentes.
  *   content_*   el resultado limpio que consume la interfaz.
- * Si algun dia se cambia de rutinas a la API directa, solo cambian los buzones.
+ * Si algun dia se cambia la forma de llamar al modelo, solo cambian los buzones.
  */
 
-/** Estados de un buzon. Los escribe la rutina externa, salvo el inicial. */
+/** Estados de un buzon. Los escribe el agente, salvo el inicial. */
 export type JobStatus = "pending" | "processing" | "done" | "failed"
 
 /**
@@ -19,11 +19,11 @@ export type JobStatus = "pending" | "processing" | "done" | "failed"
  * que el servidor acepta.
  */
 /**
- * Facebook se elige como cualquier otra red, pero no tiene rutina propia: nace
+ * Facebook se elige como cualquier otra red, pero no tiene agente propio: nace
  * del guion del carrusel de Instagram —la portada como imagen y el texto de las
  * laminas como descripcion—. Elegirla encola el mismo buzon que Instagram con
  * Facebook como destino; si tambien se eligio Instagram, un solo trabajo de la
- * rutina produce las dos piezas.
+ * generacion produce las dos piezas.
  */
 export const REDES = ["linkedin", "instagram", "facebook"] as const
 export type Red = (typeof REDES)[number]
@@ -130,8 +130,8 @@ export type ContentPiece = {
  * Las ranuras de personalizacion.
  *
  * NO son texto libre que se le pasa al modelo como instruccion: son valores
- * acotados que rellenan huecos que el prompt base de la rutina dejo abiertos.
- * El prompt base no vive aqui, vive en la rutina.
+ * acotados que rellenan huecos que el prompt base del agente dejo abiertos.
+ * El prompt base no vive aqui, vive en la ficha de cada agente.
  */
 export type Variables = {
   tono: string
@@ -165,14 +165,14 @@ export type GenerationConfig = {
   updated_at: string
 }
 
-// ------------------------------------------------------ contrato con la rutina
+// ------------------------------------------------------ contrato del buzon
 //
 // Lo unico de todo esto que el codigo NO controla. La forma de `input` la
-// escribe la app y la rutina la lee; la de `respuesta` es al reves. Si el prompt
-// de la rutina cambia de forma, `parse.ts` lo detecta y marca el job 'failed'
+// escribe la app y el agente la lee; la de `respuesta` es al reves. Si el prompt
+// de un agente cambia de forma, `parse.ts` lo detecta y marca el job 'failed'
 // con el motivo, en vez de meter filas basura en las tablas limpias.
 
-/** Lo que la app deja en `jobs_angle.input` para que la rutina lo lea. */
+/** Lo que la app deja en `jobs_angle.input` para que el agente lo lea. */
 export type AngleJobInput = {
   raw_news: {
     id: string
@@ -185,7 +185,7 @@ export type AngleJobInput = {
     tema: string
     relevance_score: number | null
     keywords_matched: string[] | null
-    /** El angulo sugerido por la etapa 1: insumo que esta rutina refina. */
+    /** El angulo sugerido por la etapa 1: insumo que este agente refina. */
     analysis_notes: string | null
   }
   variables: Variables
@@ -203,7 +203,7 @@ export type LinkedinJobInput = {
   variables: Variables
 }
 
-/** Un angulo dentro de `jobs_angle.respuesta`. Cuantos vengan lo decide la rutina. */
+/** Un angulo dentro de `jobs_angle.respuesta`. Cuantos vengan lo decide el agente. */
 export type AnglePayload = {
   angle: string
   thesis: string | null
