@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og"
 
 import { cargarFuente } from "./fonts"
-import { Composicion, TarjetaLinkedin, type Slide } from "./templates"
+import { Composicion, TarjetaLinkedin, type FormaInserto, type Slide } from "./templates"
 import { ALTO, ANCHO, ESTILO_POR_DEFECTO, type Estilo, type Variante } from "./theme"
 
 /**
@@ -65,12 +65,14 @@ export type SlideRender = {
   inserto?: string | null
   /** En cual de las cuatro esquinas va. Se sortea al generar. */
   insertoPos?: number
+  /** Circulo o cuadrado. Tambien a suertes. */
+  insertoForma?: FormaInserto
   /** La captura del perfil, ya descargada. Solo la usa el cierre. */
   perfil?: string | null
 }
 
 export async function renderSlide(
-  { slide, variante, foto, etiqueta, logo, inserto, insertoPos, perfil }: SlideRender,
+  { slide, variante, foto, etiqueta, logo, inserto, insertoPos, insertoForma, perfil }: SlideRender,
   total: number,
   estilo: Estilo = ESTILO_POR_DEFECTO
 ): Promise<Buffer> {
@@ -87,6 +89,7 @@ export async function renderSlide(
       logo={logo ?? null}
       inserto={inserto ?? null}
       insertoPos={insertoPos ?? 0}
+      insertoForma={insertoForma ?? "circulo"}
       perfil={perfil ?? null}
     />,
     { width: ANCHO, height: ALTO, fonts }

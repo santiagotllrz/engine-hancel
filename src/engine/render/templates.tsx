@@ -45,6 +45,8 @@ export type LaminaProps = {
   inserto?: string | null
   /** Cual de las cuatro posiciones ocupa. Solo la portada lo usa. */
   insertoPos?: number
+  /** Circulo o cuadrado. Se sortea al generar. */
+  insertoForma?: FormaInserto
   /** La captura del perfil, ya descargada. Solo la usa el cierre. */
   perfil?: string | null
   /**
@@ -263,32 +265,44 @@ function Marco({
  * sortea, para que una serie de posts no salga toda igual.
  */
 const POSICIONES_INSERTO = [
-  { top: 120, left: 80 },
-  { top: 120, right: 80 },
-  { top: 210, right: 64 },
-  { top: 210, left: 64 },
+  { top: 96, left: 76 },
+  { top: 96, right: 76 },
+  { top: 152, right: 60 },
+  { top: 152, left: 60 },
 ] as const
 
 /**
  * El tamaño sale de donde empieza el titular, no del gusto.
  *
  * El hook son hasta seis lineas de 92px ancladas abajo, asi que por encima de
- * los ~540px no hay nada que tapar. Con 320 de diametro y la posicion mas baja
- * el circulo acaba en 530: entra justo, y cualquier cosa mas grande empieza a
- * comerse la primera linea del titular.
+ * los ~540px no hay nada que tapar. Con 384 de lado y la posicion mas baja el
+ * elemento acaba en 536: entra justo, y cualquier cosa mas grande empieza a
+ * comerse la primera linea.
  */
-const DIAMETRO_INSERTO = 320
+const LADO_INSERTO = 384
+
+/**
+ * Circulo o cuadrado, a suertes.
+ *
+ * Las dos formas funcionan y alternarlas evita que una serie de posts se lea
+ * como una plantilla. El cuadrado va con las esquinas redondeadas: a escuadra
+ * compite con el borde de la lamina y parece un recorte mal pegado.
+ */
+export type FormaInserto = "circulo" | "cuadrado"
 
 function Inserto({
   src,
   estilo,
   posicion,
+  forma,
 }: {
   src: string
   estilo: Estilo
   posicion: number
+  forma: FormaInserto
 }) {
   const sitio = POSICIONES_INSERTO[posicion % POSICIONES_INSERTO.length]
+  const redondeo = forma === "circulo" ? LADO_INSERTO : 56
 
   return (
     <div
@@ -296,9 +310,9 @@ function Inserto({
         display: "flex",
         position: "absolute",
         ...sitio,
-        width: DIAMETRO_INSERTO,
-        height: DIAMETRO_INSERTO,
-        borderRadius: DIAMETRO_INSERTO,
+        width: LADO_INSERTO,
+        height: LADO_INSERTO,
+        borderRadius: redondeo,
         // El aro despega el circulo de la foto: sin el, un elemento de fondo
         // parecido al de la foto se funde con ella y deja de leerse como pieza.
         border: `8px solid ${estilo.paleta.acento}`,
@@ -314,20 +328,29 @@ function Inserto({
       <img
         src={src}
         alt=""
-        width={DIAMETRO_INSERTO}
-        height={DIAMETRO_INSERTO}
+        width={LADO_INSERTO}
+        height={LADO_INSERTO}
         style={{
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          borderRadius: DIAMETRO_INSERTO,
+          borderRadius: redondeo,
         }}
       />
     </div>
   )
 }
 
-function Portada({ slide, total, estilo, foto, etiqueta, inserto, insertoPos = 0 }: LaminaProps) {
+function Portada({
+  slide,
+  total,
+  estilo,
+  foto,
+  etiqueta,
+  inserto,
+  insertoPos = 0,
+  insertoForma = "circulo",
+}: LaminaProps) {
   const { paleta } = estilo
   const hook = slide.type === "photo_hook" ? (slide.hook ?? "").trim() : ""
   const antetitulo = (etiqueta ?? "").trim()
@@ -353,7 +376,9 @@ function Portada({ slide, total, estilo, foto, etiqueta, inserto, insertoPos = 0
       {/* Desde el 30%: deja limpia la mitad superior, que es la que atrae. */}
       <Fundido estilo={estilo} ancho={ANCHO} alto={ALTO} desde={30} />
 
-      {inserto ? <Inserto src={inserto} estilo={estilo} posicion={insertoPos} /> : null}
+      {inserto ? (
+        <Inserto src={inserto} estilo={estilo} posicion={insertoPos} forma={insertoForma} />
+      ) : null}
 
       <div style={{ display: "flex", position: "absolute", top: 0, left: 0 }}>
         <Marco estilo={estilo} numero={slide.n} total={total} fondo="transparent" sobreFoto alinear="abajo">

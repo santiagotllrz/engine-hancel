@@ -164,6 +164,9 @@ export async function generarCarrusel(
   // aparece nada utilizable la portada sale como siempre, sin hueco raro.
   const inserto = await buscarInserto(elemento)
   const insertoPos = Math.floor(Math.random() * 4)
+  // La forma tambien se sortea: dos formas evitan que una serie de posts se lea
+  // como una plantilla, y las dos funcionan igual de bien.
+  const insertoForma = Math.random() < 0.5 ? "circulo" : "cuadrado"
   const conFoto = necesitanFoto(variantes)
 
   // Lo que pidio el agente manda; el rastreo del titular queda de respaldo por
@@ -224,6 +227,7 @@ export async function generarCarrusel(
           logo,
           inserto: indice === 0 ? inserto : null,
           insertoPos,
+          insertoForma,
           perfil,
         },
         slides.length,
