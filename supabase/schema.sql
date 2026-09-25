@@ -62,6 +62,13 @@ create table if not exists public.raw_news (
   promoted_score       numeric,
   promoted_threshold   numeric,
 
+  -- La noticia que ya conto este mismo hecho, con status = 'duplicate'. El
+  -- UNIQUE de abajo solo pilla la misma URL, y un anuncio lo publican veinte
+  -- medios con veinte enlaces distintos. Se decide al ir a generar el angulo,
+  -- cuando quedan pocas; la repetida no se borra, se aparta enlazada a la que
+  -- se quedo con el hecho.
+  duplicate_of_news_id uuid references public.raw_news (id) on delete set null,
+
   constraint raw_news_link_key unique (link)
 );
 
@@ -71,6 +78,8 @@ create index if not exists raw_news_status_idx     on public.raw_news (status);
 create index if not exists raw_news_niche_tema_idx on public.raw_news (niche, tema);
 create index if not exists raw_news_promovidas_idx  on public.raw_news (account_id, promoted_at desc)
   where promoted_by_hand;
+create index if not exists raw_news_duplicate_of_idx on public.raw_news (duplicate_of_news_id)
+  where duplicate_of_news_id is not null;
 
 -- ------------------------------------------------------------------ corridas
 

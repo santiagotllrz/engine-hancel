@@ -28,6 +28,12 @@ export type RawNews = {
   /** Score y umbral congelados al promoverla; los dos cambian despues. */
   promoted_score: number | null
   promoted_threshold: number | null
+
+  /**
+   * La noticia que cubrio este mismo hecho antes. Con `status = duplicate`: no
+   * se borra, se aparta, para poder ver de cuantos medios salio la historia.
+   */
+  duplicate_of_news_id: string | null
 }
 
 /** Fila de `public.pipeline_runs`. */

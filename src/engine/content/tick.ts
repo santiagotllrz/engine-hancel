@@ -1,6 +1,8 @@
 import type { RawNews } from "@/lib/types"
 
 import { todasLasCuentas } from "../accounts"
+import { modelosClaude } from "../claude/modelos"
+import { elegirPorHecho } from "./repetidas"
 import { expirarPendientesViejas } from "./expiry"
 import { getSettings } from "../schedule"
 import { publishPiece, pendingToPublish } from "../publish/publish-piece"
@@ -50,6 +52,15 @@ import type { ContentAngle, DestinoCarrusel, JobAngle, JobLinkedin, Variables } 
  * trigger y cada cinco minutos por cron, lo que no entra ahora entra despues.
  */
 export const MAX_AUTO_POR_TICK = 5
+
+/**
+ * Cuantos dias atras se miran los hechos ya publicados al buscar repeticiones.
+ *
+ * Una noticia solo vive cinco dias (ver `frescura.ts`), asi que en una semana
+ * cabe cualquier eco tardio del mismo anuncio sin arrastrar historia que ya no
+ * se va a repetir.
+ */
+const DIAS_DE_HECHOS_CUBIERTOS = 7
 
 /** Tope de publicaciones por pasada: LinkedIn limita el ritmo y no hay prisa. */
 export const MAX_PUBLICAR_POR_TICK = 3
@@ -516,7 +527,61 @@ export async function runContentTick(
         ((yaEncoladas ?? []) as { raw_news_id: string }[]).map((row) => row.raw_news_id)
       )
 
-      for (const news of noticias.filter((n) => !vistas.has(n.id)).slice(0, MAX_AUTO_POR_TICK)) {
+      const aspirantes = noticias
+        .filter((n) => !vistas.has(n.id) && !n.duplicate_of_news_id)
+        .slice(0, MAX_AUTO_POR_TICK)
+
+      // Los hechos que ya tienen contenido. La ventana no es un detalle: mirar
+      // solo la tanda actual dejaria pasar justo el caso que rompio esto, dos
+      // posts del mismo anuncio generados con seis horas de diferencia en ticks
+      // distintos. Y mirar todo el historico seria pagar un prompt enorme por
+      // comparar con noticias que ya nadie va a repetir: las historias se
+      // solapan durante dias, no durante meses.
+      const desde = new Date(Date.now() - DIAS_DE_HECHOS_CUBIERTOS * 86_400_000).toISOString()
+      const { data: cubiertas } = await supabase
+        .from("raw_news")
+        .select("id, title, content_angles!inner(id)")
+        .eq("account_id", cuenta.id)
+        .gte("created_at", desde)
+        .limit(120)
+
+      const yaCubiertas = ((cubiertas ?? []) as { id: string; title: string }[]).map((c) => ({
+        id: c.id,
+        title: c.title,
+      }))
+
+      const veredicto = await elegirPorHecho(
+        aspirantes.map((n) => ({
+          id: n.id,
+          title: n.title,
+          score: n.relevance_score,
+          created_at: n.created_at,
+        })),
+        yaCubiertas,
+        (await modelosClaude()).angulo
+      )
+
+      // La repetida no se borra: se marca y se enlaza con la que se quedo con el
+      // hecho, para poder ver de cuantos medios salio y revisar el juicio.
+      for (const [repetida, duena] of veredicto.repetidas) {
+        await supabase
+          .from("raw_news")
+          .update({ status: "duplicate", duplicate_of_news_id: duena })
+          .eq("id", repetida)
+          .eq("account_id", cuenta.id)
+
+        log.emit("content.angle.repetida", "Noticia descartada por contar un hecho ya cubierto", {
+          accountId: cuenta.id,
+          rawNewsId: repetida,
+          mismoHechoQue: duena,
+        })
+      }
+
+      const porId = new Map(aspirantes.map((n) => [n.id, n]))
+
+      for (const elegida of veredicto.elegidas) {
+        const news = porId.get(elegida.id)
+        if (!news) continue
         await enqueueAngleJob(news, config.variables)
         anglesQueued++
         log.emit("content.angle.queued", "Noticia enviada al pipeline en automatico", {

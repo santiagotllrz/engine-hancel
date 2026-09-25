@@ -15,6 +15,7 @@ import { supabaseAdmin } from "../supabase-admin"
 export type ContentEventKind =
   | "content.tick.started"
   | "content.angle.queued"
+  | "content.angle.repetida"
   | "content.angle.created"
   | "content.angle.failed"
   | "content.linkedin.queued"

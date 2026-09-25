@@ -11,6 +11,8 @@ import { configuracionDeGeneracion } from "@/lib/content-data"
 import { idDeCuentaActual } from "@/lib/accounts"
 import { tokenClaude } from "@/engine/claude/messages"
 import { analizarPendientes } from "@/engine/content/analisis"
+import { elegirPorHecho } from "@/engine/content/repetidas"
+import { modelosClaude } from "@/engine/claude/modelos"
 import { runContentTick } from "@/engine/content/tick"
 import { REDES } from "@/engine/content/types"
 import type { ContentAngle, ContentPiece, Red, Variables } from "@/engine/content/types"
@@ -108,6 +110,66 @@ async function loadNews(id: string): Promise<RawNews> {
 
 // -------------------------------------------------------------- envio manual
 
+/** Cuantos dias atras se miran los hechos ya cubiertos. Igual que en el tick. */
+const DIAS_DE_HECHOS_CUBIERTOS = 7
+
+/**
+ * Corta el envio si ese hecho ya tiene contenido.
+ *
+ * El automatico ya lo comprueba antes de encolar; esto cierra la otra puerta,
+ * la de mandar una noticia a mano o arrastrarla en el tablero. Son dos caminos
+ * distintos al mismo sitio y con uno solo vigilado la garantia no existiria.
+ *
+ * Devuelve el motivo si repite, o null si puede seguir.
+ */
+async function hechoYaCubierto(news: RawNews): Promise<string | null> {
+  const supabase = supabaseAdmin()
+
+  // Marcada como repetida en su dia: no hace falta volver a preguntar.
+  if (news.duplicate_of_news_id) {
+    const { data } = await supabase
+      .from("raw_news")
+      .select("title")
+      .eq("id", news.duplicate_of_news_id)
+      .maybeSingle()
+    const titulo = (data as { title: string } | null)?.title
+    return `Ese hecho ya lo cubre otra noticia${titulo ? `: "${titulo}"` : ""}.`
+  }
+
+  const desde = new Date(Date.now() - DIAS_DE_HECHOS_CUBIERTOS * 86_400_000).toISOString()
+  const { data: cubiertas } = await supabase
+    .from("raw_news")
+    .select("id, title, content_angles!inner(id)")
+    .eq("account_id", news.account_id)
+    .gte("created_at", desde)
+    .neq("id", news.id)
+    .limit(120)
+
+  const yaCubiertas = ((cubiertas ?? []) as { id: string; title: string }[]).map((c) => ({
+    id: c.id,
+    title: c.title,
+  }))
+  if (yaCubiertas.length === 0) return null
+
+  const veredicto = await elegirPorHecho(
+    [{ id: news.id, title: news.title, score: news.relevance_score, created_at: news.created_at }],
+    yaCubiertas,
+    (await modelosClaude()).angulo
+  )
+
+  const duena = veredicto.repetidas.get(news.id)
+  if (!duena) return null
+
+  await supabase
+    .from("raw_news")
+    .update({ status: "duplicate", duplicate_of_news_id: duena })
+    .eq("id", news.id)
+    .eq("account_id", news.account_id)
+
+  const titulo = yaCubiertas.find((c) => c.id === duena)?.title
+  return `Ese hecho ya lo cubre otra noticia${titulo ? `: "${titulo}"` : ""}.`
+}
+
 /**
  * Manda una noticia a la cola de generación.
  *
@@ -119,6 +181,10 @@ export async function encolarContenido(rawNewsId: string): Promise<ActionResult>
 
   try {
     const [news, config] = await Promise.all([loadNews(rawNewsId), configuracionDeGeneracion()])
+
+    const repetido = await hechoYaCubierto(news)
+    if (repetido) return { ok: false, error: repetido }
+
     await enqueueAngleJob(news, config.variables)
     // La rutina no espera al webhook para trabajar, pero el tick tambien drena
     // lo que ya estuviera hecho y avisa a las dos rutinas de una vez.
@@ -141,6 +207,10 @@ export async function encolarContenidoConOverride(form: FormData): Promise<Actio
 
   try {
     const [news, config] = await Promise.all([loadNews(rawNewsId), configuracionDeGeneracion()])
+
+    const repetido = await hechoYaCubierto(news)
+    if (repetido) return { ok: false, error: repetido }
+
     await enqueueAngleJob(news, config.variables, override)
     await runContentTick({ trigger: "manual" })
     refresh()

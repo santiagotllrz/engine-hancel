@@ -29,6 +29,7 @@ export type Etapa =
   | "publicado"
   | "descartado"
   | "descartado_fecha"
+  | "repetida"
 
 export type PiezaDelTablero = {
   id: string
@@ -101,6 +102,8 @@ function etapaDe(
 ): Etapa {
   // El hecho ya era viejo al llegar: no se analiza ni se genera nada con el.
   if (estadoNoticia === "discarded_date") return "descartado_fecha"
+  // Ese hecho ya lo conto otra: no genera nada y no vuelve a la cola.
+  if (estadoNoticia === "duplicate") return "repetida"
   if (piezas.some((p) => p.status === "published")) return "publicado"
   // Descartado es solo lo rechazado a mano: lo que no llega por score nunca
   // genera nada, asi que por aqui no aparece.
@@ -153,6 +156,7 @@ export async function getTablero(): Promise<Tablero> {
     publicado: [],
     descartado: [],
     descartado_fecha: [],
+    repetida: [],
   }
   if (filas.length === 0) {
     return { fichas: porEtapa, conteos: { ...CONTEOS_VACIOS } }
@@ -261,4 +265,5 @@ const CONTEOS_VACIOS: Record<Etapa, number> = {
   publicado: 0,
   descartado: 0,
   descartado_fecha: 0,
+  repetida: 0,
 }
