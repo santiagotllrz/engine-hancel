@@ -7,17 +7,18 @@ insumos para contenido original y oportuno.
 Proyecto Next.js 16 (App Router, Node) en la raiz del repositorio: el motor y su
 interfaz viven juntos. Base de datos: proyecto Supabase `iddjepduokjysnibjjqy`.
 
-## Estado de la migracion
+## Que hace
 
-| Etapa                          | Donde corre                                  |
-| ------------------------------ | -------------------------------------------- |
-| 1 — Ingesta de noticias        | **Aqui, en codigo**                          |
-| 2 — Analisis y enriquecimiento | **Se dispara desde aqui** (rutina de Claude) |
-| 3 — Generacion de contenido    | **Aqui, en codigo** (angulo + LinkedIn)      |
-| 4 — Publicacion                | **Aqui, en codigo** (LinkedIn + Buffer)      |
+Busca noticias, las analiza y las puntua, decide un angulo editorial y escribe el
+contenido para cada red. Dibuja las imagenes y publica, cada canal a su horario.
+Todo corre aqui: no hay webhooks ni herramientas externas orquestando nada.
 
-Antes de activar la ingesta hay que **apagar el workflow de n8n**, o las dos
-correran en paralelo y duplicaran el consumo de Serper.
+Cada paso es un **agente** con su modo, su horario, su prompt y su modelo,
+configurables desde la aplicacion.
+
+- **[MOTOR.md](MOTOR.md)** — que hace cada pieza, cuando corre y cuanto tarda.
+  Los tiempos son medidos.
+- **[FLUJO.md](FLUJO.md)** — el mismo recorrido en un diagrama.
 
 ## Puesta en marcha
 
@@ -53,10 +54,10 @@ INSTAGRAM_ROUTINE_TOKEN=sk-ant-oat01-xxx
 total. Todo se lee y escribe en el servidor; nada llega al navegador.
 
 Las tablas de configuracion (`engine_categories`, `engine_segments`,
-`engine_routines`, `engine_settings`, `pipeline_events`) **si** tienen RLS activo
-y sin politicas:
-solo entra `service_role`. `engine_routines` guarda los tokens de webhook, y la
-clave publicable no debe poder leerlos.
+`agent_settings`, `engine_settings`, `engine_secrets`, `pipeline_events`) **si**
+tienen RLS activo y sin politicas: solo entra `service_role`. `engine_secrets`
+guarda los tokens de Claude y de Serper, y la clave publicable no debe poder
+leerlos.
 
 ## La interfaz
 
@@ -122,12 +123,12 @@ npm run ingest -- --dry-run # busca y reporta, sin escribir nada
 4. Colapsa links repetidos e inserta con `ON CONFLICT DO NOTHING` sobre el
    UNIQUE de `link`.
 5. Deduplica por titulo entre **todo lo del dia** y borra lo repetido.
-6. **Dispara la rutina de analisis** si entro alguna noticia nueva.
-7. Cierra la corrida con `raw_inserted`, `duplicates_removed` y `ended_at`.
+6. Cierra la corrida con `raw_inserted`, `duplicates_removed` y `ended_at`.
 
-La deduplicacion compara conjuntos de palabras (Jaccard > 0.6) dentro de cada
-categoria. Portada literal desde n8n, rarezas incluidas; ver
-[`src/engine/dedupe.ts`](src/engine/dedupe.ts).
+La deduplicacion de aqui compara conjuntos de palabras (Jaccard > 0.6) dentro de
+cada categoria y en español apenas acierta: sobre 171 pares de titulares del
+mismo hecho detecto 0. El filtro que si funciona esta en la etapa de angulo, y
+agrupa por el hecho, no por las palabras. Ver [MOTOR.md](MOTOR.md).
 
 ### Taxonomia
 
@@ -143,103 +144,24 @@ Las busquedas **ya no estan en el codigo**: viven en `engine_categories` y
 
 Categorias y segmentos se activan y desactivan por separado; el motor solo corre
 segmentos activos dentro de categorias activas. Si no hay ninguno configurado,
-cae al respaldo de [`src/engine/config.ts`](src/engine/config.ts), que son las 16
-busquedas originales de n8n.
+cae al respaldo de [`src/engine/config.ts`](src/engine/config.ts).
 
-### Rutina de analisis
+### Analisis
 
-Al final de cada ingesta que haya traido noticias nuevas se dispara la rutina de
-analisis de Claude Code, una sola vez por corrida. Se configura por entorno, no
-en la base:
-
-```bash
-ANALYSIS_ROUTINE_URL=https://api.anthropic.com/v1/claude_code/routines/<trigger-id>/fire
-ANALYSIS_ROUTINE_TOKEN=sk-ant-oat01-xxx      # sin el prefijo "Bearer"
-```
-
-Vive en el entorno **a proposito**: es la pieza que no puede perderse si hay que
-recrear la base. Ver [`src/engine/analysis-routine.ts`](src/engine/analysis-routine.ts).
-
-Es un gatillo y nada mas: no se le mandan ids. La rutina ya sabe que noticias le
-tocan y como analizarlas, definido en su propia interfaz; el `input` solo le
-avisa de cuantas han llegado.
-
-```http
-POST <ANALYSIS_ROUTINE_URL>
-Authorization: Bearer <ANALYSIS_ROUTINE_TOKEN>
-anthropic-version: 2023-06-01
-anthropic-beta: experimental-cc-routine-2026-04-01
-
-{"input": "Han llegado 12 noticias nuevas en la corrida <uuid>. Analizalas ..."}
-```
-
-No se dispara si la corrida no inserto nada, ni en el ensayo en seco. Corta a los
-30 segundos, igual que hacia el nodo HTTP de n8n, para que una rutina que no
-contesta no bloquee el cierre de la corrida. Y si falla **no** tumba la ingesta:
-las noticias ya estan guardadas y el error queda en el resumen de la corrida.
-
-> `engine_routines` y la pantalla `/engine/routines` siguen existiendo, pero ya
-> **no** intervienen en la ingesta.
-
-### Diferencias intencionales respecto de n8n
-
-- **`raw_inserted` se llena.** n8n lo dejaba en 0 siempre.
-- **Las corridas fallidas se marcan** como `failed` con el motivo, en vez de
-  quedarse colgadas en `running`.
-- **Los errores de busqueda son visibles** en el resumen y en la consola.
-- Se elimino la espera de 2 segundos previa al dedupe: era un parche por el
-  modelo asincrono de n8n.
+Lo hace el agente de analisis en el tick, no la ingesta: Composio trae el
+material de la web y Claude solo lo lee y lo puntua. La ingesta se limita a
+dejar las noticias en cola. Ver [MOTOR.md](MOTOR.md).
 
 ### Programacion
 
-Los horarios se editan en `/engine/schedule`, no en el codigo. Se configuran las
-horas locales (0-23), el minuto comun a todas ellas, la zona horaria y un
-interruptor general. Arranca con 11:00 y 18:00 en `America/Bogota`, que es lo
-que tenia n8n.
-
-El minuto se aplica a todas las horas elegidas: con 30, las 05 y las 11 corren a
-las 05:30 y a las 11:30. No se pueden mezclar 05:30 con 11:00.
-
-**El cron vive en Postgres, no en Vercel.** `pg_cron` dispara `public.fire_ingest()`
-a las horas exactas configuradas y `pg_net` hace el POST a `/api/ingest`. Un
-trigger sobre `engine_settings` reescribe el job cada vez que se guarda el
-horario, asi que la pantalla sigue siendo la unica fuente de verdad y la app no
-necesita saber que pg_cron existe. Ver [`supabase/scheduler.sql`](supabase/scheduler.sql).
-
-Se monta una vez, con la URL del despliegue:
-
-```sql
-select public.configure_ingest('https://<host>/api/ingest', '<INGEST_SECRET>');
-```
-
-El endpoint y el secreto quedan cifrados en Vault; el job los lee al disparar.
-Para ver el estado: `select jobname, schedule from cron.job;` y el historial en
-`cron.job_run_details`.
-
-> Antes esto lo hacia un cron de `vercel.json` que llamaba **cada hora** para que
-> el endpoint decidiera si le tocaba, descartando 23 de cada 24 llamadas. Ademas
-> el plan Hobby de Vercel solo admite crons diarios, con lo que el horario de la
-> UI no se habria respetado nunca.
-
-`pg_cron` trabaja en UTC y la traduccion se hace al guardar, no en cada disparo:
-en una zona con horario de verano habria que resincronizar en cada cambio.
-Colombia no lo tiene.
-
-Disparo manual:
-
-```bash
-# respeta el horario configurado
-curl -X POST https://<host>/api/ingest -H "x-ingest-secret: $INGEST_SECRET"
-
-# lo ignora y corre ya
-curl -X POST "https://<host>/api/ingest?force=1" -H "x-ingest-secret: $INGEST_SECRET"
-```
-
-`/api/ingest` **falla cerrado**: sin `INGEST_SECRET` responde 401 siempre.
+Los horarios ya no son de la ingesta sino de cada agente, y se editan en su
+ficha dentro de **Agentes**. Se escriben como se dicen —`9:00, 9:20, 18:00`—,
+cada uno con su minuto propio. La zona horaria es de la cuenta y vive en
+*Configuracion → General*. Ver [MOTOR.md](MOTOR.md).
 
 ## Etapa 2 — Generacion de contenido (LinkedIn)
 
-De una noticia analizada a un post listo para revisar. Dos rutinas encadenadas:
+De una noticia analizada a un post listo para revisar. Dos agentes encadenados:
 
 ```
 noticia analizada
@@ -256,17 +178,17 @@ La publicacion a LinkedIn **no** es parte de esta etapa: el pipeline termina en
 
 ### El patron buzon
 
-Una rutina tiene un prompt fijo, asi que los datos variables no pueden viajar en
+Un agente tiene un prompt fijo, asi que los datos variables no pueden viajar en
 el webhook. Viajan en una tabla:
 
 1. La app crea una fila con `input` y `status = 'pending'`.
 2. La app dispara el webhook. El aviso solo dice "despierta y revisa la cola";
    no lleva el trabajo ni trae el resultado.
-3. La rutina procesa **todas** las filas `pending` que encuentre, escribe
+3. El agente procesa las filas `pending` que le toquen, escribe
    `respuesta` y marca `done` o `failed`.
 4. La app materializa la respuesta en las tablas limpias.
 
-Las tablas `content_*` **las escribe siempre la app**, nunca la rutina: asi hay
+Las tablas `content_*` **las escribe siempre la app**, nunca el agente: asi hay
 un solo escritor por tabla y una respuesta con forma inesperada se marca
 `failed` con el motivo en lugar de meter filas basura.
 
@@ -280,7 +202,7 @@ En su lugar, la misma maquinaria que ya dispara el cron. Triggers sobre los dos
 buzones y sobre `raw_news`, que llaman por `pg_net` a `/api/content/tick`:
 
 ```
-rutina marca 'done'  →  trigger  →  pg_net POST /api/content/tick  →  runContentTick()
+el agente marca 'done'  →  trigger  →  pg_net POST /api/content/tick  →  runContentTick()
 ```
 
 `runContentTick()` es una pasada idempotente: toma lo que este hecho y sin
@@ -295,46 +217,18 @@ Se monta una vez, con la URL del despliegue:
 select public.configure_content_tick('https://<host>/api/content/tick');
 ```
 
-### El contrato con las rutinas
+### El contrato del buzon
 
-Claude Code **no** crea ni edita las rutinas: sus prompts viven en Claude. Lo
-unico que ambos lados tienen que respetar es la forma de `input` y `respuesta`.
-Esto es lo que hay que pegar en los prompts.
+Los agentes viven aqui: su prompt esta en `src/engine/content/agentes.ts` y se
+puede editar desde la ficha de cada agente. Lo que se guarda en la base es solo
+el prompt editado; mientras no se toque, manda el del codigo y las mejoras de
+cada despliegue llegan solas.
 
-**Rutina de angulo** — lee `jobs_angle` donde `status = 'pending'`:
+Lo que sigue siendo un contrato es la forma de `input` y `respuesta` en los
+buzones: la app escribe `input`, el agente escribe `respuesta`, y `parse.ts`
+comprueba que tiene la forma esperada. Si cambia, el trabajo se marca `failed`
+con el motivo en vez de materializar algo roto.
 
-```jsonc
-// input (lo escribe la app)
-{ "raw_news": { "id", "title", "link", "source", "snippet", "full_content",
-                "niche", "tema", "relevance_score", "keywords_matched",
-                "analysis_notes" },
-  "variables": { "tono", "audiencia", "voz_marca", "cta", "evitar", "longitud", "idioma" } }
-
-// respuesta (la escribe la rutina) — cuantos angulos, lo decide la rutina
-{ "angles": [ { "angle": "…", "thesis": "…", "playbook_format": "…" } ] }
-```
-
-**Rutina de LinkedIn** — lee `jobs_linkedin` donde `status = 'pending'`:
-
-```jsonc
-// input
-{ "angle": { "id", "angle", "thesis", "playbook_format" },
-  "raw_news": { … igual que arriba … },
-  "variables": { … } }
-
-// respuesta
-{ "post": { "hook": "…", "body": "…", "hashtags": ["…"], "cta": "…" }, "notas": "…" }
-```
-
-Al terminar cada fila, la rutina escribe `respuesta`, pone `status = 'done'` (o
-`'failed'` con el motivo en `error`) y `processed_at`. **No debe tocar
-`consumed_at`**: esa columna es de la app y es lo que evita que su propia
-escritura vuelva a despertar el tick en bucle.
-
-El lector es tolerante con la forma (acepta `angulos`/`tesis`, un array pelado o
-un objeto suelto) y explicito al fallar: si no reconoce nada, marca el job
-`failed` con el mensaje de lo que esperaba y **conserva la respuesta cruda**, que
-se ve en `/contenido/cola`.
 
 ### Las variables
 
@@ -379,12 +273,12 @@ El boton de cada red se apaga cuando esa pieza ya existe, no cuando existe
 cualquiera.
 
 > El **modo automatico** sigue encolando solo LinkedIn al aparecer un angulo. Si
-> se quiere que genere tambien el carrusel, hay que decidirlo: son dos rutinas
+> se quiere que genere tambien el carrusel, hay que decidirlo: son dos agentes
 > por noticia en vez de una.
 
 ### Carrusel de Instagram
 
-La rutina de Instagram devuelve el guion; la app lo convierte en imagenes reales
+La agente de Instagram devuelve el guion; la app lo convierte en imagenes reales
 y las deja en URLs publicas. **Publicar en Instagram no es parte de esto** — el
 modulo termina con las imagenes subidas y la pieza lista para revisar.
 
@@ -419,14 +313,14 @@ serie monocroma.
 
 Instagram no admite carruseles de mas de 10, asi que lo que sobre se recorta. Si
 llegan menos de 2 slides utiles, el trabajo se marca `failed` con el motivo, como
-con las otras rutinas.
+con las otras agentes.
 
 #### La lamina de cierre
 
 Un interruptor en `/contenido/config` añade una lamina final a todos los
 carruseles, con su titulo y su texto, sobre una foto muy velada.
 
-Va aparte del guion que escribe la rutina a proposito: es una constante de la
+Va aparte del guion que escribe la agente a proposito: es una constante de la
 marca, no contenido de la noticia, y no tiene sentido pedirsela al modelo cada
 vez. Si el guion ya llega al tope de Instagram, se recorta uno para hacerle
 sitio en vez de pasarse de diez.
@@ -639,7 +533,7 @@ tres por pasada — LinkedIn limita el ritmo y no hay ninguna prisa.
 ## ⚠ El dashboard no tiene autenticacion
 
 Cualquiera que alcance la URL puede ver las noticias, editar la taxonomia,
-leer que rutinas existen y **lanzar corridas** (que gastan cuota de Serper y
+leer que agentes existen y **lanzar corridas** (que gastan cuota de Serper y
 escriben en la base). `/api/engine/stream` solo comprueba que la peticion venga
 del mismo origen, lo cual frena llamadas cruzadas pero no es autenticacion.
 
@@ -654,7 +548,7 @@ src/
   app/
     api/engine/stream/   SSE: corrida con eventos en vivo
     api/ingest/          Endpoint para schedulers
-    engine/              Consola, taxonomia, rutinas, grafo
+    engine/              Consola, taxonomia, agentes, grafo
     engine/actions.ts    Server Actions de configuracion
     noticias/ pipeline/  Lectura de resultados
   engine/                EL MOTOR (no depende de Next: corre tambien en Node)
@@ -663,7 +557,7 @@ src/
     schedule.ts          Horario: decide si al cron le toca correr
     serper.ts            Cliente de Serper News
     normalize.ts         Serper -> filas de raw_news
-    dedupe.ts            Similitud de titulos (portado de n8n)
+    dedupe.ts            Similitud de titulos (debil en español)
     events.ts            Traza de la corrida (vivo + pipeline_events)
     routines.ts          Invocacion de webhooks de Claude
     ingest.ts            Orquesta la corrida completa
