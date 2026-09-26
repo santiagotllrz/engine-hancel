@@ -93,10 +93,6 @@ export function LoginForm({
           </div>
         </div>
       </form>
-
-      <p className="text-muted-foreground text-center text-xs text-balance">
-        Panel interno. Las cuentas se crean desde Supabase.
-      </p>
     </div>
   )
 }
