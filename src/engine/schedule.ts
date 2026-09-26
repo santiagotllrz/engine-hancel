@@ -61,6 +61,27 @@ export function partsIn(
   }
 }
 
+/**
+ * El dia en la zona indicada, como "2026-09-26".
+ *
+ * Existe porque `toDateString()` responde en la zona del servidor, que en
+ * produccion es UTC, y eso no es el mismo dia que el de la cuenta. Comparar la
+ * hora en Bogota y el dia en UTC hacia que las 19:00 de ayer contaran como una
+ * pasada de hoy, y el motor se saltaba todos los horarios hasta esa hora.
+ */
+export function dayIn(timezone: string, now: Date): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now)
+  } catch {
+    return now.toISOString().slice(0, 10)
+  }
+}
+
 /** Hora local (0-23) en la zona indicada. */
 export function hourIn(timezone: string, now: Date): number {
   return partsIn(timezone, now).hour
@@ -109,7 +130,8 @@ export function decide(settings: EngineSettings, now: Date): ScheduleDecision {
   if (settings.last_ingest_at) {
     const ultima = new Date(settings.last_ingest_at)
     const anterior = partsIn(settings.timezone, ultima)
-    if (ultima.toDateString() === now.toDateString() && anterior.hour === hour) {
+    // Mismo criterio que el resto: el dia de la cuenta, no el del servidor.
+    if (dayIn(settings.timezone, ultima) === dayIn(settings.timezone, now) && anterior.hour === hour) {
       return { run: false, reason: "La ingesta de esta hora ya corrio.", hour }
     }
   }

@@ -1,4 +1,4 @@
-import { partsIn } from "../schedule"
+import { dayIn, partsIn } from "../schedule"
 import type { AjustesAgente } from "./settings"
 
 /**
@@ -63,7 +63,11 @@ export function leToca(
   if (ajustes.last_run_at) {
     const anterior = new Date(ajustes.last_run_at)
     const ultima = partsIn(timezone, anterior)
-    const mismoDia = anterior.toDateString() === now.toDateString()
+    // El dia, en la zona de la cuenta. Comparar aqui el dia del servidor —UTC
+    // en produccion— con la hora de la cuenta es mezclar dos relojes: las
+    // 19:00 de ayer en Bogota ya son hoy en UTC, asi que la pasada de las 9:00
+    // se daba por hecha "a las 19:00" y se saltaban todos los horarios del dia.
+    const mismoDia = dayIn(timezone, anterior) === dayIn(timezone, now)
     if (mismoDia && ultima.hour * 60 + ultima.minute >= toca) {
       return { corre: false, motivo: `La pasada de las ${comoHora(toca)} ya se hizo.` }
     }
