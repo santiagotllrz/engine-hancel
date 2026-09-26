@@ -52,7 +52,7 @@ export function LoginForm({
               />
             </h1>
             <div className="text-muted-foreground text-center text-sm">
-              Entra para ver el motor de contenido.
+              Entra para automatizar todo tu contenido.
             </div>
           </div>
 
@@ -93,6 +93,16 @@ export function LoginForm({
           </div>
         </div>
       </form>
+
+      {/* El correo va como enlace: en una pantalla de entrada, quien lee esto
+          no tiene cuenta, y pedirle que copie una direccion a mano es perder
+          justo a quien venia interesado. */}
+      <p className="text-muted-foreground text-center text-xs text-balance">
+        Si quieres un demo enviame un mensaje a{" "}
+        <a href="mailto:santiago@hancel.xyz" className="underline underline-offset-4">
+          santiago@hancel.xyz
+        </a>
+      </p>
     </div>
   )
 }
