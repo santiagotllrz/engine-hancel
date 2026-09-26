@@ -49,19 +49,108 @@ export type CarouselPayload = {
 
 /** Lo que el agente deja en `jobs_instagram.respuesta`. */
 /**
- * Arregla la palabra que no se puede publicar mal.
+ * Repone las tildes que el modelo se deja, solo donde no hay duda.
  *
- * Al modelo se le pide en el prompt que escriba con tildes y con eñe, y casi
- * siempre lo hace, pero "anos" por "años" no es una falta como las demas: es
- * otra palabra, y bastante desafortunada. Es la unica que se corrige en codigo
- * porque es la unica donde el arreglo es seguro —"anos" no aparece de verdad
- * en una noticia del campo— y el fallo, caro.
+ * Al agente se le pide en el prompt que escriba en español correcto y ahora el
+ * prompt entero va acentuado, que era la causa de fondo: leyendo instrucciones
+ * sin tildes, imitaba esa forma de escribir. Esto es la red de debajo.
  *
- * El resto de tildes no se toca: no hay forma fiable de saber si "cayo" era
- * "cayó" o el arbol, y un arreglo a medias es peor que ninguno.
+ * Solo entra lo que no puede significar otra cosa. "anos" por "años" no es una
+ * falta cualquiera, es otra palabra. "-cion" al final de palabra siempre lleva
+ * tilde, y su plural "-ciones" nunca. Lo ambiguo se queda fuera a proposito:
+ * "esta" puede ser "está" o el demostrativo, "cayo" puede ser "cayó" o el
+ * accidente del terreno, y arreglar a medias es peor que no arreglar.
  */
-function arreglarEnies(texto: string): string {
-  return texto.replace(/anos/gi, (m) => (m[0] === "A" ? "Años" : "años"))
+const CON_TILDE: Record<string, string> = {
+  ademas: "además",
+  ahi: "ahí",
+  alli: "allí",
+  ano: "año",
+  anos: "años",
+  aqui: "aquí",
+  asi: "así",
+  compania: "compañía",
+  credito: "crédito",
+  dia: "día",
+  dias: "días",
+  despues: "después",
+  economia: "economía",
+  energia: "energía",
+  estan: "están",
+  habia: "había",
+  habian: "habían",
+  hectarea: "hectárea",
+  hectareas: "hectáreas",
+  mananas: "mañanas",
+  manana: "mañana",
+  mas: "más",
+  millon: "millón",
+  nino: "niño",
+  ninos: "niños",
+  numero: "número",
+  pais: "país",
+  paises: "países",
+  pequeno: "pequeño",
+  podria: "podría",
+  podrian: "podrían",
+  proximo: "próximo",
+  proxima: "próxima",
+  quiza: "quizá",
+  segun: "según",
+  senal: "señal",
+  sera: "será",
+  seran: "serán",
+  tambien: "también",
+  tecnologia: "tecnología",
+  ultima: "última",
+  ultimo: "último",
+  via: "vía",
+  vias: "vías",
+  agricola: "agrícola",
+  agricolas: "agrícolas",
+  analisis: "análisis",
+  area: "área",
+  areas: "áreas",
+  basica: "básica",
+  basico: "básico",
+  deficit: "déficit",
+  dificil: "difícil",
+  facil: "fácil",
+  indice: "índice",
+  indices: "índices",
+  kilometro: "kilómetro",
+  kilometros: "kilómetros",
+  logistica: "logística",
+  maximo: "máximo",
+  minimo: "mínimo",
+  politica: "política",
+  politicas: "políticas",
+  rapido: "rápido",
+  tramite: "trámite",
+  tramites: "trámites",
+  unico: "único",
+  unica: "única",
+}
+
+/** Conserva la mayuscula inicial de la palabra original. */
+function comoEstaba(original: string, corregida: string): string {
+  return original[0] === original[0].toUpperCase()
+    ? corregida[0].toUpperCase() + corregida.slice(1)
+    : corregida
+}
+
+function arreglarOrtografia(texto: string): string {
+  return (
+    texto
+      // Palabras de la lista cerrada.
+      .replace(/[a-zA-ZáéíóúñÁÉÍÓÚÑ]+/g, (palabra) => {
+        const fijada = CON_TILDE[palabra.toLowerCase()]
+        return fijada ? comoEstaba(palabra, fijada) : palabra
+      })
+      // "-cion" final siempre lleva tilde; "-ciones" nunca. Igual "-sion".
+      .replace(/([a-záéíóúñ])cion/gi, "$1ción")
+      .replace(/([a-záéíóúñ])sion/gi, "$1sión")
+  )
 }
 
 export function parseInstagramResponse(respuesta: unknown): {
@@ -77,11 +166,11 @@ export function parseInstagramResponse(respuesta: unknown): {
 
   const slides = parseSlides(raiz.slides).map((slide) =>
     slide.type === "photo_hook"
-      ? { ...slide, hook: slide.hook ? arreglarEnies(slide.hook) : slide.hook }
+      ? { ...slide, hook: slide.hook ? arreglarOrtografia(slide.hook) : slide.hook }
       : {
           ...slide,
-          title: slide.title ? arreglarEnies(slide.title) : slide.title,
-          body: slide.body ? arreglarEnies(slide.body) : slide.body,
+          title: slide.title ? arreglarOrtografia(slide.title) : slide.title,
+          body: slide.body ? arreglarOrtografia(slide.body) : slide.body,
         }
   )
   if (slides.length < MIN_SLIDES) {
@@ -92,7 +181,7 @@ export function parseInstagramResponse(respuesta: unknown): {
     )
   }
 
-  const caption = typeof raiz.caption === "string" ? arreglarEnies(raiz.caption.trim()) : ""
+  const caption = typeof raiz.caption === "string" ? arreglarOrtografia(raiz.caption.trim()) : ""
   const hashtags = Array.isArray(raiz.hashtags)
     ? raiz.hashtags
         .filter((h): h is string => typeof h === "string" && h.trim().length > 0)
@@ -167,9 +256,11 @@ export async function generarCarrusel(
   // Un logo apaisado recortado a cuadro pierde las puntas y deja de leerse:
   // "Asocolflores" salia como "socolflore". Lo cuadrado se rellena, que luce
   // mejor; lo que no lo es se encaja entero aunque queden margenes.
-  const insertoAjuste = hallado && hallado.proporcion > 0.8 && hallado.proporcion < 1.25
-    ? "llenar"
-    : "encajar"
+  // Se rellena siempre que el recorte no se coma lo importante. El margen es
+  // amplio a proposito: encajar deja la imagen flotando pequeña dentro del
+  // circulo, y eso se ve peor que un recorte leve por los lados.
+  const insertoAjuste =
+    hallado && hallado.proporcion > 0.62 && hallado.proporcion < 1.6 ? "llenar" : "encajar"
   const insertoPos = Math.floor(Math.random() * 4)
   // La forma tambien se sortea: dos formas evitan que una serie de posts se lea
   // como una plantilla, y las dos funcionan igual de bien.
@@ -332,11 +423,24 @@ async function buscarInserto(
   try {
     const { searchImage } = await import("../serper")
     const candidatas = await searchImage(consulta)
+    if (candidatas.length === 0) return null
+
+    // Primero las que mejor encajan en un hueco cuadrado. Una muy apaisada hay
+    // que encajarla con margenes y se ve pequeña dentro del circulo.
     const porForma = [...candidatas].sort(
       (a, b) => Math.abs(Math.log(a.ancho / a.alto)) - Math.abs(Math.log(b.ancho / b.alto))
     )
 
-    for (const imagen of porForma.slice(0, 5)) {
+    // Y entre las mejores, una al azar. Coger siempre la primera hacia que dos
+    // noticias del mismo gremio salieran con exactamente la misma imagen, y en
+    // un feed eso se lee como contenido repetido aunque el texto sea distinto.
+    const buenas = porForma.slice(0, 6)
+    for (let i = buenas.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[buenas[i], buenas[j]] = [buenas[j], buenas[i]]
+    }
+
+    for (const imagen of buenas) {
       const descargada = await descargarFoto(imagen.url)
       if (descargada) return { imagen: descargada, proporcion: imagen.ancho / imagen.alto }
     }

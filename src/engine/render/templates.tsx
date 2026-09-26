@@ -69,10 +69,42 @@ const UTIL = ANCHO - MARGEN * 2
  * que no cabe hay que quitarlo: Satori no ajusta el texto al hueco, lo desborda
  * y lo corta contra el borde a media palabra.
  */
+/**
+ * Recorta sin dejar una frase a medias.
+ *
+ * Antes cortaba por caracteres y ponia puntos suspensivos, y salian titulos
+ * como "El mecanismo tiene fecha de vencimiento: el 31 de diciembre de 2026 o
+ * antes si...". Eso no es un titular acortado: es una frase sin sentido, y el
+ * lector no sabe si le falta lo importante.
+ *
+ * Ahora se busca un final legitimo. Primero una oracion completa; si no la hay,
+ * el ultimo corte natural de la frase (dos puntos, punto y coma, coma). Solo si
+ * no hay ninguno se corta por palabra, y entonces si se avisa con puntos
+ * suspensivos, porque ahi de verdad falta texto.
+ */
 function recortar(texto: string, tope: number): string {
   if (texto.length <= tope) return texto
 
   const cortado = texto.slice(0, tope)
+
+  // Una oracion entera: es el corte que no se nota.
+  const finFrase = Math.max(
+    cortado.lastIndexOf(". "),
+    cortado.lastIndexOf("? "),
+    cortado.lastIndexOf("! ")
+  )
+  if (finFrase > tope * 0.3) return cortado.slice(0, finFrase + 1).trimEnd()
+
+  // Una pausa fuerte: la frase queda coja pero se entiende sola.
+  const pausa = Math.max(
+    cortado.lastIndexOf(": "),
+    cortado.lastIndexOf("; "),
+    cortado.lastIndexOf(", ")
+  )
+  if (pausa > tope * 0.3) {
+    return `${cortado.slice(0, pausa).trimEnd().replace(/[.,;:]$/, "")}.`
+  }
+
   const ultimoEspacio = cortado.lastIndexOf(" ")
   const limpio = (ultimoEspacio > tope * 0.6 ? cortado.slice(0, ultimoEspacio) : cortado).trimEnd()
 
@@ -155,6 +187,7 @@ function Marco({
   total,
   children,
   fondo,
+  foto,
   sobreFoto = false,
   alinear = "centro",
 }: {
@@ -165,6 +198,15 @@ function Marco({
   fondo: string
   sobreFoto?: boolean
   alinear?: "centro" | "abajo"
+  /**
+   * Foto de fondo, ya descargada.
+   *
+   * Las laminas de solo tipografia se leian como un hueco en medio del
+   * carrusel: seis imagenes con foto y una negra parecia un error de
+   * generacion mas que una decision. Con la foto detras y el velo delante el
+   * texto se lee igual y la serie no se corta.
+   */
+  foto?: string | null
 }) {
   const { paleta, fuente, marca, mostrarPaginacion } = estilo
   const abajo = alinear === "abajo"
@@ -174,14 +216,44 @@ function Marco({
       style={{
         display: "flex",
         flexDirection: "column",
+        position: "relative",
         width: ANCHO,
         height: ALTO,
         padding: MARGEN,
-        background: fondo,
+        background: foto ? paleta.fondo : fondo,
         fontFamily: fuente,
         color: paleta.texto,
       }}
     >
+      {foto ? (
+        <>
+          {/* El desplazamiento negativo no es un truco: Satori coloca lo
+              absoluto dentro de la caja de relleno, no de la lamina, asi que
+              sin el la foto quedaba encajada con un marco negro alrededor. */}
+          <Foto
+            src={foto}
+            position="absolute"
+            top={-MARGEN}
+            left={-MARGEN}
+            width={ANCHO}
+            height={ALTO}
+          />
+          {/* El velo: aqui el texto va sin bloque detras y compite con la foto
+              entera, no con una esquina. */}
+          <div
+            style={{
+              display: "flex",
+              position: "absolute",
+              top: -MARGEN,
+              left: -MARGEN,
+              width: ANCHO,
+              height: ALTO,
+              background: paleta.velo,
+            }}
+          />
+        </>
+      ) : null}
+
       {marca ? (
         <div style={{ display: "flex", alignItems: "center" }}>
           <div
@@ -632,14 +704,21 @@ function FotoRecuadro({ slide, total, estilo, foto }: LaminaProps) {
  *
  * Para las laminas cuyo peso esta en una frase, no en una explicacion.
  */
-function Cita({ slide, total, estilo }: LaminaProps) {
+function Cita({ slide, total, estilo, foto }: LaminaProps) {
   const { paleta } = estilo
   const titulo = slide.type === "text" ? (slide.title ?? "").trim() : ""
   const cuerpo = slide.type === "text" ? (slide.body ?? "").trim() : ""
   const frase = cuerpo || titulo
 
   return (
-    <Marco estilo={estilo} numero={slide.n} total={total} fondo={paleta.fondo}>
+    <Marco
+      estilo={estilo}
+      numero={slide.n}
+      total={total}
+      fondo={paleta.fondo}
+      foto={foto}
+      sobreFoto={Boolean(foto)}
+    >
       <div style={{ display: "flex", flexDirection: "column", width: UTIL }}>
         <div
           style={{
@@ -686,13 +765,20 @@ function Cita({ slide, total, estilo }: LaminaProps) {
  *
  * Da ritmo sin necesitar foto, que es util cuando el banco no devuelve nada.
  */
-function Dato({ slide, total, estilo }: LaminaProps) {
+function Dato({ slide, total, estilo, foto }: LaminaProps) {
   const { paleta } = estilo
   const titulo = slide.type === "text" ? (slide.title ?? "").trim() : ""
   const cuerpo = slide.type === "text" ? (slide.body ?? "").trim() : ""
 
   return (
-    <Marco estilo={estilo} numero={slide.n} total={total} fondo={paleta.fondo}>
+    <Marco
+      estilo={estilo}
+      numero={slide.n}
+      total={total}
+      fondo={paleta.fondo}
+      foto={foto}
+      sobreFoto={Boolean(foto)}
+    >
       <div style={{ display: "flex", alignItems: "flex-start", width: UTIL }}>
         <div
           style={{

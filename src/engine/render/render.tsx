@@ -23,7 +23,14 @@ import { ALTO, ANCHO, ESTILO_POR_DEFECTO, type Estilo, type Variante } from "./t
  */
 
 /** Instagram no admite carruseles de mas de 10, ni de menos de 2. */
-export const MAX_SLIDES = 10
+/**
+ * Cuantas laminas tiene un carrusel, contando la de cierre.
+ *
+ * Seis. Antes eran hasta diez y el guion se estiraba para llenarlas, con
+ * laminas que repetian lo dicho dos antes. Con cinco de contenido hay que
+ * elegir que se cuenta, y eso se nota en lo que se lee.
+ */
+export const MAX_SLIDES = 6
 export const MIN_SLIDES = 2
 
 /** Tope de la foto: descargarla entera si es enorme no aporta. */
@@ -186,8 +193,15 @@ export function repartirVariantes(slides: Slide[], usarFotos: boolean): Variante
 
 /** Cuantas laminas de este reparto necesitan foto de banco. */
 export function necesitanFoto(variantes: Variante[]): boolean[] {
+  // `dato` y `cita` tambien: eran las dos laminas de solo tipografia y en un
+  // carrusel de seis se leian como un hueco, no como una pausa.
   return variantes.map(
-    (v) => v === "foto_fondo" || v === "foto_lateral" || v === "foto_recuadro"
+    (v) =>
+      v === "foto_fondo" ||
+      v === "foto_lateral" ||
+      v === "foto_recuadro" ||
+      v === "dato" ||
+      v === "cita"
   )
 }
 
