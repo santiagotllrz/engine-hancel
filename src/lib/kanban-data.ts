@@ -35,6 +35,7 @@ export type Etapa =
   | "descartado"
   | "descartado_fecha"
   | "repetida"
+  | "vetada"
 
 export type PiezaDelTablero = {
   id: string
@@ -141,6 +142,8 @@ function etapaDe(
   if (estadoNoticia === "discarded_date") return "descartado_fecha"
   // Ese hecho ya lo conto otra: no genera nada y no vuelve a la cola.
   if (estadoNoticia === "duplicate") return "repetida"
+  // Un tema que esta cuenta no cubre. No se genera ni se puede arrastrar.
+  if (estadoNoticia === "vetada") return "vetada"
   // Apartado a mano, con o sin piezas generadas.
   if (estadoNoticia === "discarded") return "descartado"
   if (piezas.length > 0 && piezas.every((p) => p.status === "rejected")) return "descartado"
@@ -195,6 +198,7 @@ export async function getTablero(): Promise<Tablero> {
     descartado: [],
     descartado_fecha: [],
     repetida: [],
+    vetada: [],
   }
   const modos = await modosDeEtapa(accountId)
   const redesActivas = await redesActivas_(accountId)
@@ -332,6 +336,7 @@ const CONTEOS_VACIOS: Record<Etapa, number> = {
   descartado: 0,
   descartado_fecha: 0,
   repetida: 0,
+  vetada: 0,
 }
 
 

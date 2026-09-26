@@ -102,6 +102,21 @@ análisis a **~1.000**.
 **Salida:** una nota de 1 a 10, las palabras clave y unas notas de por dónde
 enfocar.
 
+**El veto.** Antes de calificar, el agente decide si la noticia es de un tema que
+esta cuenta no cubre: corrupción, escándalos o señalamientos a figuras públicas,
+investigaciones y procesos judiciales, peleas políticas. Si lo es, la noticia
+queda en **Vetadas** y no llega nunca a la etapa de ángulo.
+
+No es una nota baja. Una nota baja se puede empujar a mano desde el estudio;
+una vetada no se puede arrastrar, y el servidor la rechaza aunque se intente por
+otra vía.
+
+La prueba que aplica: **si el sujeto de la noticia es una persona señalada, está
+vetada; si el sujeto es un hecho del sector, no.** Un decreto, un arancel, una
+línea de crédito o una crítica técnica a una medida son noticias normales aunque
+las anuncie el Gobierno. "Finagro amplió la línea de crédito rural" pasa;
+"Finagro dio crédito de pequeño productor al hijo de un dirigente gremial" no.
+
 **Consumo medido:** ~1.005 tokens de entrada, ~454 de salida por noticia.
 
 **Modelo por defecto:** Haiku 4.5. Es el paso más mecánico y el más repetido.

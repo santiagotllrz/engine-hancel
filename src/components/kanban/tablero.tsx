@@ -90,6 +90,7 @@ const GRUPOS_BASE: Grupo[] = [
       { id: "descartado", titulo: "A mano", pista: "Rechazados por ti" },
       { id: "descartado_fecha", titulo: "Por fecha", pista: "Ya eran viejas al llegar" },
       { id: "repetida", titulo: "Repetidas", pista: "Ese hecho ya lo conto otra" },
+      { id: "vetada", titulo: "Vetadas", pista: "Tema que no cubrimos" },
     ],
   },
 ]
@@ -138,7 +139,12 @@ const DESTINOS: Partial<Record<Etapa, DestinoTablero>> = {
 function admite(origen: Etapa, destino: Etapa): boolean {
   if (origen === destino) return false
   if (destino === "descartado") {
-    return origen !== "publicado" && origen !== "descartado_fecha" && origen !== "repetida"
+    return (
+      origen !== "publicado" &&
+      origen !== "descartado_fecha" &&
+      origen !== "repetida" &&
+      origen !== "vetada"
+    )
   }
 
   const desde = ORDEN[origen]
@@ -360,7 +366,9 @@ function Columna({
             <Tarjeta
               key={`${f.newsId}:${f.red ?? ""}`}
               ficha={f}
-              arrastrable={etapa !== "descartado_fecha" && etapa !== "repetida"}
+              arrastrable={
+                etapa !== "descartado_fecha" && etapa !== "repetida" && etapa !== "vetada"
+              }
               moviendo={moviendo === f.newsId}
               onAbrir={() => onAbrir(f)}
               onArrastrar={onArrastrar}

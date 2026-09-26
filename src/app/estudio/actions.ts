@@ -135,6 +135,12 @@ const DIAS_DE_HECHOS_CUBIERTOS = 7
 async function hechoYaCubierto(news: RawNews): Promise<string | null> {
   const supabase = supabaseAdmin()
 
+  // El veto no es una nota baja que se pueda empujar: es un tema que esta
+  // cuenta no cubre. Se corta aqui porque el tablero no es la unica via.
+  if (news.status === "vetada") {
+    return "Esa noticia esta vetada: es un tema que esta cuenta no cubre."
+  }
+
   // Marcada como repetida en su dia: no hace falta volver a preguntar.
   if (news.duplicate_of_news_id) {
     const { data } = await supabase

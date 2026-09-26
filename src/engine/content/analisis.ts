@@ -31,14 +31,39 @@ PASO 2: CALIFICAR (1-10, promedio ponderado)
 4. CONECTIVIDAD (15%): se conecta con otros hechos formando patron, convergencia o contradiccion.
 5. FIT DE NICHO (15%): es genuinamente sobre el nicho que se indica. Fuera de nicho puntua 1-2.
 
+VETO: TEMAS QUE ESTA CUENTA NO CUBRE NUNCA
+Antes de calificar, decide si la noticia esta vetada. Si lo esta, devuelve "vetada": true y el motivo, y lo demas da igual.
+
+ENTRA EN EL VETO:
+- Corrupcion, desvio de recursos publicos, contratos irregulares, favorecimiento, trafico de influencias.
+- Escandalos, senalamientos o polemicas sobre figuras publicas, politicos, funcionarios o dirigentes gremiales.
+- Investigaciones, imputaciones, procesos judiciales, capturas, condenas, sanciones a personas.
+- Peleas politicas, acusaciones cruzadas entre funcionarios, gremios o partidos.
+
+NO ENTRA EN EL VETO, son noticias normales del sector:
+- Una politica publica, un decreto, un arancel, un subsidio o una linea de credito, contados por lo que cambian para el productor.
+- Cifras oficiales, informes de gremios, precios, clima, cosechas, exportaciones.
+- Una critica tecnica a una medida, sin senalar a una persona.
+
+LA PRUEBA: si el sujeto de la noticia es una persona senalada, esta vetada. Si el sujeto es un hecho del sector, no lo esta. "Finagro amplio la linea de credito rural" no esta vetada; "Finagro dio credito de pequeno productor al gerente de un gremio" si lo esta.
+
 FILTRO DURO: si NO es un hecho verificable (opinion, prediccion sin gatillo, listicle generico), relevance_score = 1-2 sin importar lo demas.
 
 content_fetch_status: "success" si el material recolectado era sustancioso, "partial" si apenas habia mas que el snippet, "failed" si no llego nada.
 
 RESPONDE SOLO con este JSON, sin texto alrededor, sin saltos de linea y sin comillas dobles dentro de ninguna cadena (usa comillas simples y separa ideas con espacios dentro de full_content):
-{"full_content":"<el texto consolidado, en un solo bloque sin saltos de linea>","content_fetch_status":"success|partial|failed","relevance_score":<entero 1-10>,"keywords_matched":["<4 a 6 keywords en minuscula>"],"analysis_notes":"<2-3 frases: primero el score global y por que; luego el angulo editorial mas prometedor si lo hay>"}`
+{"vetada":<true|false>,"motivo_veto":"<una frase, solo si vetada es true>","full_content":"<el texto consolidado, en un solo bloque sin saltos de linea>","content_fetch_status":"success|partial|failed","relevance_score":<entero 1-10>,"keywords_matched":["<4 a 6 keywords en minuscula>"],"analysis_notes":"<2-3 frases: primero el score global y por que; luego el angulo editorial mas prometedor si lo hay>"}`
 
 type ResultadoAnalisis = {
+  /**
+   * La noticia es de un tema que esta cuenta no cubre.
+   *
+   * No es una nota baja: una nota baja se puede empujar a mano desde el tablero
+   * y esto no debe poder publicarse por ninguna via. Se marca aparte y no llega
+   * nunca a la etapa de angulo.
+   */
+  vetada: boolean
+  motivoVeto: string
   full_content: string | null
   content_fetch_status: string
   relevance_score: number
@@ -50,6 +75,8 @@ function normaliza(bruto: unknown): ResultadoAnalisis {
   const o = (bruto ?? {}) as Record<string, unknown>
   const score = Number(o.relevance_score)
   return {
+    vetada: o.vetada === true,
+    motivoVeto: typeof o.motivo_veto === "string" ? o.motivo_veto.trim().slice(0, 300) : "",
     full_content:
       typeof o.full_content === "string" && o.full_content.trim()
         ? o.full_content.trim().slice(0, 8000)
@@ -158,8 +185,13 @@ ${material ? material.slice(0, MAX_MATERIAL) : "(no se pudo recolectar material;
               content_fetch_status: res.content_fetch_status,
               relevance_score: res.relevance_score,
               keywords_matched: res.keywords_matched,
-              analysis_notes: res.analysis_notes,
-              status: "analyzed",
+              analysis_notes: res.vetada
+                ? `Vetada: ${res.motivoVeto || "tema que esta cuenta no cubre"}`
+                : res.analysis_notes,
+              // Vetada no es "analizada con mala nota": es un tema que no se
+              // cubre. Con su propio estado no entra en la seleccion, no se
+              // puede arrastrar y queda a la vista para poder revisarlo.
+              status: res.vetada ? "vetada" : "analyzed",
               analyzed_at: new Date().toISOString(),
             })
             .eq("id", noticia.id)
