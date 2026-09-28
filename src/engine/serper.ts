@@ -45,31 +45,43 @@ export async function searchNews(
   spec: SearchSpec,
   signal?: AbortSignal
 ): Promise<SerperNewsItem[]> {
-  const response = await fetch(SERPER_NEWS_URL, {
-    method: "POST",
-    headers: {
-      "X-API-KEY": await apiKey(),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      q: spec.q,
-      num: spec.num ?? RESULTS_PER_SEARCH,
-      tbs: spec.freshness ?? FRESHNESS,
-      hl: spec.hl,
-      gl: spec.gl,
-    }),
-    signal,
-  })
+  const key = await apiKey()
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "")
-    throw new Error(
-      `Serper respondio ${response.status} para "${spec.q}": ${detail.slice(0, 300)}`
-    )
+  // Serper corta a 5 peticiones por segundo y devuelve 429. Aun con la
+  // concurrencia limitada de la ingesta, una rafaga puede rozar el limite, asi
+  // que un 429 no es un fallo definitivo: se espera y se reintenta. Tres
+  // intentos con espera creciente (0,6s, 1,2s, 2,4s) cubren de sobra un pico.
+  for (let intento = 0; intento < 3; intento++) {
+    const response = await fetch(SERPER_NEWS_URL, {
+      method: "POST",
+      headers: { "X-API-KEY": key, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        q: spec.q,
+        num: spec.num ?? RESULTS_PER_SEARCH,
+        tbs: spec.freshness ?? FRESHNESS,
+        hl: spec.hl,
+        gl: spec.gl,
+      }),
+      signal,
+    })
+
+    if (response.status === 429 && intento < 2) {
+      await new Promise((r) => setTimeout(r, 600 * 2 ** intento))
+      continue
+    }
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "")
+      throw new Error(
+        `Serper respondio ${response.status} para "${spec.q}": ${detail.slice(0, 300)}`
+      )
+    }
+
+    const payload = (await response.json()) as { news?: SerperNewsItem[] }
+    return payload.news ?? []
   }
 
-  const payload = (await response.json()) as { news?: SerperNewsItem[] }
-  return payload.news ?? []
+  throw new Error(`Serper sigue con 429 para "${spec.q}" tras 3 intentos.`)
 }
 
 // ------------------------------------------------------------------ imagenes

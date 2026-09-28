@@ -74,8 +74,10 @@ async function collectCandidates(
   recorder: EventRecorder,
   signal?: AbortSignal
 ): Promise<{ searches: SearchOutcome[]; candidates: RawNewsInsert[] }> {
-  const results = await Promise.all(
-    specs.map(async (spec) => {
+  // En tandas de 4, no todas de golpe. Serper corta a 5 peticiones por segundo,
+  // y un Promise.all sobre las ~70 busquedas de una cuenta las disparaba todas
+  // a la vez: la mitad volvia con 429 y esa mitad del contenido no se traia.
+  const results = await mapConLimite(specs, 4, async (spec) => {
       recorder.emit("search.started", `${spec.niche} · ${spec.label}`, { q: spec.q })
       try {
         const items = await searchNews(spec, signal)
@@ -97,7 +99,7 @@ async function collectCandidates(
           rows: [] as RawNewsInsert[],
         }
       }
-    })
+    }
   )
 
   const candidates = dedupeByLink(results.flatMap((result) => result.rows))
@@ -269,7 +271,7 @@ export async function dryRunIngestion(
   const { searches, candidates } = await collectCandidates(specs, recorder, options.signal)
 
   const known = new Set<string>()
-  for (const batch of chunk(candidates.map((row) => row.link), 200)) {
+  for (const batch of chunk(candidates.map((row) => row.link), 40)) {
     const { data, error } = await supabase
       .from("raw_news")
       .select("link")
@@ -293,4 +295,31 @@ export async function dryRunIngestion(
     alreadyKnown,
     failedSearches: searches.filter((search) => search.error).length,
   }
+}
+
+
+/**
+ * Corre `fn` sobre cada item con como mucho `limite` en vuelo a la vez.
+ *
+ * Un `Promise.all` lanza todo de golpe; esto mantiene una ventana. Sirve para
+ * no rebasar el limite de peticiones por segundo de un proveedor sin serializar
+ * del todo, que seria mas lento sin necesidad.
+ */
+async function mapConLimite<T, R>(
+  items: T[],
+  limite: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const salida: R[] = new Array(items.length)
+  let siguiente = 0
+
+  async function trabajador(): Promise<void> {
+    while (siguiente < items.length) {
+      const i = siguiente++
+      salida[i] = await fn(items[i])
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limite, items.length) }, trabajador))
+  return salida
 }
