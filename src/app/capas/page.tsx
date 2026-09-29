@@ -1,0 +1,117 @@
+import { DashboardShell } from "@/components/dashboard-shell"
+import { EditorIntenciones } from "@/components/capas/editor-intenciones"
+import { EditorPilares } from "@/components/capas/editor-pilares"
+import { EditorSimple } from "@/components/capas/editor-simple"
+import { VistaCanales } from "@/components/capas/vista-canales"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { CANALES } from "@/lib/canales-catalogo"
+import { getIntenciones, getPilares, getSimples } from "@/lib/capas-data"
+import { cuentaActual } from "@/lib/accounts"
+import { getLinkedinStatus } from "@/engine/publish/linkedin"
+
+export const dynamic = "force-dynamic"
+export const maxDuration = 60
+
+export const metadata = { title: "Capas · Engine Hancel" }
+
+/**
+ * Las capas del bloque 1: de que puede hablar el contenido y como.
+ *
+ * Una pantalla, una pestana por capa. Pilar y tema comparten pestana porque son
+ * el mismo arbol; canal y formato tambien, porque el formato solo se entiende
+ * dibujado dentro de su canal. Plantilla y fuente quedan de placeholder: se
+ * abordan mas adelante.
+ */
+export default async function CapasPage() {
+  const [pilares, intenciones, narrativas, ctas, cuenta] = await Promise.all([
+    getPilares(),
+    getIntenciones(),
+    getSimples("content_narratives"),
+    getSimples("content_ctas"),
+    cuentaActual(),
+  ])
+
+  const linkedin = await getLinkedinStatus(cuenta.id)
+  const conectados = {
+    linkedin: linkedin.connected && !linkedin.expired,
+    instagram: Boolean(cuenta.buffer_instagram_channel_id),
+    facebook: Boolean(cuenta.buffer_facebook_channel_id),
+  }
+
+  return (
+    <DashboardShell title="Capas">
+      <Tabs defaultValue="pilares" className="flex flex-col gap-4">
+        <TabsList className="h-auto flex-wrap">
+          <TabsTrigger value="pilares">Pilares y temas</TabsTrigger>
+          <TabsTrigger value="intencion">Intencion</TabsTrigger>
+          <TabsTrigger value="narracion">Narracion</TabsTrigger>
+          <TabsTrigger value="cta">CTA</TabsTrigger>
+          <TabsTrigger value="canales">Canales</TabsTrigger>
+          <TabsTrigger value="plantilla">Plantilla</TabsTrigger>
+          <TabsTrigger value="fuente">Fuente</TabsTrigger>
+        </TabsList>
+
+        <div className="max-w-3xl">
+          <TabsContent value="pilares">
+            <EditorPilares pilares={pilares} />
+          </TabsContent>
+
+          <TabsContent value="intencion">
+            <EditorIntenciones intenciones={intenciones} narrativas={narrativas} />
+          </TabsContent>
+
+          <TabsContent value="narracion">
+            <EditorSimple
+              tabla="content_narratives"
+              filas={narrativas}
+              titulo="Narrativas"
+              descripcion="Como se cuenta el contenido. La descripcion es lo que el agente lee para saber manejar esa forma."
+              ejemploNombre="El error, El paso a paso, El Top…"
+              ejemploDescripcion="Ej: se abre con un fallo comun y se corrige."
+            />
+          </TabsContent>
+
+          <TabsContent value="cta">
+            <EditorSimple
+              tabla="content_ctas"
+              filas={ctas}
+              titulo="Llamadas a la accion"
+              descripcion="El objetivo a convertir del contenido. El agente elige una al generar."
+              ejemploNombre="Seguir, Guardar, Escribir al DM…"
+              ejemploDescripcion="Ej: invita a guardar el post para consultarlo despues."
+            />
+          </TabsContent>
+
+          <TabsContent value="canales">
+            <VistaCanales canales={CANALES} conectados={conectados} />
+          </TabsContent>
+
+          <TabsContent value="plantilla">
+            <Placeholder
+              titulo="Plantillas"
+              texto="Aqui se definiran las plantillas de estilo de cada formato: el layout con el que se arma cada pieza. Se aborda mas adelante."
+            />
+          </TabsContent>
+
+          <TabsContent value="fuente">
+            <Placeholder
+              titulo="Fuentes"
+              texto="Aqui se conectaran las fuentes de las que sale el contenido cuando aplique. Por ahora solo existe la pagina."
+            />
+          </TabsContent>
+        </div>
+      </Tabs>
+    </DashboardShell>
+  )
+}
+
+function Placeholder({ titulo, texto }: { titulo: string; texto: string }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-sm font-semibold">{titulo}</h3>
+      <p className="text-muted-foreground rounded-md border border-dashed px-4 py-8 text-center text-sm">
+        {texto}
+      </p>
+    </div>
+  )
+}

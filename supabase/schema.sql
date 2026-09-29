@@ -166,6 +166,72 @@ create table if not exists public.engine_segments (
 
 create index if not exists engine_segments_category_id_idx on public.engine_segments (category_id);
 
+-- ------------------------------------------------------------------- capas
+
+-- Las capas del nuevo pipeline de generacion (etapa 2), paralelo a las
+-- noticias. El contenido nace de una idea que combina capas, no de una noticia.
+-- Todo cuelga de una cuenta. RLS activo y sin politicas: solo service role.
+
+create table if not exists public.content_pillars (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts (id) on delete cascade,
+  name text not null, description text, position integer not null default 0,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create table if not exists public.content_topics (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts (id) on delete cascade,
+  pillar_id uuid not null references public.content_pillars (id) on delete cascade,
+  name text not null, description text, position integer not null default 0,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create table if not exists public.content_subtopics (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts (id) on delete cascade,
+  topic_id uuid not null references public.content_topics (id) on delete cascade,
+  name text not null, position integer not null default 0,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create table if not exists public.content_intents (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts (id) on delete cascade,
+  name text not null, description text, position integer not null default 0,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create table if not exists public.content_narratives (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts (id) on delete cascade,
+  name text not null, description text, position integer not null default 0,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+-- Que narrativas desbloquea cada intencion.
+create table if not exists public.content_intent_narratives (
+  account_id uuid not null references public.accounts (id) on delete cascade,
+  intent_id uuid not null references public.content_intents (id) on delete cascade,
+  narrative_id uuid not null references public.content_narratives (id) on delete cascade,
+  primary key (intent_id, narrative_id)
+);
+create table if not exists public.content_ctas (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts (id) on delete cascade,
+  name text not null, description text, position integer not null default 0,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+
+create index if not exists content_topics_pillar_idx     on public.content_topics (pillar_id);
+create index if not exists content_subtopics_topic_idx   on public.content_subtopics (topic_id);
+create index if not exists content_pillars_account_idx   on public.content_pillars (account_id);
+create index if not exists content_intents_account_idx   on public.content_intents (account_id);
+create index if not exists content_narratives_account_idx on public.content_narratives (account_id);
+
+alter table public.content_pillars           enable row level security;
+alter table public.content_topics            enable row level security;
+alter table public.content_subtopics         enable row level security;
+alter table public.content_intents           enable row level security;
+alter table public.content_narratives        enable row level security;
+alter table public.content_intent_narratives enable row level security;
+alter table public.content_ctas              enable row level security;
+
 -- ------------------------------------------------------------------ agentes
 
 -- Como se comporta cada agente del motor.
