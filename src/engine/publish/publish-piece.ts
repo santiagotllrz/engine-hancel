@@ -21,22 +21,29 @@ import { buildCommentary, publishText, subirImagen, type PublishResult } from ".
 export async function publishPiece(pieceId: string): Promise<PublishResult> {
   const supabase = supabaseAdmin()
 
-  const { data, error } = await supabase
+  // Reclamo atomico ANTES de publicar. El error anterior era un check-then-act:
+  // se leia published_at, se veia null, se publicaba y despues se marcaba. Los
+  // triggers disparan varios ticks casi a la vez, y todos veian null antes de
+  // que ninguno escribiera, asi que la misma pieza salia a Buffer cuatro o
+  // cinco veces. Aqui `published_at` se pone en el mismo UPDATE que comprueba
+  // que estaba vacio: la base garantiza que solo una pasada gana la fila.
+  const marca = new Date().toISOString()
+  const { data: reclamada } = await supabase
     .from("content_pieces")
-    .select("*")
+    .update({ status: "publishing", published_at: marca })
     .eq("id", pieceId)
-    .single()
+    .is("published_at", null)
+    .neq("status", "rejected")
+    .select("*")
+    .maybeSingle()
 
-  if (error) return { ok: false, error: `No se encontro la pieza: ${error.message}` }
-
-  const piece = data as ContentPiece & { published_at: string | null; linkedin_urn: string | null }
-
-  if (piece.published_at) {
-    return { ok: false, error: "Esta pieza ya se publico." }
+  if (!reclamada) {
+    // O ya se publico, o esta rechazada, o otra pasada la tomo en esta misma
+    // rafaga. En los tres casos no hay nada que hacer aqui.
+    return { ok: false, error: "La pieza ya se publico o la tomo otra pasada." }
   }
-  if (piece.status === "rejected") {
-    return { ok: false, error: "La pieza esta rechazada; no se publica." }
-  }
+
+  const piece = reclamada as ContentPiece & { published_at: string | null; linkedin_urn: string | null }
 
   // Cada red se publica por su via: LinkedIn contra su propia API, Instagram a
   // traves de Buffer, que ya tiene resuelta la relacion con Meta.
@@ -52,7 +59,7 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
       .from("content_pieces")
       .update({
         status: "published",
-        published_at: new Date().toISOString(),
+        published_at: marca,
         // La columna guarda el identificador del post publicado, sea de la red
         // que sea: el URN de LinkedIn o el id que devuelve Buffer.
         linkedin_urn: result.urn,
@@ -63,10 +70,15 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
       })
       .eq("id", pieceId)
   } else {
-    // El error se guarda para poder verlo en la interfaz sin abrir logs.
+    // La publicacion fallo, asi que se suelta el reclamo: published_at vuelve a
+    // null para que un reintento pueda tomarla, y el error queda a la vista.
     await supabase
       .from("content_pieces")
-      .update({ publish_error: result.error.slice(0, 1000) })
+      .update({
+        status: "generated",
+        published_at: null,
+        publish_error: result.error.slice(0, 1000),
+      })
       .eq("id", pieceId)
   }
 
@@ -180,7 +192,21 @@ export async function pendingToPublish(
   network: string,
   limite = 5
 ): Promise<ContentPiece[]> {
-  const { data, error } = await supabaseAdmin()
+  const supabase = supabaseAdmin()
+
+  // Suelta las que se quedaron en 'publishing': una pieza se reclama antes de
+  // publicar, y si el proceso muere en esa ventana de segundos quedaria colgada
+  // sin salir y sin que nadie la reintente. Cinco minutos es mucho mas de lo
+  // que tarda publicar, asi que a esas alturas es un reclamo huerfano.
+  await supabase
+    .from("content_pieces")
+    .update({ status: "generated", published_at: null })
+    .eq("account_id", accountId)
+    .eq("network", network)
+    .eq("status", "publishing")
+    .lt("published_at", new Date(Date.now() - 5 * 60_000).toISOString())
+
+  const { data, error } = await supabase
     .from("content_pieces")
     .select("*")
     .eq("account_id", accountId)

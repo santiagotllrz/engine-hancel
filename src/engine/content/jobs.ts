@@ -69,6 +69,12 @@ function parseRedes(valor: unknown): Red[] {
 
 /** El recorte de la noticia que viaja en los dos buzones. */
 function newsInput(news: RawNews): AngleJobInput["raw_news"] {
+  // El score y las notas del analisis NO viajan a los agentes. El analisis es
+  // un filtro para decidir que noticias se generan; el como se cuentan sale
+  // solo del hecho consolidado. Cuando el analisis viajaba, el angulo leia sus
+  // notas ("titular no comprobable, score bajo") y escribia tesis como "un
+  // titular dijo que el cafe subio pero no se puede comprobar". El agente da el
+  // hecho por bueno: para eso ya paso el filtro.
   return {
     id: news.id,
     title: news.title,
@@ -78,9 +84,9 @@ function newsInput(news: RawNews): AngleJobInput["raw_news"] {
     full_content: news.full_content ? news.full_content.slice(0, MAX_CONTENIDO) : null,
     niche: news.niche,
     tema: news.tema,
-    relevance_score: news.relevance_score,
-    keywords_matched: news.keywords_matched,
-    analysis_notes: news.analysis_notes,
+    relevance_score: null,
+    keywords_matched: null,
+    analysis_notes: null,
   }
 }
 

@@ -66,6 +66,41 @@ export async function descargarFoto(url: string | null | undefined): Promise<str
   }
 }
 
+/**
+ * Baja el elemento de la portada, mas estricto que una foto de fondo.
+ *
+ * Solo JPEG y PNG, y comprobando la firma de los bytes, no el content-type que
+ * declara el servidor. Es lo que evita el circulo negro: Satori a veces no
+ * decodifica un WebP o un GIF y deja el hueco vacio sobre el fondo, y un
+ * content-type puede mentir. Lo que no pasa esta prueba se descarta y el
+ * llamante prueba la siguiente candidata.
+ */
+export async function descargarInserto(url: string | null | undefined): Promise<string | null> {
+  if (!url || !/^https?:\/\//.test(url)) return null
+
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(15_000),
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; HancelBot/1.0)" },
+    })
+    if (!response.ok) return null
+
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    if (bytes.byteLength < 100 || bytes.byteLength > MAX_FOTO_BYTES) return null
+
+    // Firma real de los bytes. JPEG: FF D8 FF. PNG: 89 50 4E 47.
+    const esJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+    const esPng =
+      bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+    if (!esJpeg && !esPng) return null
+
+    const tipo = esJpeg ? "image/jpeg" : "image/png"
+    return `data:${tipo};base64,${Buffer.from(bytes).toString("base64")}`
+  } catch {
+    return null
+  }
+}
+
 export type SlideRender = {
   slide: Slide
   variante: Variante

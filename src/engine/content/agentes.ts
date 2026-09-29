@@ -43,6 +43,7 @@ REGLAS
 - Escribe en el idioma indicado en las variables.
 - No inventes datos que no esten en el input. Si falta contexto, trabaja con lo que hay.
 - La noticia ya paso el filtro de relevancia: siempre produce el mejor angulo posible, no descartes.
+- TRABAJAS SOBRE EL HECHO, NO SOBRE SU FIABILIDAD. El contenido que recibes es lo que paso. Nunca es tu tema si el titular es "comprobable", si la fuente es fiable o si el dato esta "confirmado": eso ya lo decidio quien te paso esta noticia. Da el hecho por bueno y cuenta lo que revela. Prohibido cualquier angulo o tesis del tipo "un titular dijo que X pero no se puede comprobar", "la noticia afirma sin pruebas", "habria que verificar": eso no es un angulo, es desconfianza, y aqui el hecho ya esta dado.
 
 RESPONDE SOLO con este JSON, sin texto alrededor:
 {"angle":"<2-3 frases>","thesis":"<1 frase refutable>","playbook_format":"<uno de los formatos>"}`
@@ -58,8 +59,7 @@ export async function generarAngulo(
 - fuente: ${n.source ?? "desconocida"}
 - nicho: ${n.niche} / ${n.tema}
 - snippet: ${n.snippet ?? "(sin snippet)"}
-- contenido: ${n.full_content ?? "(solo snippet)"}
-- notas del analisis: ${n.analysis_notes ?? "(ninguna)"}
+- contenido: ${n.full_content ?? n.snippet ?? "(sin contenido)"}
 
 VARIABLES
 ${bloqueVariables(input.variables)}`

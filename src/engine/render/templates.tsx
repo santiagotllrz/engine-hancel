@@ -408,9 +408,11 @@ function Inserto({
         // El aro despega el circulo de la foto: sin el, un elemento de fondo
         // parecido al de la foto se funde con ella y deja de leerse como pieza.
         border: `8px solid ${estilo.paleta.acento}`,
-        // Y el fondo sostiene los recortes con transparencia, que son la mayoria
-        // de los logos: sin el se verian sobre la foto y perderian la forma.
-        background: estilo.paleta.fondo,
+        // Fondo blanco, no el de la paleta: casi todos los logos se dibujan en
+        // oscuro sobre transparente, y sobre el negro de la paleta desaparecian
+        // —el circulo salia entero negro—. Sobre blanco se leen siempre, que es
+        // ademas el fondo para el que estan pensados.
+        background: "#FFFFFF",
       }}
     >
       {/* El redondeo va tambien en la imagen. Satori no recorta a los hijos con

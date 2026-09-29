@@ -5,6 +5,7 @@ import { terminosDeBusqueda } from "./keywords"
 import { BancoDeFotos, descargarFotoPexels, pexelsConfigurado } from "./pexels"
 import {
   descargarFoto,
+  descargarInserto,
   MAX_SLIDES,
   MIN_SLIDES,
   necesitanFoto,
@@ -441,7 +442,7 @@ async function buscarInserto(
     }
 
     for (const imagen of buenas) {
-      const descargada = await descargarFoto(imagen.url)
+      const descargada = await descargarInserto(imagen.url)
       if (descargada) return { imagen: descargada, proporcion: imagen.ancho / imagen.alto }
     }
   } catch {
