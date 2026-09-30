@@ -232,6 +232,27 @@ alter table public.content_narratives        enable row level security;
 alter table public.content_intent_narratives enable row level security;
 alter table public.content_ctas              enable row level security;
 
+-- Los cartuchos: las ideas del bloque 1 que consume el bloque 2. Una idea nace
+-- de una combinacion de capas; un cartucho usado es una pieza generada.
+create table if not exists public.content_cartridges (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts (id) on delete cascade,
+  pillar_id uuid not null references public.content_pillars (id) on delete cascade,
+  topic_id uuid references public.content_topics (id) on delete set null,
+  subtopic_id uuid references public.content_subtopics (id) on delete set null,
+  intent_id uuid references public.content_intents (id) on delete set null,
+  narrative_id uuid references public.content_narratives (id) on delete set null,
+  idea text not null, notes text,
+  status text not null default 'available',
+  used_at timestamptz, round integer not null default 1,
+  created_at timestamptz not null default now(),
+  constraint content_cartridges_status_check check (status in ('available', 'used'))
+);
+create index if not exists content_cartridges_pillar_idx on public.content_cartridges (pillar_id);
+create index if not exists content_cartridges_disponibles_idx
+  on public.content_cartridges (account_id, created_at) where status = 'available';
+alter table public.content_cartridges enable row level security;
+
 -- ------------------------------------------------------------------ agentes
 
 -- Como se comporta cada agente del motor.

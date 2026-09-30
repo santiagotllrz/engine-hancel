@@ -17,7 +17,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { BotIcon, KanbanIcon, LayersIcon, SettingsIcon } from "lucide-react"
+import { BotIcon, KanbanIcon, LayersIcon, LightbulbIcon, SettingsIcon } from "lucide-react"
 
 import { AGENTES } from "@/lib/agentes-catalogo"
 
@@ -48,6 +48,13 @@ export function AppSidebar({
       url: "/capas",
       icon: <LayersIcon />,
       isActive: pathname.startsWith("/capas"),
+      items: [],
+    },
+    {
+      title: "Ideas",
+      url: "/ideas",
+      icon: <LightbulbIcon />,
+      isActive: pathname.startsWith("/ideas"),
       items: [],
     },
     {
