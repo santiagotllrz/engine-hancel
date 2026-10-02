@@ -2,25 +2,25 @@
 
 import * as React from "react"
 
-import { guardarCanva, guardarPromptsEstudio } from "@/app/recetas/actions"
+import Link from "next/link"
+
+import { guardarPromptsEstudio } from "@/app/recetas/actions"
 import type { ConfigEstudio as Config } from "@/lib/recetas-data"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 
 /**
- * La configuracion de las dos agentes del pipeline nuevo y de Canva.
+ * La configuracion de las dos agentes del pipeline nuevo, y el estado de Canva.
  *
  * Los prompts son de la cuenta: vacio vuelve al que trae el codigo, que se
- * muestra como punto de partida. La conexion de Canva es una sola para todas
- * las cuentas, como la clave de Composio.
+ * muestra como punto de partida. Canva no se configura aqui: se conecta
+ * iniciando sesion desde Conexiones, y aqui solo se ve si esta listo.
  */
 export function ConfigEstudio({ config }: { config: Config }) {
   const [ideas, setIdeas] = React.useState(config.ideasPrompt ?? "")
   const [contenido, setContenido] = React.useState(config.contentPrompt ?? "")
-  const [canva, setCanva] = React.useState(config.canvaAccount ?? "")
   const [aviso, setAviso] = React.useState<{ ok: boolean; texto: string } | null>(null)
   const [pending, startTransition] = React.useTransition()
 
@@ -29,14 +29,6 @@ export function ConfigEstudio({ config }: { config: Config }) {
     startTransition(async () => {
       const r = await guardarPromptsEstudio({ ideas_prompt: ideas, content_prompt: contenido })
       setAviso(r.ok ? { ok: true, texto: "Prompts guardados." } : { ok: false, texto: r.error })
-    })
-  }
-
-  const guardarConexion = () => {
-    setAviso(null)
-    startTransition(async () => {
-      const r = await guardarCanva(canva)
-      setAviso(r.ok ? { ok: true, texto: "Conexion de Canva guardada." } : { ok: false, texto: r.error })
     })
   }
 
@@ -98,24 +90,17 @@ export function ConfigEstudio({ config }: { config: Config }) {
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Subgenerador Canva</CardTitle>
           <p className="text-muted-foreground mt-1 text-sm">
-            Se conecta por Composio. Es el connected account de Canva (empieza por ac_) y sirve a
-            todas las cuentas. La clave de Composio es la misma que ya usa el motor.
+            Genera las imagenes de las piezas con tus plantillas de Canva. Se conecta iniciando
+            sesion, una sola vez, y sirve a todas las cuentas.
           </p>
         </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          <Label htmlFor="cfg-canva">Connected account</Label>
-          <div className="flex gap-2">
-            <Input
-              id="cfg-canva"
-              value={canva}
-              disabled={pending}
-              placeholder="ac_…"
-              onChange={(e) => setCanva(e.target.value)}
-            />
-            <Button onClick={guardarConexion} disabled={pending}>
-              Guardar
-            </Button>
-          </div>
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <span className={`text-sm ${config.canvaConectado ? "text-emerald-600" : "text-muted-foreground"}`}>
+            {config.canvaConectado ? "Conectado." : "Sin conectar."}
+          </span>
+          <Button variant="outline" render={<Link href="/configuracion/conexiones" />}>
+            {config.canvaConectado ? "Ver en Conexiones" : "Conectar en Conexiones"}
+          </Button>
         </CardContent>
       </Card>
     </div>

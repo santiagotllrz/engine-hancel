@@ -95,8 +95,8 @@ export type ConfigEstudio = {
   /** Los de codigo, para pintarlos como punto de partida. */
   ideasPorDefecto: string
   contentPorDefecto: string
-  /** Conexion de Canva: global, compartida por todas las cuentas. */
-  canvaAccount: string | null
+  /** Si Canva esta conectado (se conecta en Configuracion > Conexiones). */
+  canvaConectado: boolean
 }
 
 /** La config del pipeline nuevo, para la pestana de configuracion. */
@@ -105,19 +105,19 @@ export async function getConfigEstudio(): Promise<ConfigEstudio> {
   const supabase = supabaseAdmin()
   const accountId = await idDeCuentaActual()
 
-  const [ajustes, secretos] = await Promise.all([
+  const { estadoCanva } = await import("@/engine/studio/canva-conexion")
+  const [ajustes, canva] = await Promise.all([
     supabase.from("studio_settings").select("ideas_prompt, content_prompt").eq("account_id", accountId).maybeSingle(),
-    supabase.from("engine_secrets").select("canva_connected_account_id").eq("id", true).maybeSingle(),
+    estadoCanva(),
   ])
 
   const a = (ajustes.data ?? {}) as { ideas_prompt?: string | null; content_prompt?: string | null }
-  const s = (secretos.data ?? {}) as { canva_connected_account_id?: string | null }
 
   return {
     ideasPrompt: a.ideas_prompt ?? null,
     contentPrompt: a.content_prompt ?? null,
     ideasPorDefecto: PROMPTS_POR_DEFECTO.ideas,
     contentPorDefecto: PROMPTS_POR_DEFECTO.contenido,
-    canvaAccount: s.canva_connected_account_id ?? null,
+    canvaConectado: canva.conectado,
   }
 }

@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "../supabase-admin"
+import { claveComposio, COMPOSIO_USER, estadoCanva } from "./canva-conexion"
 
 /**
  * Generacion de imagenes con Canva, via Composio.
@@ -15,34 +15,12 @@ import { supabaseAdmin } from "../supabase-admin"
  *   3. export    -> job
  *   4. result    -> las urls de las imagenes
  *
- * Nota: esto necesita una cuenta de Canva conectada en Composio y una brand
- * template creada. El slug de cada herramienta y el connected account son
- * reales; el flujo completo se prueba con esa plantilla puesta.
+ * Necesita Canva conectado (boton en Configuracion > Conexiones) y una brand
+ * template creada. El flujo completo se prueba con esa plantilla puesta.
  */
 
 const BASE = "https://backend.composio.dev/api/v3.1/tools/execute"
 const TIMEOUT_MS = 45_000
-
-async function claveComposio(): Promise<string | null> {
-  if (process.env.COMPOSIO_API_KEY) return process.env.COMPOSIO_API_KEY
-  const { data } = await supabaseAdmin()
-    .from("engine_secrets")
-    .select("composio_api_key")
-    .eq("id", true)
-    .maybeSingle()
-  return (data as { composio_api_key: string | null } | null)?.composio_api_key?.trim() || null
-}
-
-/** El connected account de Canva. Del entorno o de engine_secrets. */
-async function cuentaCanva(): Promise<string | null> {
-  if (process.env.CANVA_CONNECTED_ACCOUNT_ID) return process.env.CANVA_CONNECTED_ACCOUNT_ID
-  const { data } = await supabaseAdmin()
-    .from("engine_secrets")
-    .select("canva_connected_account_id")
-    .eq("id", true)
-    .maybeSingle()
-  return (data as { canva_connected_account_id: string | null } | null)?.canva_connected_account_id?.trim() || null
-}
 
 type Ejecucion = { ok: true; data: Record<string, unknown> } | { ok: false; error: string }
 
@@ -57,7 +35,7 @@ async function ejecutar(
     const res = await fetch(`${BASE}/${tool}`, {
       method: "POST",
       headers: { "x-api-key": clave, "Content-Type": "application/json" },
-      body: JSON.stringify({ connected_account_id: cuenta, arguments: args }),
+      body: JSON.stringify({ user_id: COMPOSIO_USER, connected_account_id: cuenta, arguments: args }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
     const json = (await res.json().catch(() => null)) as {
@@ -110,9 +88,12 @@ export async function generarConCanva(
   titulo: string
 ): Promise<ResultadoCanva> {
   const clave = await claveComposio()
-  const cuenta = await cuentaCanva()
   if (!clave) return { ok: false, error: "Falta la clave de Composio." }
-  if (!cuenta) return { ok: false, error: "Falta la conexion de Canva (connected account)." }
+  // La cuenta conectada se busca cada vez: si reconectas Canva, cambia de id, y
+  // tenerla copiada en algun sitio la dejaria apuntando a una conexion muerta.
+  const estado = await estadoCanva()
+  if (!estado.conectado) return { ok: false, error: `Canva: ${estado.motivo} Conectalo en Configuracion > Conexiones.` }
+  const cuenta = estado.connectedAccountId
   if (!brandTemplateId) return { ok: false, error: "La receta no tiene brand template de Canva." }
 
   // 1. Autofill: crea el job que rellena la plantilla.

@@ -994,11 +994,12 @@ alter table public.engine_secrets add column if not exists model_instagram text 
 alter table public.engine_secrets add column if not exists gemini_api_key  text;
 alter table public.generation_config add column if not exists ai_config jsonb not null default '{}'::jsonb;
 
--- Bloque 2: los modelos del agente de ideas y del de contenido, y la conexion
--- de Canva por Composio (el connected account, ac_...). Compartidos por todas
--- las cuentas, como la clave de Composio.
+-- Bloque 2: los modelos del agente de ideas y del de contenido, compartidos
+-- por todas las cuentas. Canva no se guarda aqui: se conecta iniciando sesion
+-- desde Conexiones y el motor busca la cuenta conectada en Composio.
 alter table public.engine_secrets add column if not exists model_ideas     text not null default 'claude-sonnet-5';
 alter table public.engine_secrets add column if not exists model_contenido text not null default 'claude-sonnet-5';
+-- Sin uso: existio para pegar a mano la conexion de Canva, que ya no se hace.
 alter table public.engine_secrets add column if not exists canva_connected_account_id text;
 
 -- Cuando cambia el umbral de score, solo aplica a lo que entre despues: las

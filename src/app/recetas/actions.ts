@@ -162,29 +162,6 @@ export async function guardarPromptsEstudio(campos: {
   }
 }
 
-/**
- * Guarda la conexion de Canva (connected account de Composio).
- *
- * Es maquinaria compartida, como la clave de Composio: una sola conexion sirve a
- * todas las cuentas, asi que vive en el singleton engine_secrets, no por cuenta.
- */
-export async function guardarCanva(connectedAccountId: string): Promise<ActionResult> {
-  try {
-    const { error } = await supabaseAdmin()
-      .from("engine_secrets")
-      .update({
-        canva_connected_account_id: connectedAccountId.trim() || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", true)
-    if (error) throw new Error(error.message)
-    revalidatePath("/recetas")
-    return { ok: true }
-  } catch (error) {
-    return fail(error, "No se pudo guardar la conexion de Canva.")
-  }
-}
-
 export type GenerarResult =
   | { ok: true; generadas: number; errores: number; motivo?: string }
   | { ok: false; error: string }

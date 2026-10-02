@@ -1,10 +1,12 @@
 import { BufferChannel } from "@/components/contenido/buffer-channel"
 import { ClaudeConnection } from "@/components/contenido/claude-connection"
 import { LinkedinConnection } from "@/components/contenido/linkedin-connection"
+import { CanvaConnection } from "@/components/configuracion/canva-connection"
 import { SerperConnection } from "@/components/configuracion/serper-connection"
 import { DashboardShell } from "@/components/dashboard-shell"
 import { estadoSerper, estadoTokenClaude } from "@/app/cuenta/actions"
 import { getLinkedinStatus } from "@/engine/publish/linkedin"
+import { estadoCanva } from "@/engine/studio/canva-conexion"
 import { cuentaActual } from "@/lib/accounts"
 
 export const dynamic = "force-dynamic"
@@ -30,10 +32,11 @@ export default async function ConexionesPage({
   }
 
   const cuenta = await cuentaActual()
-  const [linkedin, tokenClaude, serper] = await Promise.all([
+  const [linkedin, tokenClaude, serper, canva] = await Promise.all([
     getLinkedinStatus(cuenta.id),
     estadoTokenClaude(),
     estadoSerper(),
+    estadoCanva(),
   ])
 
   return (
@@ -66,6 +69,7 @@ export default async function ConexionesPage({
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold">Integraciones</h2>
           <SerperConnection estado={serper} />
+          <CanvaConnection estado={canva} recienConectado={first("canva") === "ok"} />
         </section>
       </div>
     </DashboardShell>

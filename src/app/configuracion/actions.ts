@@ -1,9 +1,23 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { headers } from "next/headers"
 
 import { idDeCuentaActual } from "@/lib/accounts"
 import { supabaseAdmin } from "@/engine/supabase-admin"
+import { enlaceConexionCanva } from "@/engine/studio/canva-conexion"
+
+/**
+ * Empieza la conexion con Canva: devuelve la url de Composio donde se inicia
+ * sesion. Al terminar, Composio vuelve a Conexiones con `?canva=ok`.
+ */
+export async function conectarCanva(): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const h = await headers()
+  const host = h.get("x-forwarded-host") ?? h.get("host")
+  if (!host) return { ok: false, error: "No se pudo saber la direccion de la app." }
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https")
+  return enlaceConexionCanva(`${proto}://${host}/configuracion/conexiones?canva=ok`)
+}
 
 export type ActionResult = { ok: true } | { ok: false; error: string }
 
