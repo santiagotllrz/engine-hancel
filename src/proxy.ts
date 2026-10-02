@@ -28,6 +28,7 @@ const ABIERTAS = [
   // romperia los crons. Tienen su propia autorizacion en `lib/api-auth.ts`.
   "/api/ingest",
   "/api/content/tick",
+  "/api/studio/tick",
 ]
 
 function esAbierta(pathname: string): boolean {
