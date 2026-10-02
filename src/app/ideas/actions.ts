@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { generarRonda } from "@/engine/ideas/generar"
+import { studioConfig } from "@/engine/studio/settings"
 import { idDeCuentaActual } from "@/lib/accounts"
 import { supabaseAdmin } from "@/engine/supabase-admin"
 
@@ -14,8 +15,8 @@ export type IdeasResult =
  * Genera una ronda de cartuchos para un pilar, a mano.
  *
  * La cadencia automatica (una ronda nueva cuando quedan menos de siete dias de
- * cartuchos) se conecta con el agente de contenido, que es quien marca el
- * ritmo de consumo. Hasta entonces, el boton.
+ * cartuchos) vive en `engine/ideas/cadencia.ts` y la dispara el tick del
+ * estudio; esto es para pedir una ronda sin esperar.
  */
 export async function generarIdeas(pillarId: string): Promise<IdeasResult> {
   if (!pillarId) return { ok: false, error: "Falta el pilar." }
@@ -31,9 +32,9 @@ export async function generarIdeas(pillarId: string): Promise<IdeasResult> {
       .eq("account_id", accountId)
     if (!count) return { ok: false, error: "Ese pilar no es de esta cuenta." }
 
-    // Sonnet por defecto: proponer ideas distintas y con criterio no es un paso
-    // mecanico. El modelo por agente se elegira en su configuracion, mas adelante.
-    const r = await generarRonda(accountId, pillarId, "claude-sonnet-5")
+    // Modelo y prompt salen de la configuracion del estudio (/recetas).
+    const cfg = await studioConfig(accountId)
+    const r = await generarRonda(accountId, pillarId, cfg.modelIdeas, cfg.promptIdeas)
     if (r.error) return { ok: false, error: r.error }
 
     revalidatePath("/ideas")

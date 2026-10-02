@@ -253,6 +253,91 @@ create index if not exists content_cartridges_disponibles_idx
   on public.content_cartridges (account_id, created_at) where status = 'available';
 alter table public.content_cartridges enable row level security;
 
+-- ---------------------------------------------------------------- bloque 2
+--
+-- Una receta es la configuracion preestablecida del bloque 2 (canal, formato,
+-- plantilla, generador y cadencia) que el agente de contenido usa para
+-- convertir cartuchos de un pilar en piezas. Canal y formato salen del catalogo
+-- en codigo (src/lib/canales-catalogo.ts), no de tablas.
+create table if not exists public.content_recipes (
+  id           uuid primary key default gen_random_uuid(),
+  account_id   uuid        not null references public.accounts (id) on delete cascade,
+  pillar_id    uuid        not null references public.content_pillars (id) on delete cascade,
+  name         text        not null,
+  channel      text        not null,
+  format       text        not null,
+  generator    text        not null default 'canva',  -- canva | ninguno
+  -- {brand_template_id, campos: {campo_canva: ruta_del_payload}}. Vacio hasta
+  -- que se configure la capa Plantilla.
+  template     jsonb,
+  per_day      integer     not null default 1,
+  run_at       integer[]   not null default '{}',     -- horas del dia (0-23), zona de la cuenta
+  enabled      boolean     not null default true,
+  last_run_at  timestamptz,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  constraint content_recipes_perday_check check (per_day between 1 and 20)
+);
+create index if not exists content_recipes_account_idx on public.content_recipes (account_id);
+create index if not exists content_recipes_pillar_idx  on public.content_recipes (pillar_id);
+
+-- Las piezas del estudio nuevo. Aparte de content_pieces, que cuelga de una
+-- noticia: aqui la pieza nace de un cartucho.
+create table if not exists public.studio_pieces (
+  id              uuid primary key default gen_random_uuid(),
+  account_id      uuid        not null references public.accounts (id) on delete cascade,
+  recipe_id       uuid        references public.content_recipes (id) on delete set null,
+  cartridge_id    uuid        references public.content_cartridges (id) on delete set null,
+  channel         text        not null,
+  format          text        not null,
+  status          text        not null default 'generating',
+  payload         jsonb,
+  canva_design_id text,
+  error           text,
+  created_at      timestamptz not null default now(),
+  published_at    timestamptz,
+  constraint studio_pieces_status_check
+    check (status in ('generating', 'generated', 'published', 'failed'))
+);
+create index if not exists studio_pieces_account_idx on public.studio_pieces (account_id, created_at desc);
+create index if not exists studio_pieces_recipe_idx  on public.studio_pieces (recipe_id);
+
+-- Los prompts del agente de ideas y del de contenido, por cuenta. null = el
+-- que trae el codigo.
+create table if not exists public.studio_settings (
+  account_id     uuid primary key references public.accounts (id) on delete cascade,
+  ideas_prompt   text,
+  content_prompt text,
+  updated_at     timestamptz not null default now()
+);
+
+alter table public.content_recipes enable row level security;
+alter table public.studio_pieces   enable row level security;
+alter table public.studio_settings enable row level security;
+
+-- Reclamo atomico de cartuchos: dos agentes que corren a la vez no se llevan la
+-- misma idea. FOR UPDATE SKIP LOCKED salta las filas que otro ya bloqueo.
+create or replace function public.reclamar_cartuchos(
+  p_account uuid,
+  p_pillar  uuid,
+  p_limite  integer
+)
+returns setof public.content_cartridges
+language sql
+as $$
+  update public.content_cartridges c
+  set status = 'used', used_at = now()
+  where c.id in (
+    select id from public.content_cartridges
+    where account_id = p_account and pillar_id = p_pillar and status = 'available'
+    order by created_at
+    limit p_limite
+    for update skip locked
+  )
+  returning c.*;
+$$;
+revoke all on function public.reclamar_cartuchos(uuid, uuid, integer) from public, anon, authenticated;
+
 -- ------------------------------------------------------------------ agentes
 
 -- Como se comporta cada agente del motor.
@@ -908,6 +993,13 @@ alter table public.engine_secrets add column if not exists model_linkedin  text 
 alter table public.engine_secrets add column if not exists model_instagram text not null default 'claude-sonnet-5';
 alter table public.engine_secrets add column if not exists gemini_api_key  text;
 alter table public.generation_config add column if not exists ai_config jsonb not null default '{}'::jsonb;
+
+-- Bloque 2: los modelos del agente de ideas y del de contenido, y la conexion
+-- de Canva por Composio (el connected account, ac_...). Compartidos por todas
+-- las cuentas, como la clave de Composio.
+alter table public.engine_secrets add column if not exists model_ideas     text not null default 'claude-sonnet-5';
+alter table public.engine_secrets add column if not exists model_contenido text not null default 'claude-sonnet-5';
+alter table public.engine_secrets add column if not exists canva_connected_account_id text;
 
 -- Cuando cambia el umbral de score, solo aplica a lo que entre despues: las
 -- noticias que ya estaban no se re-evaluan. Cambiar el umbral no puede resucitar

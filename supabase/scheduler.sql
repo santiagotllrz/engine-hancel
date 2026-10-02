@@ -294,3 +294,51 @@ begin
   perform cron.schedule('engine_hancel_content_tick', '*/5 * * * *', 'select public.fire_content_tick();');
 end
 $$;
+
+-- ------------------------------------------------- el estudio (bloque 2)
+--
+-- La cadencia del agente de ideas y las recetas del agente de contenido. Reusa
+-- la URL del tick de contenido cambiando la ruta, y el mismo secreto. Cada diez
+-- minutos: que receta toca lo decide su horario, no el cron, y una tanda que el
+-- presupuesto de la pasada corto se termina en la siguiente.
+create or replace function public.fire_studio_tick()
+returns bigint
+language plpgsql
+security definer
+set search_path to ''
+as $$
+declare
+  v_url        text;
+  v_secret     text;
+  v_request_id bigint;
+begin
+  select decrypted_secret into v_url    from vault.decrypted_secrets where name = 'content_tick_url';
+  select decrypted_secret into v_secret from vault.decrypted_secrets where name = 'ingest_secret';
+
+  if v_url is null or v_secret is null then
+    raise warning 'engine-hancel: falta content_tick_url/ingest_secret para el tick del estudio';
+    return null;
+  end if;
+
+  select net.http_post(
+    url := replace(v_url, '/api/content/tick', '/api/studio/tick'),
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || v_secret
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 300000
+  ) into v_request_id;
+
+  return v_request_id;
+end;
+$$;
+
+revoke all on function public.fire_studio_tick() from public, anon, authenticated;
+
+do $$
+begin
+  perform cron.unschedule(jobid) from cron.job where jobname = 'engine_hancel_studio_tick';
+  perform cron.schedule('engine_hancel_studio_tick', '*/10 * * * *', 'select public.fire_studio_tick();');
+end
+$$;

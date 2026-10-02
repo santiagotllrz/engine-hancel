@@ -1,4 +1,5 @@
 import { llamarClaude, parsearJSONDeClaude, type UsoClaude } from "../claude/messages"
+import { arreglarOrtografia } from "../render/carousel"
 import { supabaseAdmin } from "../supabase-admin"
 
 /**
@@ -18,21 +19,23 @@ import { supabaseAdmin } from "../supabase-admin"
 
 export const IDEAS_SYSTEM = `Eres un editor que propone ideas de contenido para redes sociales de una marca del sector agropecuario colombiano.
 
-Recibes una lista de COMBINACIONES. Cada una es un tema (a veces enfocado a un subtema concreto), una intencion (el proposito) y una narrativa (la forma de contarlo). Por cada combinacion escribes UNA idea de contenido.
+Recibes una lista de COMBINACIONES. Cada una es un tema (a veces enfocado a un subtema concreto), una intención (el propósito) y una narrativa (la forma de contarlo). Por cada combinación escribes UNA idea de contenido.
 
 LA REGLA QUE MANDA: TODAS LAS IDEAS DE LA RONDA SON DE ASUNTOS DISTINTOS.
-Dos combinaciones pueden compartir el mismo tema, subtema o intencion. Sus ideas NO pueden ser del mismo asunto. Prohibido "la roya del cafe" en dos ideas, aunque una sea para Informar y otra para Advertir, o con narrativas distintas. Cada idea abre una puerta nueva: otra plaga, otra practica, otra cifra, otro momento del cultivo, otra decision del productor.
+Dos combinaciones pueden compartir el mismo tema, subtema o intención. Sus ideas NO pueden ser del mismo asunto. Prohibido "la roya del café" en dos ideas, aunque una sea para Informar y otra para Advertir, o con narrativas distintas. Cada idea abre una puerta nueva: otra plaga, otra práctica, otro momento del cultivo, otra decisión del productor.
 
 CADA IDEA:
-- Es concreta y accionable, no un tema vago. "Como leer un analisis de suelo" esta bien; "hablar de suelos" no.
-- Respeta su intencion y su narrativa: si la intencion es Advertir y la narrativa El error, la idea es un error comun que cuesta caro.
-- Si la combinacion trae un subtema, la idea es de ese subtema: "Suelo/Abono enfocado a cafe" da una idea de suelos DE CAFE, no de suelos en general.
-- No inventa datos falsos. Propone el asunto; el contenido se documenta despues.
+- Es concreta y accionable, no un tema vago. "Cómo leer un análisis de suelo" está bien; "hablar de suelos" no.
+- Respeta su intención y su narrativa: si la intención es Advertir y la narrativa El error, la idea es un error común que cuesta caro.
+- Si la combinación trae un subtema, la idea es de ese subtema: "Suelo/Abono enfocado a café" da una idea de suelos DE CAFÉ, no de suelos en general.
+- No inventa datos falsos. Propone el asunto; el contenido se documenta después.
+
+ORTOGRAFÍA: cada idea y cada nota llevan sus tildes y sus eñes. Se leen tal cual en la interfaz y son el punto de partida del texto publicado.
 
 RESPONDE SOLO con este JSON, sin texto alrededor:
-{"ideas":[{"n":<numero de la combinacion>,"idea":"<titulo concreto de la idea, una frase>","notes":"<1-2 frases de por donde va>"}]}
+{"ideas":[{"n":<número de la combinación>,"idea":"<título concreto de la idea, una frase>","notes":"<1-2 frases de por dónde va>"}]}
 
-Devuelve exactamente una idea por combinacion, con su numero. Antes de responder, relee y confirma que no hay dos ideas del mismo asunto.`
+Devuelve exactamente una idea por combinación, con su número. Antes de responder, relee y confirma que no hay dos ideas del mismo asunto y que nada le falta una tilde.`
 
 type Comb = {
   n: number
@@ -136,7 +139,8 @@ const LOTE = 25
 export async function generarRonda(
   accountId: string,
   pillarId: string,
-  model: string
+  model: string,
+  system: string = IDEAS_SYSTEM
 ): Promise<ResultadoIdeas> {
   const supabase = supabaseAdmin()
   const combs = await combinacionesDe(accountId, pillarId)
@@ -168,7 +172,7 @@ export async function generarRonda(
         : ""
 
     const prompt = `COMBINACIONES\n${lote.map((c) => c.linea).join("\n")}${evita}`
-    const r = await llamarClaude({ model, system: IDEAS_SYSTEM, prompt, maxTokens: 3000 })
+    const r = await llamarClaude({ model, system, prompt, maxTokens: 3000 })
     if (!r.ok) return { pillarId, generadas: aInsertar.length, ronda, uso, error: r.error }
 
     uso.entrada += r.uso.entrada
@@ -178,7 +182,7 @@ export async function generarRonda(
     const ideas = Array.isArray(bruto.ideas) ? bruto.ideas : []
     for (const it of ideas as { n?: unknown; idea?: unknown; notes?: unknown }[]) {
       const comb = typeof it.n === "number" ? porNumero.get(it.n) : undefined
-      const idea = typeof it.idea === "string" ? it.idea.trim() : ""
+      const idea = typeof it.idea === "string" ? arreglarOrtografia(it.idea.trim()) : ""
       if (!comb || !idea) continue
       yaGeneradas.push(idea)
       aInsertar.push({
@@ -189,7 +193,7 @@ export async function generarRonda(
         intent_id: comb.intentId,
         narrative_id: comb.narrativeId,
         idea: idea.slice(0, 500),
-        notes: typeof it.notes === "string" ? it.notes.trim().slice(0, 500) : null,
+        notes: typeof it.notes === "string" ? arreglarOrtografia(it.notes.trim()).slice(0, 500) : null,
         round: ronda,
       })
     }
