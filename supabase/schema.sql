@@ -573,7 +573,11 @@ alter table public.content_pieces add column if not exists publish_error text;
 alter table public.content_pieces drop constraint if exists content_pieces_status_check;
 alter table public.content_pieces
   add constraint content_pieces_status_check
-  check (status in ('generated', 'approved', 'published', 'rejected'));
+  -- 'publishing' es el reclamo atomico: una pieza se marca asi justo antes de
+  -- salir a Buffer, para que dos pasadas no la publiquen a la vez. Faltaba aqui,
+  -- y su ausencia hacia fallar el UPDATE del reclamo en cada pasada: la
+  -- publicacion entera se paro hasta que se agrego.
+  check (status in ('generated', 'approved', 'publishing', 'published', 'rejected'));
 
 -- Lo que mira el modo automatico: generado o aprobado, y aun sin publicar.
 create index if not exists content_pieces_publicables_idx on public.content_pieces (created_at)

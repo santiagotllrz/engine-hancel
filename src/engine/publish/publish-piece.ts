@@ -28,7 +28,7 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
   // cinco veces. Aqui `published_at` se pone en el mismo UPDATE que comprueba
   // que estaba vacio: la base garantiza que solo una pasada gana la fila.
   const marca = new Date().toISOString()
-  const { data: reclamada } = await supabase
+  const { data: reclamada, error: errorReclamo } = await supabase
     .from("content_pieces")
     .update({ status: "publishing", published_at: marca })
     .eq("id", pieceId)
@@ -36,6 +36,14 @@ export async function publishPiece(pieceId: string): Promise<PublishResult> {
     .neq("status", "rejected")
     .select("*")
     .maybeSingle()
+
+  // El error del UPDATE no se puede tragar: si la base rechaza el reclamo (un
+  // CHECK que no admite 'publishing', un trigger que falla) y se ignora, cada
+  // pasada lo confunde con "otra se adelanto" y la pieza no sale nunca, sin
+  // dejar rastro del motivo. Justo eso paro la publicacion entera una vez.
+  if (errorReclamo) {
+    return { ok: false, error: `No se pudo reclamar la pieza para publicar: ${errorReclamo.message}` }
+  }
 
   if (!reclamada) {
     // O ya se publico, o esta rechazada, o otra pasada la tomo en esta misma

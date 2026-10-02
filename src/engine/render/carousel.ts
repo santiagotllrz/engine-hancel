@@ -131,6 +131,39 @@ const CON_TILDE: Record<string, string> = {
   tramites: "trámites",
   unico: "único",
   unica: "única",
+  // Del agro, sin ambigüedad posible.
+  acido: "ácido",
+  acidos: "ácidos",
+  acida: "ácida",
+  acidas: "ácidas",
+  comun: "común",
+  comunes: "comunes",
+  criticos: "críticos",
+  debil: "débil",
+  debiles: "débiles",
+  nitrogeno: "nitrógeno",
+  pequena: "pequeña",
+  pequenas: "pequeñas",
+  pequenos: "pequeños",
+  arbol: "árbol",
+  arboles: "árboles",
+  cafe: "café",
+  cafes: "cafés",
+  fosforo: "fósforo",
+  limon: "limón",
+  maiz: "maíz",
+  organico: "orgánico",
+  organica: "orgánica",
+  organicos: "orgánicos",
+  organicas: "orgánicas",
+  platano: "plátano",
+  platanos: "plátanos",
+  quimico: "químico",
+  quimicos: "químicos",
+  raiz: "raíz",
+  raices: "raíces",
+  tecnico: "técnico",
+  tecnica: "técnica",
 }
 
 /** Conserva la mayuscula inicial de la palabra original. */
@@ -140,17 +173,21 @@ function comoEstaba(original: string, corregida: string): string {
     : corregida
 }
 
-function arreglarOrtografia(texto: string): string {
+export function arreglarOrtografia(texto: string): string {
   return (
     texto
       // Palabras de la lista cerrada.
-      .replace(/[a-zA-ZáéíóúñÁÉÍÓÚÑ]+/g, (palabra) => {
+      .replace(/[a-zA-ZáéíóúñÁÉÍÓÚÑ]+/g, (palabra) => {
         const fijada = CON_TILDE[palabra.toLowerCase()]
         return fijada ? comoEstaba(palabra, fijada) : palabra
       })
-      // "-cion" final siempre lleva tilde; "-ciones" nunca. Igual "-sion".
-      .replace(/([a-záéíóúñ])cion/gi, "$1ción")
-      .replace(/([a-záéíóúñ])sion/gi, "$1sión")
+      // "-cion" final siempre lleva tilde; "-ciones" nunca. Igual "-sion". El
+      // lookahead exige final de palabra: sin el, la regla tambien entraria en el
+      // plural y escribiria "decisiónes". La o se pone en la caja que traia,
+      // para que "PRODUCCION" no salga "PRODUCción".
+      .replace(/([a-záéíóúñ])([cs]i)(o)(n)(?![a-záéíóúñ])/gi, (_m, antes, ci, o, n) =>
+        `${antes}${ci}${o === "O" ? "Ó" : "ó"}${n}`
+      )
   )
 }
 
