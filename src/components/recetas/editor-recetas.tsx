@@ -38,6 +38,8 @@ import {
 const HORAS = Array.from({ length: 18 }, (_, i) => i + 5) // 5:00 a 22:00
 
 type Pilar = { id: string; name: string }
+/** Lo que el formulario necesita de una plantilla para ofrecerla. */
+export type PlantillaOpcion = { id: string; name: string; format: string; lista: boolean }
 
 /**
  * Las recetas del bloque 2: cada una le dice al agente de contenido que producir.
@@ -47,7 +49,15 @@ type Pilar = { id: string; name: string }
  * de canal, el formato se resetea a los de ese canal, que es lo que garantiza que
  * nunca se guarde un formato que no existe en la red elegida.
  */
-export function EditorRecetas({ recetas, pilares }: { recetas: RecetaVista[]; pilares: Pilar[] }) {
+export function EditorRecetas({
+  recetas,
+  pilares,
+  plantillas,
+}: {
+  recetas: RecetaVista[]
+  pilares: Pilar[]
+  plantillas: PlantillaOpcion[]
+}) {
   const [abierto, setAbierto] = React.useState(false)
   const [editando, setEditando] = React.useState<RecetaVista | null>(null)
   const [error, setError] = React.useState<string | null>(null)
@@ -148,6 +158,7 @@ export function EditorRecetas({ recetas, pilares }: { recetas: RecetaVista[]; pi
             key={editando?.id ?? "nueva"}
             receta={editando}
             pilares={pilares}
+            plantillas={plantillas}
             disabled={pending}
             error={error}
             onGuardar={guardar}
@@ -187,7 +198,13 @@ function FilaReceta({
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             <Badge variant="outline">{receta.per_day}/dia</Badge>
             {horas ? <Badge variant="outline">{horas}</Badge> : <Badge variant="outline">sin horario</Badge>}
-            <Badge variant="secondary">{receta.generator === "canva" ? "Canva" : "sin generador"}</Badge>
+            <Badge variant="secondary">
+              {receta.generator === "canva"
+                ? receta.templateName
+                  ? `Canva · ${receta.templateName}`
+                  : "Canva · sin plantilla"
+                : "Solo texto"}
+            </Badge>
             <Badge variant="outline" className="text-muted-foreground">
               {receta.piezas} piezas
             </Badge>
@@ -226,12 +243,14 @@ function FilaReceta({
 function FormReceta({
   receta,
   pilares,
+  plantillas,
   disabled,
   error,
   onGuardar,
 }: {
   receta: RecetaVista | null
   pilares: Pilar[]
+  plantillas: PlantillaOpcion[]
   disabled: boolean
   error: string | null
   onGuardar: (campos: CamposReceta) => void
@@ -245,11 +264,12 @@ function FormReceta({
   const [generator, setGenerator] = React.useState(receta?.generator ?? "canva")
   const [perDay, setPerDay] = React.useState(String(receta?.per_day ?? 1))
   const [runAt, setRunAt] = React.useState<Set<number>>(new Set(receta?.run_at ?? [9]))
-  const [brandTemplateId, setBrandTemplateId] = React.useState(receta?.brandTemplateId ?? "")
+  const [templateId, setTemplateId] = React.useState(receta?.templateId ?? "")
 
   const canal = canalPorId(channel) ?? CANALES[0]
   const formatoActual = formatoPorId(format)
   const admitePlantilla = formatoActual?.formato.conPlantilla ?? false
+  const plantillasDelFormato = plantillas.filter((t) => t.format === format)
 
   const cambiarCanal = (nuevo: string) => {
     setChannel(nuevo)
@@ -276,10 +296,7 @@ function FormReceta({
       generator,
       per_day: Number(perDay) || 1,
       run_at: [...runAt],
-      brand_template_id: brandTemplateId,
-      // El mapeo de campos de la plantilla llega con la capa Plantilla; al editar
-      // se conserva el que ya hubiera.
-      campos: receta?.campos ?? null,
+      template_id: plantillasDelFormato.some((t) => t.id === templateId) ? templateId : null,
     })
   }
 
@@ -388,18 +405,29 @@ function FormReceta({
 
       {generator === "canva" && admitePlantilla ? (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="rec-bt">Brand template de Canva (opcional)</Label>
-          <Input
-            id="rec-bt"
-            value={brandTemplateId}
-            disabled={disabled}
-            onChange={(e) => setBrandTemplateId(e.target.value)}
-            placeholder="ID de la plantilla de Canva"
-          />
-          <p className="text-muted-foreground text-xs">
-            El mapeo de que texto va en cada campo se define en la capa Plantilla (mas adelante). Sin
-            plantilla, la pieza se genera como texto listo.
-          </p>
+          <Label>Plantilla</Label>
+          {plantillasDelFormato.length === 0 ? (
+            <p className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs">
+              No hay plantillas para este formato. Créala en Capas → Plantilla; sin plantilla la pieza
+              sale solo como texto.
+            </p>
+          ) : (
+            <Select value={templateId} onValueChange={(v) => setTemplateId(v as string)}>
+              <SelectTrigger className="w-full">
+                <SelectValue>
+                  {() => plantillasDelFormato.find((t) => t.id === templateId)?.name ?? "Elegir plantilla"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {plantillasDelFormato.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                    {t.lista ? "" : " (sin construir)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       ) : null}
 

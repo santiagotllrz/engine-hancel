@@ -1,16 +1,19 @@
 import { DashboardShell } from "@/components/dashboard-shell"
 import { EditorIntenciones } from "@/components/capas/editor-intenciones"
 import { EditorPilares } from "@/components/capas/editor-pilares"
+import { EditorPlantillas } from "@/components/capas/editor-plantillas"
 import { EditorSimple } from "@/components/capas/editor-simple"
 import { VistaCanales } from "@/components/capas/vista-canales"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CANALES } from "@/lib/canales-catalogo"
 import { getIntenciones, getPilares, getSimples } from "@/lib/capas-data"
+import { getPlantillas } from "@/lib/plantillas-data"
 import { cuentaActual } from "@/lib/accounts"
 import { getLinkedinStatus } from "@/engine/publish/linkedin"
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 60
+// Construir una plantilla en Canva corre dentro de la accion y tarda.
+export const maxDuration = 300
 
 export const metadata = { title: "Capas · Engine Hancel" }
 
@@ -19,16 +22,17 @@ export const metadata = { title: "Capas · Engine Hancel" }
  *
  * Una pantalla, una pestana por capa. Pilar y tema comparten pestana porque son
  * el mismo arbol; canal y formato tambien, porque el formato solo se entiende
- * dibujado dentro de su canal. Plantilla y fuente quedan de placeholder: se
- * abordan mas adelante.
+ * dibujado dentro de su canal. Plantilla construye el estilo de cada formato en
+ * Canva. Fuente queda de placeholder.
  */
 export default async function CapasPage() {
-  const [pilares, intenciones, narrativas, ctas, cuenta] = await Promise.all([
+  const [pilares, intenciones, narrativas, ctas, cuenta, plantillas] = await Promise.all([
     getPilares(),
     getIntenciones(),
     getSimples("content_narratives"),
     getSimples("content_ctas"),
     cuentaActual(),
+    getPlantillas(),
   ])
 
   const linkedin = await getLinkedinStatus(cuenta.id)
@@ -87,10 +91,7 @@ export default async function CapasPage() {
           </TabsContent>
 
           <TabsContent value="plantilla">
-            <Placeholder
-              titulo="Plantillas"
-              texto="Aqui se definiran las plantillas de estilo de cada formato: el layout con el que se arma cada pieza. Se aborda mas adelante."
-            />
+            <EditorPlantillas plantillas={plantillas} />
           </TabsContent>
 
           <TabsContent value="fuente">

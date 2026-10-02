@@ -31,8 +31,7 @@ export type CamposReceta = {
   generator: string
   per_day: number
   run_at: number[]
-  brand_template_id?: string | null
-  campos?: Record<string, string> | null
+  template_id?: string | null
 }
 
 /** Crea o actualiza una receta, validando que canal y formato existan y casen. */
@@ -53,9 +52,6 @@ export async function guardarReceta(campos: CamposReceta): Promise<ActionResult>
     .filter((h) => Number.isInteger(h) && h >= 0 && h <= 23)
     .sort((a, b) => a - b)
 
-  const template: Record<string, unknown> = {}
-  if (campos.brand_template_id?.trim()) template.brand_template_id = campos.brand_template_id.trim()
-  if (campos.campos && Object.keys(campos.campos).length > 0) template.campos = campos.campos
 
   try {
     const accountId = await idDeCuentaActual()
@@ -69,16 +65,33 @@ export async function guardarReceta(campos: CamposReceta): Promise<ActionResult>
       .eq("account_id", accountId)
     if (!count) return { ok: false, error: "Ese pilar no es de esta cuenta." }
 
+    // La plantilla tambien: de la cuenta y del mismo formato que la receta.
+    const generator = campos.generator === "canva" ? "canva" : "ninguno"
+    let templateId: string | null = null
+    if (generator === "canva" && campos.template_id) {
+      const { data: t } = await supabase
+        .from("content_templates")
+        .select("id, format")
+        .eq("id", campos.template_id)
+        .eq("account_id", accountId)
+        .maybeSingle()
+      if (!t) return { ok: false, error: "Esa plantilla no es de esta cuenta." }
+      if ((t as { format: string }).format !== fmt.formato.id) {
+        return { ok: false, error: "La plantilla es de otro formato." }
+      }
+      templateId = (t as { id: string }).id
+    }
+
     const fila = {
       account_id: accountId,
       name,
       pillar_id: campos.pillar_id,
       channel: canal.id,
       format: fmt.formato.id,
-      generator: campos.generator === "canva" ? "canva" : "ninguno",
+      generator,
       per_day: perDay,
       run_at: runAt,
-      template: Object.keys(template).length > 0 ? template : null,
+      template_id: templateId,
       updated_at: new Date().toISOString(),
     }
 

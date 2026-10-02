@@ -1,8 +1,9 @@
 import { llamarClaude, parsearJSONDeClaude, type UsoClaude } from "../claude/messages"
 import { supabaseAdmin } from "../supabase-admin"
 import { dayIn, hourIn } from "../schedule"
+import { familiaDeFormato, type EstructuraPlantilla } from "@/lib/plantillas-catalogo"
 import { corregirTextos } from "./ortografia"
-import { generarConCanva } from "./canva"
+import { dibujarConCanva, laminasDeContenido, type PlantillaUsable } from "./canva"
 import { studioConfig } from "./settings"
 
 /**
@@ -10,9 +11,9 @@ import { studioConfig } from "./settings"
  *
  * Un cartucho es una idea que dejo el agente de ideas. Este agente la toma, la
  * desarrolla en una pieza para el canal y el formato de una receta, y la guarda
- * en `studio_pieces`. Si la receta usa Canva y tiene una plantilla configurada,
- * ademas dibuja la pieza; si no, la deja como texto listo, a la espera de que se
- * configure la plantilla (la ultima capa).
+ * en `studio_pieces`. Si la receta usa Canva y tiene una plantilla lista, ademas
+ * dibuja la pieza copiando esa plantilla (ver canva.ts); si no, la deja como
+ * texto listo.
  *
  * Dos cosas lo hacen seguro de correr en paralelo:
  * - Los cartuchos se reclaman con `reclamar_cartuchos`, que hace el UPDATE con
@@ -20,14 +21,6 @@ import { studioConfig } from "./settings"
  * - Cada receta tiene un presupuesto por dia (per_day) y un candado por hora
  *   (last_run_at), asi que ni produce de mas ni repite la tanda de una hora.
  */
-
-/** A que familia de salida pertenece cada formato. Decide que campos se rellenan. */
-function familiaDeFormato(formatId: string): "laminas" | "imagen" | "texto" {
-  if (["ig_carrusel", "fb_carrusel", "li_documento"].includes(formatId)) return "laminas"
-  if (["ig_post", "fb_post", "li_texto_imagen", "ig_historia"].includes(formatId)) return "imagen"
-  // li_texto y los formatos de video (que por ahora salen como guion en parrafos).
-  return "texto"
-}
 
 export type Receta = {
   id: string
@@ -37,7 +30,7 @@ export type Receta = {
   channel: string
   format: string
   generator: string
-  template: { brand_template_id?: string; campos?: Record<string, string> } | null
+  template_id: string | null
   per_day: number
   run_at: number[]
   enabled: boolean
@@ -82,9 +75,15 @@ async function redactar(
   ctx: Contexto,
   formatId: string,
   system: string,
-  model: string
+  model: string,
+  /** Tope de laminas que admite la plantilla (portada y cierre incluidos). */
+  maxLaminas?: number
 ): Promise<{ payload: PiezaPayload; uso: UsoClaude }> {
   const familia = familiaDeFormato(formatId)
+  const lineaLaminas =
+    familia === "laminas" && maxLaminas
+      ? `\n- láminas: entre ${Math.min(5, maxLaminas)} y ${maxLaminas}, contando la portada y el cierre. La plantilla no admite más.`
+      : ""
 
   // Las etiquetas van acentuadas: el modelo imita como estan escritas las
   // instrucciones, y unas etiquetas sin tildes tambien se contagian.
@@ -100,7 +99,7 @@ CAPAS
 
 FORMATO
 - familia: ${familia}
-- formato: ${formatId}
+- formato: ${formatId}${lineaLaminas}
 
 Recuerda: todo lo que escribas lleva sus tildes y sus eñes, aunque la idea de arriba venga sin ellas.`
 
@@ -158,34 +157,6 @@ Recuerda: todo lo que escribas lleva sus tildes y sus eñes, aunque la idea de a
   return { payload, uso: r.uso }
 }
 
-/** Resuelve una ruta del payload ("caption", "slides.0.title") a su texto. */
-function valorEnRuta(payload: PiezaPayload, ruta: string): string {
-  const partes = ruta.split(".")
-  let actual: unknown = payload
-  for (const p of partes) {
-    if (Array.isArray(actual)) actual = actual[Number(p)]
-    else if (actual && typeof actual === "object") actual = (actual as Record<string, unknown>)[p]
-    else return ""
-  }
-  return typeof actual === "string" ? actual : ""
-}
-
-/**
- * Arma el objeto de autofill de Canva a partir del mapeo de la plantilla.
- *
- * Por ahora solo se rellenan campos de texto: las imagenes de Canva piden un
- * asset subido, y traer y subir las fotos es trabajo de mas adelante. Los campos
- * de imagen de la plantilla se quedan con su valor por defecto.
- */
-function camposCanva(payload: PiezaPayload, mapeo: Record<string, string>): Record<string, unknown> {
-  const data: Record<string, unknown> = {}
-  for (const [campo, ruta] of Object.entries(mapeo)) {
-    const texto = valorEnRuta(payload, ruta)
-    if (texto) data[campo] = { type: "text", text: texto }
-  }
-  return data
-}
-
 /** El contexto de capas de un cartucho, resuelto en una sola consulta por lote. */
 async function contextoDe(accountId: string, cartuchos: CartuchoFila[]): Promise<Map<string, Contexto>> {
   const supabase = supabaseAdmin()
@@ -223,6 +194,20 @@ async function contextoDe(accountId: string, cartuchos: CartuchoFila[]): Promise
 
 export type ResultadoPieza = { ok: boolean; pieceId?: string; error?: string }
 
+/** La plantilla de una receta, si esta lista para dibujar. */
+async function plantillaDe(receta: Receta): Promise<PlantillaUsable | null> {
+  if (!receta.template_id) return null
+  const { data } = await supabaseAdmin()
+    .from("content_templates")
+    .select("id, format, canva_design_id, estilo, estructura, status")
+    .eq("id", receta.template_id)
+    .eq("account_id", receta.account_id)
+    .maybeSingle()
+  const t = data as (PlantillaUsable & { status: string; canva_design_id: string | null; estructura: EstructuraPlantilla | null }) | null
+  if (!t || t.status !== "lista" || !t.canva_design_id || !t.estructura) return null
+  return t as PlantillaUsable
+}
+
 /** Genera una pieza a partir de un cartucho ya reclamado. */
 async function generarPieza(
   receta: Receta,
@@ -232,52 +217,53 @@ async function generarPieza(
   model: string
 ): Promise<ResultadoPieza> {
   const supabase = supabaseAdmin()
+  const familia = familiaDeFormato(receta.format)
+  const plantilla = receta.generator === "canva" && familia !== "texto" ? await plantillaDe(receta) : null
+  const maxLaminas = plantilla ? laminasDeContenido(plantilla.estructura) + 2 : undefined
+
+  const base = {
+    account_id: receta.account_id,
+    recipe_id: receta.id,
+    cartridge_id: cartucho.id,
+    pillar_id: cartucho.pillar_id,
+    channel: receta.channel,
+    format: receta.format,
+  }
 
   let payload: PiezaPayload
   try {
-    const r = await redactar(cartucho, ctx, receta.format, system, model)
+    const r = await redactar(cartucho, ctx, receta.format, system, model, maxLaminas)
     payload = r.payload
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     // La idea no tiene la culpa de un corte de red o de un JSON roto: el
     // cartucho vuelve a la despensa para que otra pasada lo intente. El fallo
-    // queda anotado como pieza 'failed', que no cuenta para el cupo del dia.
+    // queda anotado como pieza failed, que no cuenta para el cupo del dia.
     await supabase
       .from("content_cartridges")
       .update({ status: "available", used_at: null })
       .eq("id", cartucho.id)
     const { data } = await supabase
       .from("studio_pieces")
-      .insert({
-        account_id: receta.account_id,
-        recipe_id: receta.id,
-        cartridge_id: cartucho.id,
-        channel: receta.channel,
-        format: receta.format,
-        status: "failed",
-        error: msg.slice(0, 500),
-      })
+      .insert({ ...base, status: "failed", error: msg.slice(0, 500) })
       .select("id")
       .maybeSingle()
     return { ok: false, pieceId: (data as { id: string } | null)?.id, error: msg }
   }
 
-  const usaCanva =
-    receta.generator === "canva" &&
-    !!receta.template?.brand_template_id &&
-    !!receta.template?.campos &&
-    familiaDeFormato(receta.format) !== "texto"
+  // Una receta de Canva sin plantilla lista no se cae: la pieza sale como
+  // texto y queda dicho por que no lleva imagenes.
+  const aviso =
+    receta.generator === "canva" && familia !== "texto" && !plantilla
+      ? "La receta no tiene una plantilla lista: la pieza quedo solo como texto."
+      : null
 
   const { data: fila, error: errIns } = await supabase
     .from("studio_pieces")
     .insert({
-      account_id: receta.account_id,
-      recipe_id: receta.id,
-      cartridge_id: cartucho.id,
-      channel: receta.channel,
-      format: receta.format,
-      status: usaCanva ? "generating" : "generated",
-      payload,
+      ...base,
+      status: plantilla ? "generating" : "generated",
+      payload: aviso ? { ...payload, aviso } : payload,
     })
     .select("id")
     .maybeSingle()
@@ -286,29 +272,39 @@ async function generarPieza(
   const pieceId = (fila as { id: string } | null)?.id
   if (!pieceId) return { ok: false, error: "No se pudo crear la pieza." }
 
-  // Sin Canva (o sin plantilla configurada): la pieza queda como texto listo.
-  if (!usaCanva) return { ok: true, pieceId }
+  if (!plantilla) return { ok: true, pieceId }
 
-  const canva = await generarConCanva(
-    receta.template!.brand_template_id!,
-    camposCanva(payload, receta.template!.campos!),
-    cartucho.idea
-  )
+  const dibujo = await dibujarConCanva({
+    plantilla,
+    pieza: payload,
+    titulo: cartucho.idea,
+    accountId: receta.account_id,
+    pieceId,
+    // Si las busquedas del agente no dan fotos, el tema de la idea.
+    terminosRespaldo: [ctx.subtema, ctx.tema].filter((t): t is string => Boolean(t)),
+  })
 
   await supabase
     .from("studio_pieces")
     .update(
-      canva.ok
+      dibujo.ok
         ? {
             status: "generated",
-            canva_design_id: canva.designId,
-            payload: { ...payload, imagenes: canva.imagenes },
+            canva_design_id: dibujo.designId,
+            payload: {
+              ...payload,
+              imagenes: dibujo.imagenes,
+              canva_edit_url: dibujo.editUrl,
+              plantilla_id: plantilla.id,
+              fotos_usadas: dibujo.fotos.map((f) => ({ url: f.url, autor: f.autor })),
+              ...(dibujo.avisos.length ? { avisos: dibujo.avisos } : {}),
+            },
           }
-        : { status: "failed", error: canva.error.slice(0, 500) }
+        : { status: "failed", error: dibujo.error.slice(0, 500), canva_design_id: dibujo.designId ?? null }
     )
     .eq("id", pieceId)
 
-  return canva.ok ? { ok: true, pieceId } : { ok: false, pieceId, error: canva.error }
+  return dibujo.ok ? { ok: true, pieceId } : { ok: false, pieceId, error: dibujo.error }
 }
 
 /** Reclama hasta `limite` cartuchos disponibles de un pilar, sin colisiones. */
@@ -396,9 +392,11 @@ export async function correrRecetas(opciones: {
 
     const hechasHoy = await producidasHoy(receta.id, timezone, now)
     const pendientesHoy = Math.max(0, receta.per_day - hechasHoy)
-    // Reparte per_day entre las horas del dia; en force, todo lo que falte.
+    // Reparte per_day entre las horas del dia. A mano ("Generar ahora") hace lo
+    // que falte del dia, y al menos una: quien pulsa el boton quiere ver una
+    // pieza, aunque el cupo automatico ya este cubierto.
     const porTanda = force
-      ? pendientesHoy
+      ? Math.max(1, pendientesHoy)
       : Math.min(pendientesHoy, Math.ceil(receta.per_day / Math.max(1, receta.run_at.length)))
     const cuantas = Math.min(porTanda, restante)
 

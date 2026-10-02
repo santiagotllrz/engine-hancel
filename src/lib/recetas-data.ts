@@ -19,8 +19,8 @@ export type RecetaVista = {
   channel: string
   format: string
   generator: string
-  brandTemplateId: string | null
-  campos: Record<string, string> | null
+  templateId: string | null
+  templateName: string | null
   per_day: number
   run_at: number[]
   enabled: boolean
@@ -35,7 +35,7 @@ type RecetaFila = {
   channel: string
   format: string
   generator: string
-  template: { brand_template_id?: string; campos?: Record<string, string> } | null
+  template_id: string | null
   per_day: number
   run_at: number[]
   enabled: boolean
@@ -46,11 +46,16 @@ export async function getRecetas(): Promise<RecetaVista[]> {
   const supabase = supabaseAdmin()
   const accountId = await idDeCuentaActual()
 
-  const [recetas, pilares, piezas] = await Promise.all([
+  const [recetas, pilares, piezas, plantillas] = await Promise.all([
     supabase.from("content_recipes").select("*").eq("account_id", accountId).order("created_at"),
     supabase.from("content_pillars").select("id, name").eq("account_id", accountId),
     supabase.from("studio_pieces").select("recipe_id").eq("account_id", accountId),
+    supabase.from("content_templates").select("id, name").eq("account_id", accountId),
   ])
+
+  const nombrePlantilla = new Map(
+    ((plantillas.data ?? []) as { id: string; name: string }[]).map((t) => [t.id, t.name])
+  )
 
   const nombrePilar = new Map(
     ((pilares.data ?? []) as { id: string; name: string }[]).map((p) => [p.id, p.name])
@@ -68,8 +73,8 @@ export async function getRecetas(): Promise<RecetaVista[]> {
     channel: r.channel,
     format: r.format,
     generator: r.generator,
-    brandTemplateId: r.template?.brand_template_id ?? null,
-    campos: r.template?.campos ?? null,
+    templateId: r.template_id ?? null,
+    templateName: r.template_id ? (nombrePlantilla.get(r.template_id) ?? null) : null,
     per_day: r.per_day,
     run_at: [...(r.run_at ?? [])].sort((a, b) => a - b),
     enabled: r.enabled,

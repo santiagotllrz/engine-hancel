@@ -338,6 +338,38 @@ as $$
 $$;
 revoke all on function public.reclamar_cartuchos(uuid, uuid, integer) from public, anon, authenticated;
 
+-- La capa Plantilla: el estilo fijo de cada formato visual. Se define con
+-- valores (estilo) y el sistema la construye en Canva como un diseno maestro
+-- con marcadores ({{hook}}, {{titulo}}, {{cuerpo}}, {{n}}). Cada pieza es una
+-- copia de ese maestro con los marcadores y las fotos reemplazados.
+create table if not exists public.content_templates (
+  id              uuid primary key default gen_random_uuid(),
+  account_id      uuid        not null references public.accounts (id) on delete cascade,
+  name            text        not null,
+  format          text        not null,
+  estilo          jsonb       not null default {}::jsonb,
+  estructura      jsonb,       -- paginas, su rol y sus marcadores, leidos de Canva
+  canva_design_id text,
+  canva_edit_url  text,
+  thumbnail_url   text,
+  status          text        not null default borrador,
+  error           text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  constraint content_templates_status_check check (status in (borrador, creando, lista, error))
+);
+create index if not exists content_templates_account_idx on public.content_templates (account_id, format);
+alter table public.content_templates enable row level security;
+
+-- La receta apunta a su plantilla (la columna template, jsonb, quedo sin uso).
+alter table public.content_recipes
+  add column if not exists template_id uuid references public.content_templates (id) on delete set null;
+
+-- La pieza recuerda su pilar, para el estudio por pilar.
+alter table public.studio_pieces
+  add column if not exists pillar_id uuid references public.content_pillars (id) on delete set null;
+create index if not exists studio_pieces_pillar_idx on public.studio_pieces (pillar_id, created_at desc);
+
 -- ------------------------------------------------------------------ agentes
 
 -- Como se comporta cada agente del motor.

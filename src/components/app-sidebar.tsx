@@ -17,7 +17,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { BotIcon, ChefHatIcon, KanbanIcon, LayersIcon, LightbulbIcon, SettingsIcon } from "lucide-react"
+import { BotIcon, ChefHatIcon, GalleryHorizontalEndIcon, KanbanIcon, LayersIcon, LightbulbIcon, SettingsIcon } from "lucide-react"
 
 import { AGENTES } from "@/lib/agentes-catalogo"
 
@@ -55,6 +55,15 @@ export function AppSidebar({
       url: "/ideas",
       icon: <LightbulbIcon />,
       isActive: pathname.startsWith("/ideas"),
+      items: [],
+    },
+    {
+      // Lo que produce el pipeline nuevo, por pilar. El "Estudio" de arriba es
+      // el tablero de las noticias, que sigue igual.
+      title: "Estudio de pilares",
+      url: "/estudio/pilares",
+      icon: <GalleryHorizontalEndIcon />,
+      isActive: pathname.startsWith("/estudio/pilares"),
       items: [],
     },
     {

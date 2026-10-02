@@ -1,176 +1,181 @@
-import { claveComposio, COMPOSIO_USER, estadoCanva } from "./canva-conexion"
+import { formatoPorId } from "@/lib/canales-catalogo"
+import {
+  familiaDeFormato,
+  normalizarEstilo,
+  type EstructuraPlantilla,
+} from "@/lib/plantillas-catalogo"
+import { canvaMcp, textoDe, type Transaccion } from "./canva-mcp"
+import { ponerFotos, type FotoPuesta } from "./fotos"
+import { guardarImagen } from "./plantillas"
 
 /**
- * Generacion de imagenes con Canva, via Composio.
+ * El subgenerador de Canva: dibuja una pieza copiando su plantilla.
  *
- * El estilo lo fija una brand template de Canva: una plantilla con campos. El
- * agente no dibuja, solo rellena esos campos (autofill) y exporta el resultado
- * a PNG. Asi el estilo sale igual cada vez —es la plantilla, no el modelo— y lo
- * unico que cambia es el texto y las imagenes de cada pieza.
+ *   1. Copia el diseno maestro con solo las paginas que la pieza usa (portada,
+ *      tantas laminas de contenido como escribio el agente, cierre).
+ *   2. Abre una transaccion de edicion en la copia.
+ *   3. Reemplaza los marcadores ({{hook}}, {{titulo}}, {{cuerpo}}, {{n}}) por
+ *      el texto de cada lamina y pone una foto nueva en cada hueco "foto".
+ *   4. Guarda, exporta a PNG y copia las imagenes al storage: las urls de
+ *      Canva caducan en horas.
  *
- * El flujo son cuatro pasos contra Canva, dos de ellos jobs asincronos que hay
- * que sondear:
- *   1. autofill  -> job
- *   2. status    -> espera a que el diseno este hecho
- *   3. export    -> job
- *   4. result    -> las urls de las imagenes
- *
- * Necesita Canva conectado (boton en Configuracion > Conexiones) y una brand
- * template creada. El flujo completo se prueba con esa plantilla puesta.
+ * El diseno de cada pieza queda en Canva, por si se quiere retocar a mano.
  */
 
-const BASE = "https://backend.composio.dev/api/v3.1/tools/execute"
-const TIMEOUT_MS = 45_000
-
-type Ejecucion = { ok: true; data: Record<string, unknown> } | { ok: false; error: string }
-
-/** Ejecuta una herramienta de Canva y devuelve su `data`. */
-async function ejecutar(
-  clave: string,
-  cuenta: string,
-  tool: string,
-  args: Record<string, unknown>
-): Promise<Ejecucion> {
-  try {
-    const res = await fetch(`${BASE}/${tool}`, {
-      method: "POST",
-      headers: { "x-api-key": clave, "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: COMPOSIO_USER, connected_account_id: cuenta, arguments: args }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    })
-    const json = (await res.json().catch(() => null)) as {
-      successful?: boolean
-      error?: string
-      data?: Record<string, unknown>
-    } | null
-
-    if (!res.ok || !json || json.successful === false) {
-      return { ok: false, error: json?.error || `Canva ${tool} respondio ${res.status}` }
-    }
-    return { ok: true, data: json.data ?? {} }
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) }
-  }
+export type PlantillaUsable = {
+  id: string
+  format: string
+  canva_design_id: string
+  estilo: unknown
+  estructura: EstructuraPlantilla
 }
 
-/** Sondea un job hasta que termina, sin pasarse del presupuesto de tiempo. */
-async function sondear(
-  clave: string,
-  cuenta: string,
-  tool: string,
-  args: Record<string, unknown>,
-  leerEstado: (data: Record<string, unknown>) => { hecho: boolean; fallo: boolean; data: Record<string, unknown> }
-): Promise<Ejecucion> {
-  // Hasta ~40s por job: los disenos de Canva tardan segundos, no minutos.
-  for (let intento = 0; intento < 20; intento++) {
-    const r = await ejecutar(clave, cuenta, tool, args)
-    if (!r.ok) return r
-    const estado = leerEstado(r.data)
-    if (estado.fallo) return { ok: false, error: `El job de Canva fallo (${tool}).` }
-    if (estado.hecho) return { ok: true, data: estado.data }
-    await new Promise((res) => setTimeout(res, 2000))
-  }
-  return { ok: false, error: `El job de Canva no termino a tiempo (${tool}).` }
+type Lamina = { hook?: string; title?: string; body?: string }
+
+export type PiezaParaDibujar = {
+  slides: (Lamina & { n: number; type: string })[]
+  title: string
+  body: string
+  caption: string
+  fotos: string[]
+  elemento: string
 }
 
-export type ResultadoCanva = { ok: true; imagenes: string[]; designId: string } | { ok: false; error: string }
+export type ResultadoDibujo =
+  | { ok: true; imagenes: string[]; designId: string; editUrl: string | null; fotos: FotoPuesta[]; avisos: string[] }
+  | { ok: false; error: string; designId?: string }
 
-/**
- * Rellena una brand template y exporta el diseno a imagenes.
- *
- * `campos` es el mapeo del dataset de la plantilla: para cada campo, su texto o
- * el asset de imagen. La forma la define Canva:
- *   { titular: { type: "text", text: "..." }, foto: { type: "image", asset_id } }
- */
-export async function generarConCanva(
-  brandTemplateId: string,
-  campos: Record<string, unknown>,
+/** Cuantas laminas de contenido admite la plantilla. Lo usa el agente al escribir. */
+export function laminasDeContenido(estructura: EstructuraPlantilla): number {
+  return estructura.paginas.filter((p) => p.rol === "contenido").length
+}
+
+export async function dibujarConCanva(opciones: {
+  plantilla: PlantillaUsable
+  pieza: PiezaParaDibujar
   titulo: string
-): Promise<ResultadoCanva> {
-  const clave = await claveComposio()
-  if (!clave) return { ok: false, error: "Falta la clave de Composio." }
-  // La cuenta conectada se busca cada vez: si reconectas Canva, cambia de id, y
-  // tenerla copiada en algun sitio la dejaria apuntando a una conexion muerta.
-  const estado = await estadoCanva()
-  if (!estado.conectado) return { ok: false, error: `Canva: ${estado.motivo} Conectalo en Configuracion > Conexiones.` }
-  const cuenta = estado.connectedAccountId
-  if (!brandTemplateId) return { ok: false, error: "La receta no tiene brand template de Canva." }
+  accountId: string
+  pieceId: string
+  terminosRespaldo: string[]
+}): Promise<ResultadoDibujo> {
+  const { plantilla, pieza } = opciones
+  const estilo = normalizarEstilo(plantilla.estilo)
+  const familia = familiaDeFormato(plantilla.format)
+  const total = plantilla.estructura.paginas.length
 
-  // 1. Autofill: crea el job que rellena la plantilla.
-  const inicio = await ejecutar(clave, cuenta, "CANVA_INITIATE_CANVA_DESIGN_AUTOFILL_JOB", {
-    brand_template_id: brandTemplateId,
-    title: titulo.slice(0, 255),
-    data: campos,
-  })
-  if (!inicio.ok) return inicio
-  const jobId = leerId(inicio.data, ["job", "id"]) ?? leerId(inicio.data, ["id"])
-  if (!jobId) return { ok: false, error: "Canva no devolvio el id del job de autofill." }
+  // ---------------------------------------------- que paginas y que texto
+  // valores[i] son los marcadores de la pagina i+1 de la copia.
+  let paginas: number[]
+  let valores: Record<string, string>[]
 
-  // 2. Espera al diseno.
-  const relleno = await sondear(
-    clave,
-    cuenta,
-    "CANVA_RETRIEVE_DESIGN_AUTOFILL_JOB_STATUS",
-    { jobId },
-    (d) => {
-      const job = (d.job ?? d) as Record<string, unknown>
-      const status = String(job.status ?? "")
-      return { hecho: status === "success", fallo: status === "failed", data: job }
-    }
-  )
-  if (!relleno.ok) return relleno
-  const designId = leerId(relleno.data, ["result", "design", "id"]) ?? leerId(relleno.data, ["design", "id"])
-  if (!designId) return { ok: false, error: "Canva no devolvio el id del diseno." }
+  if (familia === "laminas") {
+    const [portada, ...resto] = pieza.slides
+    if (!portada) return { ok: false, error: "La pieza no trae laminas." }
+    // El agente cierra siempre con una lamina de CTA. Si el cierre es fijo, esa
+    // la pone la plantilla y la del agente sobra.
+    const cierre = resto.pop()
+    const maximo = laminasDeContenido(plantilla.estructura)
+    const contenido = resto.slice(0, maximo)
+    if (contenido.length === 0) return { ok: false, error: "La pieza no trae laminas de contenido." }
 
-  // 3. Export: crea el job que saca las imagenes.
-  const exportInicio = await ejecutar(clave, cuenta, "CANVA_INITIATES_CANVA_DESIGN_EXPORT_JOB", {
-    design_id: designId,
-  })
-  if (!exportInicio.ok) return exportInicio
-  const exportId = leerId(exportInicio.data, ["job", "id"]) ?? leerId(exportInicio.data, ["id"])
-  if (!exportId) return { ok: false, error: "Canva no devolvio el id del export." }
-
-  // 4. Espera las urls.
-  const resultado = await sondear(
-    clave,
-    cuenta,
-    "CANVA_GET_DESIGN_EXPORT_JOB_RESULT",
-    { exportId },
-    (d) => {
-      const job = (d.job ?? d) as Record<string, unknown>
-      const status = String(job.status ?? "")
-      return { hecho: status === "success", fallo: status === "failed", data: job }
-    }
-  )
-  if (!resultado.ok) return resultado
-
-  const urls = extraerUrls(resultado.data)
-  if (urls.length === 0) return { ok: false, error: "Canva no devolvio imagenes exportadas." }
-
-  return { ok: true, imagenes: urls, designId }
-}
-
-/** Baja por un camino de claves, devolviendo el primer string que encuentre. */
-function leerId(data: Record<string, unknown>, camino: string[]): string | null {
-  let actual: unknown = data
-  for (const clave of camino) {
-    if (actual && typeof actual === "object" && clave in (actual as Record<string, unknown>)) {
-      actual = (actual as Record<string, unknown>)[clave]
-    } else {
-      return null
-    }
+    paginas = [1, ...contenido.map((_, i) => i + 2), total]
+    const totalCopia = paginas.length
+    valores = [
+      { hook: portada.hook || portada.title || "" },
+      ...contenido.map((l, i) => ({
+        titulo: l.title || l.hook || "",
+        cuerpo: l.body || "",
+        n: String(i + 2).padStart(2, "0") + ` / ${String(totalCopia).padStart(2, "0")}`,
+      })),
+      estilo.cierre.modo === "agente"
+        ? { titulo: cierre?.title || cierre?.hook || estilo.cierre.titulo, cuerpo: cierre?.body || estilo.cierre.texto }
+        : {},
+    ]
+  } else {
+    paginas = [1]
+    const titulo = pieza.title || pieza.slides[0]?.hook || pieza.slides[0]?.title || ""
+    valores = [{ titulo, hook: titulo, cuerpo: pieza.body || "" }]
   }
-  return typeof actual === "string" ? actual : null
-}
 
-/** Las urls de las imagenes exportadas, vengan como vengan anidadas. */
-function extraerUrls(data: Record<string, unknown>): string[] {
-  const urls: string[] = []
-  const visitar = (v: unknown) => {
-    if (typeof v === "string" && /^https?:\/\//.test(v)) urls.push(v)
-    else if (Array.isArray(v)) v.forEach(visitar)
-    else if (v && typeof v === "object") Object.values(v).forEach(visitar)
+  // ------------------------------------------------------------ 1. copiar
+  const copia = await canvaMcp<{ design?: { id: string; urls?: { edit_url?: string } } }>("CANVA_MCP_COPY_DESIGN", {
+    design_id: plantilla.canva_design_id,
+    ...(paginas.length < total ? { page_numbers: paginas } : {}),
+  })
+  if (!copia.ok) return { ok: false, error: `No se pudo copiar la plantilla: ${copia.error}` }
+  const designId = copia.data.design?.id
+  if (!designId) return { ok: false, error: "Canva no devolvio la copia de la plantilla." }
+  const editUrl = copia.data.design?.urls?.edit_url ?? null
+
+  // -------------------------------------------------- 2. abrir transaccion
+  const tx = await canvaMcp<Transaccion>("CANVA_MCP_START_EDITING_TRANSACTION", { design_id: designId })
+  if (!tx.ok) return { ok: false, error: `No se pudo abrir la copia: ${tx.error}`, designId }
+  const transactionId = tx.data.transaction.transaction_id
+
+  const cancelar = () => canvaMcp("CANVA_MCP_CANCEL_EDITING_TRANSACTION", { transaction_id: transactionId })
+
+  // ---------------------------------------------------- 3. textos y fotos
+  const operaciones: Record<string, unknown>[] = [{ type: "update_title", title: opciones.titulo.slice(0, 200) }]
+
+  for (const t of tx.data.richtexts) {
+    const original = textoDe(t)
+    if (!/\{\{\w+\}\}/.test(original)) continue
+    const mapa = valores[t.page_index - 1] ?? {}
+    const nuevo = original.replace(/\{\{(\w+)\}\}/g, (_, clave: string) => mapa[clave] ?? "").trim()
+    // Un marcador sin valor no puede quedar a la vista: se borra el elemento.
+    operaciones.push(
+      nuevo ? { type: "replace_text", element_id: t.element_id, text: nuevo } : { type: "delete_element", element_id: t.element_id }
+    )
   }
-  visitar(data.urls ?? data)
-  return [...new Set(urls)]
+
+  const huecos = tx.data.fills
+    .filter((f) => (f.alt_text?.text ?? "").trim().toLowerCase() === "foto" && f.type !== "video")
+    .sort((a, b) => a.page_index - b.page_index)
+    .map((f) => ({
+      elementId: f.element_id,
+      ancho: f.containerElement?.dimension?.width ?? 1080,
+      alto: f.containerElement?.dimension?.height ?? 1350,
+    }))
+  const { puestas, avisos } = await ponerFotos(pieza.fotos, huecos, opciones.terminosRespaldo)
+  for (const p of puestas) {
+    operaciones.push({ type: "update_fill", element_id: p.elementId, asset_type: "image", asset_id: p.assetId, alt_text: p.alt.slice(0, 200) })
+  }
+
+  const edicion = await canvaMcp("CANVA_MCP_PERFORM_EDITING_OPERATIONS", {
+    transaction_id: transactionId,
+    page_index: 1,
+    pages: tx.data.pages,
+    operations: operaciones,
+  }, 120_000)
+  if (!edicion.ok) {
+    await cancelar()
+    return { ok: false, error: `Canva rechazo la edicion: ${edicion.error}`, designId }
+  }
+
+  const guardado = await canvaMcp("CANVA_MCP_COMMIT_EDITING_TRANSACTION", { transaction_id: transactionId })
+  if (!guardado.ok) return { ok: false, error: `No se pudo guardar la pieza en Canva: ${guardado.error}`, designId }
+
+  // ------------------------------------------------------------ 4. exportar
+  const fmt = formatoPorId(plantilla.format)
+  const exportacion = await canvaMcp<{ job?: { status?: string; urls?: string[] } }>(
+    "CANVA_MCP_EXPORT_DESIGN",
+    {
+      design_id: designId,
+      format: { type: "png", width: fmt?.formato.ancho || 1080, height: fmt?.formato.alto || 1350 },
+    },
+    180_000
+  )
+  if (!exportacion.ok) return { ok: false, error: `No se pudo exportar: ${exportacion.error}`, designId }
+  const urls = exportacion.data.job?.urls ?? []
+  if (urls.length === 0) return { ok: false, error: "Canva no devolvio las imagenes exportadas.", designId }
+
+  const imagenes: string[] = []
+  for (let i = 0; i < urls.length; i++) {
+    const ruta = `studio/${opciones.accountId}/${opciones.pieceId}/${String(i + 1).padStart(2, "0")}.png`
+    const publica = await guardarImagen(urls[i], ruta)
+    if (!publica) return { ok: false, error: `No se pudo guardar la lamina ${i + 1}.`, designId }
+    imagenes.push(publica)
+  }
+
+  return { ok: true, imagenes, designId, editUrl, fotos: puestas, avisos }
 }

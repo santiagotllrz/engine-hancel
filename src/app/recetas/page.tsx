@@ -3,6 +3,7 @@ import { ConfigEstudio } from "@/components/recetas/config-estudio"
 import { EditorRecetas } from "@/components/recetas/editor-recetas"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getConfigEstudio, getPilaresSimple, getRecetas } from "@/lib/recetas-data"
+import { getPlantillas } from "@/lib/plantillas-data"
 
 export const dynamic = "force-dynamic"
 // "Generar ahora" corre el agente de contenido dentro de la accion.
@@ -15,10 +16,11 @@ export const metadata = { title: "Recetas · Engine Hancel" }
  * agentes que lo hacen.
  */
 export default async function RecetasPage() {
-  const [recetas, pilares, config] = await Promise.all([
+  const [recetas, pilares, config, plantillas] = await Promise.all([
     getRecetas(),
     getPilaresSimple(),
     getConfigEstudio(),
+    getPlantillas(),
   ])
 
   return (
@@ -31,7 +33,11 @@ export default async function RecetasPage() {
 
         <div className="max-w-3xl">
           <TabsContent value="recetas">
-            <EditorRecetas recetas={recetas} pilares={pilares} />
+            <EditorRecetas
+              recetas={recetas}
+              pilares={pilares}
+              plantillas={plantillas.map((t) => ({ id: t.id, name: t.name, format: t.format, lista: t.status === "lista" }))}
+            />
           </TabsContent>
           <TabsContent value="config">
             <ConfigEstudio config={config} />
