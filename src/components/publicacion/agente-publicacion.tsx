@@ -101,8 +101,9 @@ export function Publicacion({ vista }: { vista: PublicacionVista }) {
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Plan de hoy</CardTitle>
           <p className="text-muted-foreground mt-1 text-sm">
-            {vista.huecos.length} publicaciones · {programadas} con pieza asignada. El agente programa cada
-            hueco en cuanto su receta tiene la pieza; revisa cada diez minutos.
+            {vista.huecos.length} publicaciones · {programadas} ya programadas en Buffer. Buffer admite como
+            mucho diez programadas por red, así que el agente programa cada una hora y media antes de su
+            hora; revisa cada diez minutos.
           </p>
         </CardHeader>
         <CardContent>
@@ -128,15 +129,26 @@ export function Publicacion({ vista }: { vista: PublicacionVista }) {
                       <br />
                       <span className="text-xs">{h.receta}</span>
                     </TableCell>
-                    <TableCell className="max-w-56 truncate text-xs" title={h.pieza ?? ""}>
-                      {h.pieza ?? <span className="text-muted-foreground">Esperando pieza</span>}
+                    <TableCell className="max-w-56 text-xs" title={h.pieza ?? ""}>
+                      {h.pieza ? <span className="line-clamp-2">{h.pieza}</span> : null}
+                      {h.pendiente?.tipo === "sinPieza" ? (
+                        <span className="text-amber-600">Sin pieza: la receta genera a las {h.pendiente.generaA}</span>
+                      ) : null}
                     </TableCell>
-                    <TableCell>
-                      <Estado e={h.instagram} />
-                    </TableCell>
-                    <TableCell>
-                      <Estado e={h.facebook} />
-                    </TableCell>
+                    {h.pendiente?.tipo === "prevista" ? (
+                      <TableCell colSpan={2} className="text-muted-foreground text-xs">
+                        Lista. Se programa en Buffer {h.pendiente.seProgramaA}
+                      </TableCell>
+                    ) : (
+                      <>
+                        <TableCell>
+                          <Estado e={h.instagram} />
+                        </TableCell>
+                        <TableCell>
+                          <Estado e={h.facebook} />
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

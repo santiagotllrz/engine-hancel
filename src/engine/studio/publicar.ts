@@ -133,7 +133,7 @@ const MAX_INTENTOS = 3
  * proxima hora y media, y como el tick pasa cada diez minutos siempre va por
  * delante.
  */
-const VENTANA_MS = 90 * 60_000
+export const VENTANA_MS = 90 * 60_000
 
 /** El texto del post: el caption y los hashtags, cada uno con su #. */
 function textoDelPost(payload: { caption?: string; hashtags?: string[] }) {

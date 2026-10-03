@@ -2,7 +2,7 @@ import "server-only"
 
 import { supabaseAdmin } from "@/engine/supabase-admin"
 import { dayIn, getSettings } from "@/engine/schedule"
-import { ajustesPublicacion, planDelDia, type AjustesPublicacion } from "@/engine/studio/publicar"
+import { ajustesPublicacion, planDelDia, VENTANA_MS, type AjustesPublicacion } from "@/engine/studio/publicar"
 import { idDeCuentaActual } from "@/lib/accounts"
 
 /**
@@ -18,6 +18,12 @@ export type HuecoVista = {
   pilar: string
   receta: string
   pieza: string | null
+  /**
+   * Un hueco que aun no esta en Buffer: "prevista" si su receta ya tiene la
+   * pieza (sale en la proxima vuelta del agente, cuando entre en la ventana),
+   * "sinPieza" si la receta todavia no la genero. null si ya esta programado.
+   */
+  pendiente: { tipo: "prevista"; seProgramaA: string } | { tipo: "sinPieza"; generaA: string } | null
   instagram: EstadoRed
   facebook: EstadoRed
 }
@@ -40,15 +46,38 @@ export async function getPublicacion(): Promise<PublicacionVista> {
     supabase.from("content_pillars").select("id, name").eq("account_id", accountId).order("position").order("name"),
     supabase.from("studio_publications").select("slot, red, status, error, due_at, piece_id").eq("account_id", accountId).eq("dia", dia),
   ])
+  const lasRecetas = (recetas.data ?? []) as (Parameters<typeof planDelDia>[0][number] & { run_at?: number[] })[]
   const losPilares = (pilares.data ?? []) as { id: string; name: string }[]
   const plan = planDelDia(
-    (recetas.data ?? []) as Parameters<typeof planDelDia>[0],
+    lasRecetas,
     losPilares.map((p) => p.id),
     ajustes,
     dia,
     timezone
   )
   const lasFilas = (filas.data ?? []) as { slot: number; red: string; status: string; error: string | null; due_at: string | null; piece_id: string }[]
+
+  // Lo que el agente le dara a cada hueco que aun no programo: la pieza mas
+  // reciente de su receta que no se haya usado, en el orden del plan (igual
+  // que hace el agente).
+  const [{ data: usadas }, { data: libres }, { data: horas }] = await Promise.all([
+    supabase.from("studio_publications").select("piece_id").eq("account_id", accountId),
+    supabase
+      .from("studio_pieces")
+      .select("id, recipe_id, payload, created_at")
+      .eq("account_id", accountId)
+      .eq("status", "generated")
+      .is("published_at", null)
+      .order("created_at", { ascending: false }),
+    supabase.from("content_recipes").select("id, run_at").eq("account_id", accountId),
+  ])
+  const yaUsadas = new Set(((usadas ?? []) as { piece_id: string }[]).map((u) => u.piece_id))
+  const porReceta = new Map<string, { id: string; payload: unknown }[]>()
+  for (const p of (libres ?? []) as { id: string; recipe_id: string; payload: unknown }[]) {
+    if (yaUsadas.has(p.id)) continue
+    porReceta.set(p.recipe_id, [...(porReceta.get(p.recipe_id) ?? []), p])
+  }
+  const runAt = new Map(((horas ?? []) as { id: string; run_at: number[] }[]).map((r) => [r.id, r.run_at]))
 
   const ids = [...new Set(lasFilas.map((f) => f.piece_id))]
   const { data: piezas } = ids.length
@@ -61,6 +90,11 @@ export async function getPublicacion(): Promise<PublicacionVista> {
     ])
   )
   const hora = (d: Date) => d.toLocaleTimeString("es-CO", { timeZone: timezone, hour: "2-digit", minute: "2-digit" })
+  const tituloDePayload = (payload: unknown) => {
+    const s = (payload as { slides?: { hook?: string; title?: string }[] } | null)?.slides?.[0]
+    return (s?.hook || s?.title || "").replace(/\*/g, "")
+  }
+  const ahora = Date.now()
 
   return {
     ajustes,
@@ -73,13 +107,27 @@ export async function getPublicacion(): Promise<PublicacionVista> {
         return f ? { status: f.status, error: f.error } : null
       }
       const due = suyas.find((f) => f.due_at)?.due_at
+      let pieza = suyas[0] ? (tituloDe.get(suyas[0].piece_id) ?? null) : null
+      let pendiente: HuecoVista["pendiente"] = null
+      if (!suyas.length) {
+        const siguiente = porReceta.get(h.receta.id)?.shift()
+        if (siguiente) {
+          pieza = tituloDePayload(siguiente.payload)
+          const cuando = h.at.getTime() - VENTANA_MS
+          pendiente = { tipo: "prevista", seProgramaA: cuando <= ahora ? "en la próxima vuelta" : `hacia las ${hora(new Date(cuando))}` }
+        } else {
+          const hs = runAt.get(h.receta.id) ?? []
+          pendiente = { tipo: "sinPieza", generaA: hs.length ? hs.map((x) => `${x}:00`).join(" y ") : "sin horario" }
+        }
+      }
       return {
         slot: h.slot,
         // Si salio en otro hueco porque su pieza llego tarde, se ve la hora real.
         hora: hora(due ? new Date(due) : h.at),
         pilar: losPilares.find((p) => p.id === h.receta.pillar_id)?.name ?? "",
         receta: h.receta.name,
-        pieza: suyas[0] ? (tituloDe.get(suyas[0].piece_id) ?? null) : null,
+        pieza,
+        pendiente,
         instagram: red("instagram"),
         facebook: red("facebook"),
       }
