@@ -1,0 +1,115 @@
+flowchart TD
+
+  %% ============================================================ CAPAS
+  subgraph CAPAS["1 · Capas: de qué se habla y cómo (Capas)"]
+    P["Pilar<br/>ej. Cultivos"]
+    T["Tema<br/>ej. Suelo y abono"]
+    ST["Subtemas propios<br/>ej. Papa"]
+    LS["Listas de subtemas<br/>ej. Frutas · 100<br/>reutilizables en varios temas"]
+    I["Intención + descripción<br/>ej. Informar, Advertir"]
+    N["Narrativas que desbloquea la intención<br/>ej. El dato, El paso a paso"]
+    CTA["CTA con su descripción<br/>el de menor posición; si empatan,<br/>se reparte entre ideas"]
+    P --> T
+    T --> ST
+    LS -- "un tema usa la lista:<br/>sus elementos se vuelven subtemas" --> ST
+    I --> N
+  end
+
+  %% ============================================================ IDEAS
+  subgraph IDEAS["2 · Agente de ideas (Claude) → cartuchos"]
+    COMB["Combinaciones del pilar<br/>tema o subtema × intención × narrativa"]
+    CAD{"¿Quedan menos de 7 días de cartuchos?<br/>consumo = suma de piezas por día de las recetas activas"}
+    LOTE["Ronda: hasta 100 combinaciones<br/>primero las que menos ideas tienen"]
+    GEN_I["Claude escribe una idea por combinación<br/>en lotes de 25 · todas de asuntos distintos<br/>prompt: Configuración del estudio"]
+    ORT_I["Red de ortografía<br/>tildes y eñes"]
+    CART[("Cartuchos<br/>content_cartridges · estado: disponible")]
+    BTN_I["Botón Generar ronda<br/>en Ideas"]
+    COMB --> CAD
+    CAD -- "sí" --> LOTE
+    CAD -- "no: espera" --> CART
+    BTN_I --> LOTE
+    LOTE --> GEN_I --> ORT_I --> CART
+  end
+
+  P --> COMB
+  ST --> COMB
+  T --> COMB
+  N --> COMB
+  I --> COMB
+
+  %% ============================================================ DISPARO
+  subgraph DISPARO["3 · Cuándo corre: tick del estudio"]
+    CRON["pg_cron cada 10 min<br/>fire_studio_tick → /api/studio/tick"]
+    REC["Receta activa<br/>pilar · canal · formato · estilo · generador · piezas por día · horas"]
+    HORA{"¿Es su hora?<br/>y no corrió ya esta hora"}
+    CUPO{"¿Falta cupo del día?<br/>piezas por día ÷ horas"}
+    AHORA["Botón Generar ahora<br/>en Recetas · salta horario · al menos 1"]
+    CRON --> CAD
+    CRON --> REC --> HORA
+    HORA -- "sí" --> CUPO
+    HORA -- "no" --> FIN_NO["No hace nada"]
+    CUPO -- "no" --> FIN_NO
+    AHORA --> CLAIM
+  end
+
+  CUPO -- "sí" --> CLAIM["Reclamar cartuchos<br/>reclamar_cartuchos · FOR UPDATE SKIP LOCKED<br/>dos agentes nunca toman la misma idea<br/>cartucho → usado"]
+  CART --> CLAIM
+
+  %% ============================================================ CONTENIDO
+  subgraph CONTENIDO["4 · Agente de contenido (Claude)"]
+    CTX["Contexto del cartucho<br/>idea + nota · pilar · tema · subtema<br/>intención y narrativa con su descripción · CTA"]
+    FAM{"Familia del formato<br/>Canal → Formato"}
+    F_LAM["Láminas<br/>carrusel, documento"]
+    F_IMG["Imagen<br/>post de una imagen"]
+    F_TXT["Texto<br/>post sin imagen"]
+    EST["Estilo de la receta<br/>Infografía · Data-viz · Infografía de datos ·<br/>Fotográfico · Ilustración<br/>su descripción + instrucciones por estilo"]
+    WEB["Data-viz e Infografía de datos: búsqueda web<br/>datos reales con fuente y periodo"]
+    REDAC["Claude redacta la pieza<br/>prompt base + capas + familia + estilo<br/>por lámina: título, cuerpo y campos del estilo<br/>+ cierre con el CTA, obligatorio"]
+    CORR["Corrector ortográfico (Haiku)<br/>+ red fija de tildes"]
+    CTX --> FAM
+    FAM --> F_LAM & F_IMG & F_TXT
+    F_LAM --> REDAC
+    F_IMG --> REDAC
+    F_TXT --> REDAC
+    EST --> REDAC
+    WEB -.-> REDAC
+    REDAC --> CORR
+  end
+
+  CLAIM --> CTX
+  CTA --> CTX
+
+  CORR --> PIEZA[("Pieza<br/>studio_pieces · texto + ficha de capas<br/>pilar, tema, subtema, intención, narrativa, CTA,<br/>canal, formato, estilo, receta")]
+
+  PIEZA --> DIB{"¿Generador Canva, con estilo<br/>y formato visual?"}
+  DIB -- "no: formato de texto<br/>o sin estilo" --> LISTA
+
+  %% ============================================================ DIBUJO
+  subgraph DIBUJO["5 · Subgenerador Canva: dibujo de la pieza"]
+    IMG{"Imagen según el estilo"}
+    PEX["Fotográfico<br/>foto real de Pexels<br/>recortada a la medida del hueco"]
+    GEM["Ilustración, Infografía e Infografía de datos<br/>imagen sin texto generada con Gemini<br/>vía Composio · estilo visual + paleta"]
+    DVZ["Data-viz<br/>gráfico dibujado por el sistema<br/>+ iconos del asunto (Iconify)"]
+    COMP["Compositor<br/>escribe la pieza en HTML<br/>tamaño del formato + reglas del estilo<br/>portada · contenido · cierre"]
+    IMP["Canva MCP vía Composio<br/>importa el HTML como diseño editable"]
+    EXP["Exporta a PNG<br/>una imagen por lámina"]
+    STO[("Storage de Supabase<br/>las láminas no caducan")]
+    UBI["Infografía: Claude mira la imagen<br/>y ubica cada parte que nombran las etiquetas"]
+    IMG --> PEX & GEM & DVZ
+    PEX --> COMP
+    GEM --> UBI --> COMP
+    DVZ --> COMP
+    COMP --> IMP --> EXP --> STO
+  end
+
+  DIB -- "sí" --> IMG
+  STO --> LISTA["Pieza lista<br/>imágenes + texto del post + hashtags<br/>+ enlace para editar en Canva"]
+
+  %% ============================================================ FALLOS
+  REDAC -. "falla" .-> VUELVE["El cartucho vuelve a disponible<br/>la pieza queda como fallida"]
+  EXP -. "falla" .-> VUELVE
+  VUELVE -.-> CART
+
+  %% ============================================================ SALIDA
+  LISTA --> ESTUDIO["Estudio de pilares<br/>una pestaña por pilar · visor de láminas · ficha"]
+  ESTUDIO -.-> PUB["Publicación<br/>pendiente: última etapa"]

@@ -404,7 +404,7 @@ alter table public.content_templates add column if not exists tipo text;
 alter table public.content_templates add column if not exists descripcion text;
 alter table public.content_templates drop constraint if exists content_templates_tipo_check;
 alter table public.content_templates add constraint content_templates_tipo_check
-  check (tipo is null or tipo in ('infografia', 'dataviz', 'fotografico', 'ilustracion'));
+  check (tipo is null or tipo in ('infografia', 'dataviz', 'infodatos', 'fotografico', 'ilustracion'));
 
 -- La receta apunta a su plantilla (la columna template, jsonb, quedo sin uso).
 alter table public.content_recipes

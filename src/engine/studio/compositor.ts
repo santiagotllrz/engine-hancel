@@ -21,7 +21,15 @@ import type { EstiloPlantilla, TipoEstilo } from "@/lib/plantillas-catalogo"
 export type Grafico = {
   tipo: "barras" | "columnas" | "ranking" | "cifras"
   unidad: string
-  items: { etiqueta: string; valor: number | string; variacion?: "sube" | "baja" | "estable"; nota?: string }[]
+  items: {
+    etiqueta: string
+    valor: number | string
+    variacion?: "sube" | "baja" | "estable"
+    nota?: string
+    /** El icono pedido (en ingles) y su url ya resuelta. */
+    icono?: string
+    iconoUrl?: string
+  }[]
   destacado?: number
 }
 
@@ -51,6 +59,14 @@ export type LaminaCompuesta = {
   /** Una foto real de apoyo: la que acompana al dibujo o al grafico. */
   foto: string | null
   recurso: Recurso | null
+  /** Data-viz: la url del icono de la lamina. */
+  icono: string | null
+  /** Infografia: como se organizan las etiquetas sobre la imagen. */
+  esquema: "partes" | "pasos"
+  /** Infografia: donde esta en la imagen la parte de cada etiqueta (0 a 1), o null. */
+  puntos: ({ x: number; y: number } | null)[]
+  /** Ancho / alto de la imagen generada, para que su caja la respete y los puntos caigan en su sitio. */
+  aspecto: number | null
 }
 
 type Ctx = {
@@ -82,12 +98,44 @@ const px = (n: number) => `${Math.round(n)}px`
  */
 function texto(t: string, x: number, y: number, ancho: number, s: string) {
   if (!t.trim()) return ""
-  const size = Number(/font-size:(\d+)px/.exec(s)?.[1] ?? 32)
+  const base = Number(/font-size:(\d+)px/.exec(s)?.[1] ?? 32)
   const lh = Number(/line-height:([\d.]+)/.exec(s)?.[1] ?? 1.3)
   const peso = /font-weight:(7|8)00/.test(s) ? PESO_GRUESO : PESO_NORMAL
-  const partido = lineas(t, size, ancho, peso)
+  // Red contra desbordes: la caja no pasa del borde del lienzo, una palabra que
+  // no cabe en su linea encoge el texto, y un texto que se sale por abajo
+  // tambien encoge (hasta el 60 %). Las composiciones ya miden; esto es lo que
+  // impide que un caso que no midieron bien llegue a la pieza.
+  const borde = 20 * (LIENZO.W / 1080)
+  ancho = Math.max(40, Math.min(ancho, LIENZO.W - borde - x))
+  const palabraMasLarga = Math.max(...t.trim().split(/\s+/).map((p) => p.length))
+  let size = Math.min(base, ancho / (palabraMasLarga * peso))
+  let partido = lineas(t, size, ancho, peso)
+  while (size > base * 0.6 && y + partido.length * size * lh > LIENZO.H - borde) {
+    size *= 0.93
+    partido = lineas(t, size, ancho, peso)
+  }
+  size = Math.max(size, base * 0.6)
+  const estilo = size === base ? s : s.replace(/font-size:\d+px/, `font-size:${px(size)}`)
   const h = partido.length * size * lh * 1.15 + size * 0.4
-  return `<p style="position:absolute;left:${px(x)};top:${px(y)};width:${px(ancho)};min-height:${px(h)};margin:0;${s}">${partido.map(esc).join("<br>")}</p>`
+  return `<p style="position:absolute;left:${px(x)};top:${px(y)};width:${px(ancho)};min-height:${px(h)};margin:0;${estilo.includes("font-size") ? estilo : `font-size:${px(size)};${estilo}`}">${partido.map(esc).join("<br>")}</p>`
+}
+
+/** El lienzo de la pieza que se esta componiendo, para la red contra desbordes. */
+let LIENZO = { W: 1080, H: 1350 }
+
+/**
+ * Una pastilla de una linea: se mide con el mismo ancho de caracter con que se
+ * parte el texto, y si no cabe en `maxW` encoge la letra en vez de partirse
+ * (una pastilla partida en dos se sale por abajo).
+ */
+function pildora(t: string, x: number, y: number, maxW: number, opciones: { size: number; alto: number; pad: number; fondo: string; color: string; borde?: string }) {
+  const largo = Math.max(1, t.length)
+  const size = Math.min(opciones.size, (maxW - 2 * opciones.pad) / (largo * PESO_GRUESO))
+  const w = Math.min(maxW, largo * size * PESO_GRUESO + 2 * opciones.pad)
+  const html =
+    bloque(x, y, w, opciones.alto, `background:${opciones.fondo};${opciones.borde ? `border:${opciones.borde};` : ""}border-radius:${px(opciones.alto / 2)};`) +
+    texto(t, x, y + (opciones.alto - size * 1.2) / 2, w, `font-size:${px(size)};font-weight:700;line-height:1.2;text-align:center;color:${opciones.color};`)
+  return { html, w }
 }
 
 function bloque(x: number, y: number, w: number, h: number, s: string) {
@@ -178,15 +226,22 @@ function pastillas(c: Ctx, etiquetas: string[], x: number, y: number, ancho: num
   const size = 28 * c.k
   const altoP = 58 * c.k
   etiquetas.slice(0, 4).forEach((t, i) => {
-    const w = Math.min(ancho, t.length * size * 0.58 + 50 * c.k)
+    const w = Math.min(ancho, t.length * size * PESO_GRUESO + 50 * c.k)
     if (cx + w > x + ancho) {
       cx = x
       cy += altoP + 14 * c.k
     }
     const destacada = i === 0
-    html += bloque(cx, cy, w, altoP, `background:${destacada ? c.e.colores.acento : "transparent"};border:${px(3 * c.k)} solid ${destacada ? c.e.colores.acento : c.e.colores.textoSuave};border-radius:${px(altoP / 2)};`)
-    html += texto(t, cx, cy + (altoP - size * 1.2) / 2, w, `font-size:${px(size)};font-weight:700;line-height:1.2;text-align:center;color:${destacada ? c.e.colores.fondo : c.e.colores.texto};`)
-    cx += w + 14 * c.k
+    const p = pildora(t, cx, cy, ancho, {
+      size,
+      alto: altoP,
+      pad: 25 * c.k,
+      fondo: destacada ? c.e.colores.acento : "transparent",
+      color: destacada ? c.e.colores.fondo : c.e.colores.texto,
+      borde: `${px(3 * c.k)} solid ${destacada ? c.e.colores.acento : c.e.colores.textoSuave}`,
+    })
+    html += p.html
+    cx += p.w + 14 * c.k
   })
   return { html, alto: etiquetas.length ? cy - y + altoP : 0 }
 }
@@ -369,15 +424,15 @@ function recursoEnColumna(c: Ctx, r: Recurso, x: number, y: number, ancho: numbe
     let cy = y
     let html = ""
     r.items.slice(0, 3).forEach((it, i) => {
-      const w = Math.min(ancho, it.length * size * 0.62 + 50 * k)
+      const w = Math.min(ancho, it.length * size * PESO_GRUESO + 50 * k)
       if (cx + w > x + ancho) {
         cx = x
         cy += h + 12 * k
       }
       const fondo = i === 0 ? e.colores.acento : conAlfa(e.colores.texto, 0.16)
-      html += bloque(cx, cy, w, h, `background:${fondo};border-radius:${px(h / 2)};`)
-      html += texto(it, cx, cy + (h - size * 1.2) / 2, w, `font-size:${px(size)};line-height:1.2;font-weight:700;text-align:center;color:${i === 0 ? sobre(e.colores.acento) : e.colores.texto};`)
-      cx += w + 12 * k
+      const p = pildora(it, cx, cy, ancho, { size, alto: h, pad: 25 * k, fondo, color: i === 0 ? sobre(e.colores.acento) : e.colores.texto })
+      html += p.html
+      cx += p.w + 12 * k
     })
     return { html, h: cy - y + h }
   }
@@ -529,6 +584,115 @@ function ilustracion(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
 
 // --------------------------------------------------------------- infografia
 
+/** Una caja del aspecto de la imagen, lo mas grande posible dentro de la zona y centrada. */
+function cajaConAspecto(zona: { x: number; y: number; w: number; h: number }, aspecto: number) {
+  const w = Math.min(zona.w, zona.h * aspecto)
+  const h = w / aspecto
+  return { x: zona.x + (zona.w - w) / 2, y: zona.y + (zona.h - h) / 2, w, h }
+}
+
+/**
+ * Las etiquetas de un esquema de partes: cada una en una tarjeta al lado con
+ * mas espacio de su parte, y una linea que llega al punto exacto donde esta esa
+ * parte en la imagen. Las tarjetas de un mismo lado se apartan para no pisarse.
+ */
+function etiquetasConLinea(
+  c: Ctx,
+  items: { t: string; px: number; py: number; i: number }[],
+  zona: { x: number; y: number; w: number; h: number },
+  img: { y: number; h: number }
+) {
+  const { k, e } = c
+  const size = 28 * k
+  const pad = 18 * k
+  const gap = 16 * k
+  const tarjetas = items.map((it) => {
+    // Del lado del borde mas cercano a su parte: la linea es corta y las de
+    // un lado no cruzan la imagen hasta el otro.
+    const izquierda = it.px < zona.x + zona.w / 2
+    const espacio = (izquierda ? it.px - zona.x : zona.x + zona.w - it.px) - 40 * k
+    const maxW = Math.min(zona.w * 0.46, Math.max(240 * k, espacio))
+    const ls = lineas(it.t, size, maxW - 2 * pad, PESO_GRUESO)
+    // Con medio caracter de holgura: justo al limite, el texto se partia en
+    // una linea mas que la tarjeta y se salia por abajo.
+    const w = Math.min(maxW, Math.max(...ls.map((l) => l.length)) * size * PESO_GRUESO + 2 * pad + size * 0.6)
+    const h = ls.length * size * 1.18 + 2 * pad
+    const x = izquierda ? zona.x : zona.x + zona.w - w
+    // Si la parte esta tan cerca del borde que la tarjeta la taparia, la
+    // tarjeta va encima (o debajo) y la linea baja recta hasta el punto.
+    const tapa = w > espacio
+    const arriba = it.py - h - 50 * k >= img.y
+    const y = !tapa ? it.py - h / 2 : arriba ? it.py - h - 50 * k : it.py + 50 * k
+    return { ...it, izquierda, w, h, x, y, tapa }
+  })
+  // Por lado, de arriba abajo: cada tarjeta empieza donde acaba la anterior.
+  for (const lado of [true, false]) {
+    const col = tarjetas.filter((t) => t.izquierda === lado).sort((a, b) => a.py - b.py)
+    let tope = img.y
+    for (const t of col) {
+      t.y = Math.max(t.y, tope)
+      tope = t.y + t.h + gap
+    }
+    // Si la ultima se sale por abajo, la columna sube lo que haga falta.
+    const exceso = tope - gap - (img.y + img.h)
+    if (exceso > 0) for (const t of col) t.y = Math.max(img.y, t.y - exceso)
+  }
+  let html = ""
+  for (const t of tarjetas) {
+    const clave = t.i === 0
+    const color = clave ? e.colores.acento : e.colores.texto
+    if (t.tapa) {
+      // Recta vertical desde el borde de la tarjeta que mira al punto.
+      const desde = t.y > t.py ? t.y : t.y + t.h
+      html += bloque(t.px - 2 * k, Math.min(desde, t.py), 4 * k, Math.abs(desde - t.py), `background:${color};`)
+    } else {
+      const yLinea = t.y + t.h / 2
+      const xBorde = t.izquierda ? t.x + t.w : t.x
+      // Linea en codo: horizontal desde la tarjeta y vertical hasta el punto.
+      html += bloque(Math.min(xBorde, t.px), yLinea - 2 * k, Math.abs(t.px - xBorde), 4 * k, `background:${color};`)
+      if (Math.abs(yLinea - t.py) > 2 * k) html += bloque(t.px - 2 * k, Math.min(yLinea, t.py), 4 * k, Math.abs(yLinea - t.py), `background:${color};`)
+    }
+    html += bloque(t.px - 13 * k, t.py - 13 * k, 26 * k, 26 * k, `background:${color};border-radius:${px(13 * k)};border:${px(5 * k)} solid ${e.colores.fondo};`)
+    html += bloque(t.x, t.y, t.w, t.h, `background:${color};border-radius:${px(14 * k)};`)
+    html += texto(t.t, t.x + pad, t.y + pad, t.w - 2 * pad, `font-size:${px(size)};line-height:1.18;font-weight:800;color:${sobre(color)};`)
+  }
+  return html
+}
+
+/** La leyenda de un esquema de pasos: numero en un circulo y su accion, en una o dos columnas. */
+function leyendaPasos(c: Ctx, pasos: string[], x: number, y: number, ancho: number) {
+  const { k, e } = c
+  const cols = pasos.length >= 3 ? 2 : 1
+  const gapX = 36 * k
+  const anchoCol = (ancho - gapX * (cols - 1)) / cols
+  const circulo = 52 * k
+  const size = 28 * k
+  const anchoTexto = anchoCol - circulo - 18 * k
+  let html = ""
+  let h = 0
+  for (let fila = 0; fila * cols < pasos.length; fila++) {
+    const enFila = pasos.slice(fila * cols, fila * cols + cols)
+    const altoFila = Math.max(circulo, ...enFila.map((p) => alto(p, size, anchoTexto, 1.2, PESO_GRUESO)))
+    enFila.forEach((p, j) => {
+      const i = fila * cols + j
+      const cx = x + j * (anchoCol + gapX)
+      const cy = y + h
+      html += bloque(cx, cy, circulo, circulo, `background:${e.colores.acento};border-radius:${px(circulo / 2)};`)
+      html += texto(String(i + 1), cx, cy + (circulo - size * 1.15) / 2, circulo, `font-size:${px(size)};line-height:1.15;font-weight:800;text-align:center;color:${sobre(e.colores.acento)};`)
+      html += texto(p, cx + circulo + 18 * k, cy + Math.max(0, (circulo - alto(p, size, anchoTexto, 1.2, PESO_GRUESO)) / 2), anchoTexto, `font-size:${px(size)};line-height:1.2;font-weight:700;color:${e.colores.texto};`)
+    })
+    h += altoFila + 20 * k
+  }
+  return { html, h: Math.max(0, h - 20 * k) }
+}
+
+/**
+ * Infografia. La imagen manda y las etiquetas explican lo que se ve en ella:
+ * - "partes": cada etiqueta en una tarjeta con una linea hasta su parte.
+ * - "pasos": un numero sobre el lugar de cada paso y la leyenda debajo.
+ * Los puntos salen de ubicar cada parte en la imagen ya generada; una etiqueta
+ * sin punto no lleva linea: va en la leyenda o en una pastilla.
+ */
 function infografia(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
   const { W, H, k, m, e } = c
   if (l.rol === "cierre") return cierre(c, l)
@@ -546,43 +710,73 @@ function infografia(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
     y += alto(l.cuerpo, 30 * k, anchoTit, 1.3) + 30 * k
   }
 
-  // La imagen central y el esquema de partes: etiquetas en una columna con un
-  // conector y un punto hacia la imagen. La primera, la del dato clave, en acento.
   const etiquetas = l.etiquetas.slice(0, 4)
+  const pasos = l.esquema === "pasos" && etiquetas.length > 0
+  const conPunto = etiquetas.map((t, i) => ({ t, i, p: l.puntos[i] ?? null }))
+  // Sin imagen no hay donde apuntar: todas van abajo.
+  const sinPunto = conPunto.filter((x) => !x.p || !l.imagen).map((x) => x.t)
+  const pie = portada && e.textoDesliza ? 70 * k : 0
   const zona = c.apaisado
-    ? { x: W * 0.47, y: m, w: W * 0.53 - m, h: H - 2 * m }
-    : { x: m, y, w: W - 2 * m, h: H - y - m - (portada && e.textoDesliza ? 60 * k : 0) }
-  const conEtiquetas = etiquetas.length > 0 && !c.apaisado
-  const imgW = conEtiquetas ? zona.w * 0.6 : zona.w
-  // La caja no pasa de un poco mas alta que ancha: en una caja muy alta el
-  // objeto queda pequeno en el centro. Se centra en el espacio que queda.
-  const imgH = Math.min(zona.h, imgW * (conEtiquetas ? 1.25 : 0.95))
-  const imgY = zona.y + (zona.h - imgH) / 2
-  if (l.imagen) html += imagen(l.imagen, zona.x, imgY, imgW, imgH, "render", `border-radius:${px(24 * k)};`, "cover")
+    ? { x: W * 0.5, y: m, w: W * 0.5 - m, h: H - 2 * m }
+    : { x: m, y, w: W - 2 * m, h: H - y - m - pie }
 
-  if (conEtiquetas) {
-    const colX = zona.x + imgW + 40 * k
-    const colW = zona.w - imgW - 40 * k
-    const paso = imgH / (etiquetas.length + 1)
-    // El conector entra un poco en la imagen, hacia el objeto, que la llena.
-    const desde = zona.x + imgW * 0.84
-    etiquetas.forEach((t, i) => {
-      const cy = imgY + paso * (i + 1)
-      const color = i === 0 ? e.colores.acento : e.colores.texto
-      html += bloque(desde, cy - 2 * k, colX - desde - 14 * k, 4 * k, `background:${color};`)
-      html += bloque(desde - 12 * k, cy - 12 * k, 24 * k, 24 * k, `background:${color};border-radius:${px(12 * k)};border:${px(4 * k)} solid ${e.colores.fondo};`)
-      const size = ajustar(t, 32 * k, 18)
-      html += texto(t, colX, cy - size * 0.65, colW, `font-size:${px(size)};line-height:1.15;font-weight:800;color:${color};`)
-    })
-  } else if (etiquetas.length && c.apaisado) {
-    html += pastillas(c, etiquetas, m, H - m - 140 * k, W * 0.42).html
+  // Lo que va debajo de la imagen: la leyenda de los pasos, o las etiquetas
+  // que no se pudieron ubicar.
+  const anchoAbajo = c.apaisado ? W * 0.42 : zona.w
+  const abajo = pasos ? leyendaPasos(c, etiquetas, 0, 0, anchoAbajo).h : sinPunto.length ? pastillas(c, sinPunto, 0, 0, anchoAbajo).alto : 0
+  const reservaAbajo = c.apaisado || !abajo ? 0 : abajo + 36 * k
+
+  const img = cajaConAspecto({ ...zona, h: zona.h - reservaAbajo }, l.aspecto ?? 1)
+  if (l.imagen) html += imagen(l.imagen, img.x, img.y, img.w, img.h, "render", `border-radius:${px(24 * k)};`, "cover")
+
+  const enImagen = l.imagen
+    ? conPunto
+        .filter((x): x is { t: string; i: number; p: { x: number; y: number } } => Boolean(x.p))
+        .map((x) => ({ t: x.t, i: x.i, px: img.x + x.p.x * img.w, py: img.y + x.p.y * img.h }))
+    : []
+
+  if (pasos) {
+    // El numero de cada paso, sobre el lugar donde ocurre.
+    const lado = 64 * k
+    // Dos pasos en el mismo sitio se apartan: un numero no puede tapar a otro.
+    for (let i = 1; i < enImagen.length; i++)
+      for (let j = 0; j < i; j++) {
+        const a = enImagen[j]
+        const b = enImagen[i]
+        const d = Math.hypot(b.px - a.px, b.py - a.py)
+        if (d < lado * 1.1) {
+          const ux = d ? (b.px - a.px) / d : 1
+          const uy = d ? (b.py - a.py) / d : 0
+          b.px = a.px + ux * lado * 1.1
+          b.py = a.py + uy * lado * 1.1
+        }
+      }
+    for (const it of enImagen) {
+      html += bloque(it.px - lado / 2, it.py - lado / 2, lado, lado, `background:${e.colores.acento};border-radius:${px(lado / 2)};border:${px(5 * k)} solid ${e.colores.fondo};`)
+      html += texto(String(it.i + 1), it.px - lado / 2, it.py - 30 * k * 0.6, lado, `font-size:${px(30 * k)};line-height:1.15;font-weight:800;text-align:center;color:${sobre(e.colores.acento)};`)
+    }
+  } else if (enImagen.length) {
+    html += etiquetasConLinea(c, enImagen, zona, img)
   }
+
+  const yAbajo = c.apaisado ? H - m - abajo - pie : img.y + img.h + 36 * k
+  if (pasos) html += leyendaPasos(c, etiquetas, m, yAbajo, anchoAbajo).html
+  else if (sinPunto.length) html += pastillas(c, sinPunto, m, yAbajo, anchoAbajo).html
+
   html += numeracion(c, n, total, e.colores.textoSuave)
   if (l.rol === "portada") html += desliza(c, e.colores.textoSuave)
   return html
 }
 
 // ------------------------------------------------------------------ dataviz
+
+/** Un icono en un circulo tenue del color de acento. */
+function insignia(c: Ctx, url: string, x: number, y: number, lado: number) {
+  return (
+    bloque(x, y, lado, lado, `background:${conAlfa(c.e.colores.acento, 0.12)};border-radius:${px(lado / 2)};`) +
+    imagen(url, x + lado * 0.22, y + lado * 0.22, lado * 0.56, lado * 0.56, "icono", "", "contain")
+  )
+}
 
 function grafico(c: Ctx, g: Grafico, x: number, y: number, w: number, h: number) {
   const { k, e } = c
@@ -593,42 +787,58 @@ function grafico(c: Ctx, g: Grafico, x: number, y: number, w: number, h: number)
   const destacado = g.destacado ?? numericos.indexOf(Math.max(...numericos))
   const neutro = luminancia(e.colores.fondo) > 0.5 ? "#CFCFCF" : "#4A4A4A"
   const colorVar = (v?: string) => (v === "sube" ? e.colores.subida : v === "baja" ? e.colores.bajada : e.colores.texto)
-  const flecha = (v?: string) => (v === "sube" ? "▲ " : v === "baja" ? "▼ " : "")
-  const unidad = (t: string) => (g.unidad && !/[%$]/.test(t) ? `${t} ${g.unidad}` : t)
+  // El mismo icono en todas las categorias no distingue nada: sobra.
+  if (items.length > 1 && new Set(items.map((i) => i.iconoUrl)).size === 1) items.forEach((i) => (i.iconoUrl = undefined))
+  const conIconos = items.some((i) => i.iconoUrl)
   let html = ""
 
   if (g.tipo === "cifras") {
     // Cada tarjeta mide lo que lleva dentro (cifra, nombre y nota), y la cifra
     // se encoge si la zona no da: antes la tarjeta se encogia y la nota quedaba
-    // fuera, tapada por la tarjeta siguiente.
+    // fuera, tapada por la tarjeta siguiente. El icono va a la derecha.
     const gap = 30 * k
     const pad = 34 * k
+    const reservaIcono = conIconos ? 130 * k : 0
+    const anchoT = w - 100 * k - reservaIcono
     const fijo = (it: (typeof items)[number]) => 2 * pad + 14 * k + 40 * k + (it.nota ? 40 * k : 0)
     const disponible = (h - gap * (items.length - 1)) / items.length
     const sizeMax = Math.min(150 * k, Math.max(60 * k, disponible - Math.max(...items.map(fijo))))
-    const altos = items.map((it) => {
-      const valor = flecha(it.variacion) + unidad(formatearValor(it.valor))
-      const size = ajustar(valor, sizeMax, 10)
-      return { size, h: fijo(it) + alto(valor, size, w - 100 * k, 1, PESO_GRUESO) }
+    const valores = items.map((it) => valorDe(g, it))
+    // La cifra va siempre en una linea (encoge si no cabe) y se mide con el
+    // alto de linea con que Canva la pinta (~1.15), no con el del CSS: medida
+    // a 1, la cifra pisaba su nombre.
+    const altos = items.map((it, i) => {
+      const v = medirValor(valores[i], sizeMax, anchoT)
+      const textos = alto(it.etiqueta, 32 * k, anchoT, 1.2, PESO_GRUESO) + 6 * k + (it.nota ? alto(it.nota, 26 * k, anchoT, 1.2) : 0)
+      return { size: v.size, altoValor: v.h, h: 2 * pad + v.h + 14 * k + textos }
     })
     const total = altos.reduce((s, a) => s + a.h, 0) + gap * (items.length - 1)
     const fondoTarjeta = luminancia(e.colores.fondo) > 0.5 ? "#F2F2F2" : "#1C1C1C"
 
-    // Si apiladas no caben, van lado a lado: mismas tarjetas, en una fila.
+    // Si apiladas no caben, van lado a lado: mismas tarjetas, en una fila, con
+    // el icono arriba.
     if (total > h && items.length > 1) {
       const wc = (w - gap * (items.length - 1)) / items.length
-      const valores = items.map((it) => flecha(it.variacion) + unidad(formatearValor(it.valor)))
+      const ladoIcono = conIconos ? 64 * k : 0
       // Con margen (0.9): justo en el limite, la cifra salta de linea.
-      const size = Math.min(110 * k, ...valores.map((v) => (0.9 * (wc - 60 * k)) / Math.max(4, v.length * PESO_GRUESO)))
-      const altoValor = Math.max(...valores.map((v) => alto(v, size, wc - 60 * k, 1, PESO_GRUESO)))
-      const hc = Math.max(...items.map(fijo)) + altoValor + 40 * k
+      const medidas = valores.map((v) => medirValor(v, 110 * k, 0.9 * (wc - 60 * k)))
+      const size = Math.min(...medidas.map((d) => d.size))
+      const altoValor = Math.max(...medidas.map((d) => d.h))
+      // El nombre y la nota se miden ya partidos al ancho de la tarjeta: en
+      // una tarjeta estrecha ocupan varias lineas.
+      const altoTextos = Math.max(
+        ...items.map((it) => alto(it.etiqueta, 28 * k, wc - 60 * k, 1.2, PESO_GRUESO) + 6 * k + (it.nota ? alto(it.nota, 24 * k, wc - 60 * k, 1.2) : 0))
+      )
+      const hc = 2 * pad + altoValor + 14 * k + altoTextos + 20 * k + (ladoIcono ? ladoIcono + 18 * k : 0)
       const cy0 = y + Math.max(0, (h - hc) / 2)
       items.forEach((it, i) => {
         const cx = x + i * (wc + gap)
         html += bloque(cx, cy0, wc, hc, `background:${fondoTarjeta};border-radius:${px(24 * k)};`)
         let ty = cy0 + pad
+        if (it.iconoUrl) html += imagen(it.iconoUrl, cx + 30 * k, ty, ladoIcono, ladoIcono, "icono", "", "contain")
+        if (ladoIcono) ty += ladoIcono + 18 * k
         html += texto(valores[i], cx + 30 * k, ty, wc - 60 * k, `font-size:${px(size)};line-height:1;font-weight:800;color:${it.variacion ? colorVar(it.variacion) : i === destacado ? e.colores.acento : e.colores.texto};`)
-        ty += alto(valores[i], size, wc - 60 * k, 1, PESO_GRUESO) + 14 * k
+        ty += altoValor + 14 * k
         html += texto(it.etiqueta, cx + 30 * k, ty, wc - 60 * k, `font-size:${px(28 * k)};line-height:1.2;font-weight:700;color:${e.colores.texto};`)
         ty += alto(it.etiqueta, 28 * k, wc - 60 * k, 1.2, PESO_GRUESO) + 6 * k
         if (it.nota) html += texto(it.nota, cx + 30 * k, ty, wc - 60 * k, `font-size:${px(24 * k)};line-height:1.2;color:${e.colores.textoSuave};`)
@@ -638,14 +848,18 @@ function grafico(c: Ctx, g: Grafico, x: number, y: number, w: number, h: number)
 
     let cy = y + Math.max(0, (h - total) / 2)
     items.forEach((it, i) => {
-      const { size, h: alto1 } = altos[i]
+      const { size, h: alto1, altoValor } = altos[i]
       html += bloque(x, cy, w, alto1, `background:${fondoTarjeta};border-radius:${px(24 * k)};`)
+      if (it.iconoUrl) {
+        const lado = Math.min(100 * k, alto1 - 40 * k)
+        html += imagen(it.iconoUrl, x + w - 50 * k - lado, cy + (alto1 - lado) / 2, lado, lado, "icono", "", "contain")
+      }
       let ty = cy + pad
-      html += texto(flecha(it.variacion) + unidad(formatearValor(it.valor)), x + 50 * k, ty, w - 100 * k, `font-size:${px(size)};line-height:1;font-weight:800;color:${it.variacion ? colorVar(it.variacion) : i === destacado ? e.colores.acento : e.colores.texto};`)
-      ty += alto(flecha(it.variacion) + unidad(formatearValor(it.valor)), size, w - 100 * k, 1, PESO_GRUESO) + 14 * k
-      html += texto(it.etiqueta, x + 50 * k, ty, w - 100 * k, `font-size:${px(32 * k)};line-height:1.2;font-weight:700;color:${e.colores.texto};`)
-      ty += 40 * k
-      if (it.nota) html += texto(it.nota, x + 50 * k, ty, w - 100 * k, `font-size:${px(26 * k)};line-height:1.2;color:${e.colores.textoSuave};`)
+      html += texto(valores[i], x + 50 * k, ty, anchoT, `font-size:${px(size)};line-height:1;font-weight:800;color:${it.variacion ? colorVar(it.variacion) : i === destacado ? e.colores.acento : e.colores.texto};`)
+      ty += altoValor + 14 * k
+      html += texto(it.etiqueta, x + 50 * k, ty, anchoT, `font-size:${px(32 * k)};line-height:1.2;font-weight:700;color:${e.colores.texto};`)
+      ty += alto(it.etiqueta, 32 * k, anchoT, 1.2, PESO_GRUESO) + 6 * k
+      if (it.nota) html += texto(it.nota, x + 50 * k, ty, anchoT, `font-size:${px(26 * k)};line-height:1.2;color:${e.colores.textoSuave};`)
       cy += alto1 + gap
     })
     return html
@@ -659,26 +873,31 @@ function grafico(c: Ctx, g: Grafico, x: number, y: number, w: number, h: number)
       const altoCol = Math.max(8 * k, (Math.abs(numericos[i]) / max) * (h - 170 * k))
       const cx = x + i * hueco + (hueco - anchoCol) / 2
       html += bloque(cx, base - altoCol, anchoCol, altoCol, `background:${i === destacado ? e.colores.acento : neutro};border-radius:${px(8 * k)} ${px(8 * k)} 0 0;`)
-      html += texto(flecha(it.variacion) + unidad(formatearValor(it.valor)), cx - 30 * k, base - altoCol - 56 * k, anchoCol + 60 * k, `font-size:${px(34 * k)};font-weight:800;text-align:center;color:${it.variacion ? colorVar(it.variacion) : e.colores.texto};`)
+      const v = valorDe(g, it)
+      html += texto(v, x + i * hueco, base - altoCol - 56 * k, hueco, `font-size:${px(Math.min(34 * k, hueco / (Math.max(4, v.length) * PESO_GRUESO)))};font-weight:800;text-align:center;color:${it.variacion ? colorVar(it.variacion) : e.colores.texto};`)
       html += texto(it.etiqueta, x + i * hueco, base + 14 * k, hueco, `font-size:${px(24 * k)};line-height:1.15;font-weight:700;text-align:center;color:${e.colores.texto};`)
     })
     return html
   }
 
-  // barras y ranking: filas horizontales, el nombre junto a su barra.
+  // barras y ranking: filas horizontales, el nombre junto a su barra y, si lo
+  // hay, su icono delante.
   const paso = Math.min(170 * k, h / items.length)
   const rank = g.tipo === "ranking"
   const xb = x + (rank ? 80 * k : 0)
   // A la derecha de la barra mas larga tiene que caber su cifra, con flecha y
   // unidad, en una sola linea: se reserva el ancho del valor mas largo.
-  const valores = items.map((it) => flecha(it.variacion) + unidad(formatearValor(it.valor)))
+  const valores = items.map((it) => valorDe(g, it))
   const sizeValor = Math.min(...valores.map((v) => ajustar(v, 38 * k, 10)))
   const reserva = Math.min(w * 0.45, Math.max(...valores.map((v) => v.length)) * sizeValor * PESO_GRUESO + 40 * k)
   const wb = w - (rank ? 80 * k : 0) - reserva
+  const ladoIcono = conIconos ? 44 * k : 0
   items.forEach((it, i) => {
     const cy = y + i * paso
     if (rank) html += texto(String(i + 1), x, cy + 18 * k, 70 * k, `font-size:${px(56 * k)};font-weight:800;color:${i === destacado ? e.colores.acento : e.colores.textoSuave};`)
-    html += texto(it.etiqueta, xb, cy, wb, `font-size:${px(30 * k)};font-weight:700;color:${e.colores.texto};`)
+    if (it.iconoUrl) html += imagen(it.iconoUrl, xb, cy - 4 * k, ladoIcono, ladoIcono, "icono", "", "contain")
+    const xEtiqueta = xb + (ladoIcono ? ladoIcono + 14 * k : 0)
+    html += texto(it.etiqueta, xEtiqueta, cy, w - (xEtiqueta - x), `font-size:${px(30 * k)};font-weight:700;color:${e.colores.texto};`)
     const wBarra = Math.max(10 * k, (Math.abs(numericos[i]) / max) * wb)
     html += bloque(xb, cy + 48 * k, wBarra, 52 * k, `background:${i === destacado ? e.colores.acento : neutro};border-radius:${px(6 * k)};`)
     html += texto(valores[i], xb + wBarra + 18 * k, cy + 50 * k + (38 * k - sizeValor) / 2, reserva, `font-size:${px(sizeValor)};font-weight:800;color:${it.variacion ? colorVar(it.variacion) : e.colores.texto};`)
@@ -686,40 +905,135 @@ function grafico(c: Ctx, g: Grafico, x: number, y: number, w: number, h: number)
   return html
 }
 
+/** El valor de un dato como se lee: flecha de variacion, cifra y unidad. */
+function valorDe(g: Grafico, it: Grafico["items"][number]) {
+  const flecha = it.variacion === "sube" ? "▲ " : it.variacion === "baja" ? "▼ " : ""
+  const t = formatearValor(it.valor)
+  // Una "unidad" larga ("puntos criticos de fuga") no es una unidad: es texto
+  // que ya dice la etiqueta, y junto a cada barra solo estorba.
+  const unidad = g.unidad.length <= 10 ? g.unidad : ""
+  return flecha + (unidad && !/[%$]/.test(t) ? `${t} ${unidad}` : t)
+}
+
+/**
+ * El tamano de una cifra grande: en una linea, encogiendo hasta la mitad; si
+ * aun asi no cabe (el agente escribio una frase como cifra), en dos lineas.
+ * El alto va con el interlineado con que Canva la pinta (~1.15).
+ */
+function medirValor(v: string, max: number, ancho: number) {
+  const unaLinea = Math.min(ajustar(v, max, 10), ancho / (Math.max(4, v.length) * PESO_GRUESO))
+  if (unaLinea >= max * 0.5) return { size: unaLinea, h: unaLinea * 1.15 }
+  const size = max * 0.5
+  return { size, h: lineas(v, size, ancho, PESO_GRUESO).length * size * 1.15 }
+}
+
+/** Titulo (la conclusion del dato) y cuerpo, desde `y`. Devuelve donde acaban. */
+function cabeceraDatos(c: Ctx, l: LaminaCompuesta, y: number, ancho: number, portada: boolean) {
+  const { k, m, e } = c
+  const sizeT = ajustar(l.titulo, (portada ? 72 : 58) * k, 55)
+  let html = texto(l.titulo, m, y, ancho, `font-size:${px(sizeT)};line-height:1.06;font-weight:800;color:${e.colores.texto};`)
+  y += alto(l.titulo, sizeT, ancho, 1.06, PESO_GRUESO) + 16 * k
+  if (l.cuerpo) {
+    html += texto(l.cuerpo, m, y, ancho, `font-size:${px(30 * k)};line-height:1.3;color:${e.colores.textoSuave};`)
+    y += alto(l.cuerpo, 30 * k, ancho, 1.3) + 40 * k
+  } else y += 30 * k
+  return { html, y }
+}
+
+/**
+ * Data-viz. El grafico manda; el apoyo visual son iconos del asunto: el de la
+ * lamina arriba, en una insignia, y los de las categorias junto a su dato. Una
+ * lamina sin grafico lleva su icono en grande.
+ */
 function dataviz(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
   const { W, H, k, m, e } = c
   if (l.rol === "cierre") return cierre(c, l)
   const portada = l.rol === "portada" || l.rol === "unica"
   let html = ""
 
-  // La foto real del asunto, en una banda arriba: da contexto a la cifra sin
-  // competir con ella. El logo y la numeracion van sobre ella en pastillas.
-  // Mas alta en la portada, salvo que lleve grafico: entonces el espacio es suyo.
-  const banda = l.foto ? H * (portada && !l.grafico ? 0.3 : 0.22) : 0
-  if (l.foto) {
-    html += imagen(l.foto, 0, 0, W, banda, "foto")
-    html += bloque(0, banda - 8 * k, W, 8 * k, `background:${e.colores.acento};`)
-    html += cabeceraSobreFoto(c, n, total)
+  let yT = m + 50 * k
+  if (l.icono) {
+    const lado = (portada ? 120 : 100) * k
+    html += insignia(c, l.icono, m, m, lado)
+    yT = m + lado + 36 * k
   }
-
   const anchoTit = c.apaisado ? W * 0.42 : W - 2 * m
-  const sizeT = ajustar(l.titulo, (portada ? 72 : 58) * k, 55)
-  const yT = (l.foto ? banda : m) + 50 * k
-  html += texto(l.titulo, m, yT, anchoTit, `font-size:${px(sizeT)};line-height:1.06;font-weight:800;color:${e.colores.texto};`)
-  let y = yT + alto(l.titulo, sizeT, anchoTit, 1.06, PESO_GRUESO) + 16 * k
-  if (l.cuerpo) {
-    html += texto(l.cuerpo, m, y, anchoTit, `font-size:${px(30 * k)};line-height:1.3;color:${e.colores.textoSuave};`)
-    y += alto(l.cuerpo, 30 * k, anchoTit, 1.3) + 40 * k
-  } else y += 30 * k
+  const cab = cabeceraDatos(c, l, yT, anchoTit, portada)
+  html += cab.html
+  const y = cab.y
 
-  if (l.grafico) {
-    const zona = c.apaisado
-      ? { x: W * 0.47, y: (l.foto ? banda : m) + 20 * k, w: W * 0.53 - m, h: H - (l.foto ? banda : m) - m - 90 * k }
-      : { x: m, y: y + 20 * k, w: W - 2 * m, h: H - y - m - 120 * k - (l.rol === "portada" && e.textoDesliza ? 50 * k : 0) }
-    html += grafico(c, l.grafico, zona.x, zona.y, zona.w, zona.h)
+  const zona = c.apaisado
+    ? { x: W * 0.47, y: m + 20 * k, w: W * 0.53 - m, h: H - 2 * m - 90 * k }
+    : { x: m, y: y + 20 * k, w: W - 2 * m, h: H - y - m - 120 * k - (l.rol === "portada" && e.textoDesliza ? 50 * k : 0) }
+  if (l.grafico) html += grafico(c, l.grafico, zona.x, zona.y, zona.w, zona.h)
+  else if (l.icono && zona.h > 200 * k) {
+    const lado = Math.min(zona.w * 0.6, zona.h * 0.85)
+    html += insignia(c, l.icono, zona.x + (zona.w - lado) / 2, zona.y + (zona.h - lado) / 2, lado)
   }
   html += pieDeDatos(c, l)
-  if (!l.foto) html += numeracion(c, n, total, e.colores.textoSuave)
+  html += numeracion(c, n, total, e.colores.textoSuave)
+  if (l.rol === "portada" && !l.fuente) html += desliza(c, e.colores.textoSuave)
+  return html
+}
+
+// ---------------------------------------------------------------- infodatos
+
+/**
+ * Infografia de datos: la lectura de Data-viz con una imagen clave generada.
+ * El titulo es la conclusion del dato; la imagen (cuadrada) se pone al lado de
+ * las cifras, o al lado del dato destacado con el grafico debajo.
+ */
+function infodatos(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
+  const { W, H, k, m, e } = c
+  if (l.rol === "cierre") return cierre(c, l)
+  const portada = l.rol === "portada" || l.rol === "unica"
+  const anchoTit = c.apaisado ? W * 0.42 : W - 2 * m
+  const cab = cabeceraDatos(c, l, m + 50 * k, anchoTit, portada)
+  let html = cab.html
+  const g = l.grafico
+  const radio = `border-radius:${px(28 * k)};`
+  const conImagen = (x: number, y: number, lado: number) =>
+    l.imagen ? imagen(l.imagen, x, y, lado, lado, "imagen clave", radio) : ""
+
+  if (c.apaisado) {
+    const lado = Math.min(anchoTit, H - cab.y - m - 60 * k)
+    html += conImagen(m, cab.y, lado)
+    if (g) html += grafico(c, g, W * 0.47, m + 20 * k, W * 0.53 - m, H - 2 * m - 90 * k)
+  } else {
+    const zonaW = W - 2 * m
+    const disponible = H - cab.y - m - 80 * k - (l.rol === "portada" && !l.fuente && e.textoDesliza ? 50 * k : 0)
+    if (!g) {
+      const lado = Math.min(zonaW, disponible)
+      html += conImagen(m + (zonaW - lado) / 2, cab.y, lado)
+    } else if (g.tipo === "cifras") {
+      // La imagen a la izquierda y las cifras a su lado, a la misma altura.
+      const lado = Math.min(zonaW * 0.46, disponible)
+      html += conImagen(m, cab.y, lado)
+      html += grafico(c, g, m + lado + 36 * k, cab.y, zonaW - lado - 36 * k, Math.max(lado, disponible))
+    } else {
+      // La imagen junto al dato destacado, y el grafico completo debajo.
+      const lado = Math.min(zonaW * 0.4, disponible * 0.42)
+      html += conImagen(m, cab.y, lado)
+      const items = g.items
+      const numericos = items.map((i) => (typeof i.valor === "number" ? i.valor : parseFloat(String(i.valor).replace(/[^\d.,-]/g, "").replace(",", ".")) || 0))
+      const d = items[g.destacado ?? numericos.indexOf(Math.max(...numericos))] ?? items[0]
+      if (d) {
+        const xD = m + lado + 40 * k
+        const anchoD = zonaW - lado - 40 * k
+        const valor = valorDe(g, d)
+        const size = Math.min(ajustar(valor, 96 * k, 7), anchoD / (Math.max(4, valor.length) * PESO_GRUESO))
+        const altoValor = size * 1.15
+        const altoNombre = alto(d.etiqueta, 30 * k, anchoD, 1.2, PESO_GRUESO)
+        const yD = cab.y + Math.max(0, (lado - altoValor - 14 * k - altoNombre) / 2)
+        html += texto(valor, xD, yD, anchoD, `font-size:${px(size)};line-height:1;font-weight:800;color:${d.variacion === "baja" ? e.colores.bajada : e.colores.acento};`)
+        html += texto(d.etiqueta, xD, yD + altoValor + 14 * k, anchoD, `font-size:${px(30 * k)};line-height:1.2;font-weight:700;color:${e.colores.texto};`)
+      }
+      const yG = cab.y + lado + 40 * k
+      html += grafico(c, g, m, yG, zonaW, H - yG - m - 80 * k)
+    }
+  }
+  html += pieDeDatos(c, l)
+  html += numeracion(c, n, total, e.colores.textoSuave)
   if (l.rol === "portada" && !l.fuente) html += desliza(c, e.colores.textoSuave)
   return html
 }
@@ -731,6 +1045,7 @@ const COMPONER: Record<TipoEstilo, (c: Ctx, l: LaminaCompuesta, n: number, total
   ilustracion,
   infografia,
   dataviz,
+  infodatos,
 }
 
 export function componerHTML(opciones: {
@@ -746,6 +1061,7 @@ export function componerHTML(opciones: {
   const W = opciones.ancho || 1080
   const H = opciones.alto || 1350
   const k = W / 1080
+  LIENZO = { W, H }
   const ctx: Ctx = {
     W,
     H,

@@ -46,6 +46,8 @@ export type LlamadaClaude = {
   buscarWeb?: boolean
   /** Tope de busquedas cuando `buscarWeb` esta activo. */
   maxBusquedas?: number
+  /** Urls publicas de imagenes que el modelo tiene que mirar, antes del texto. */
+  imagenes?: string[]
 }
 
 /** Lo que costo la llamada. Sirve para ver el gasto real por paso. */
@@ -120,7 +122,17 @@ export async function llamarClaude(opciones: LlamadaClaude): Promise<ResultadoCl
       // deliberacion larga.
       thinking: { type: "disabled" },
       system,
-      messages: [{ role: "user", content: opciones.prompt }],
+      messages: [
+        {
+          role: "user",
+          content: opciones.imagenes?.length
+            ? [
+                ...opciones.imagenes.map((url) => ({ type: "image", source: { type: "url", url } })),
+                { type: "text", text: opciones.prompt },
+              ]
+            : opciones.prompt,
+        },
+      ],
     }
     if (opciones.buscarWeb) {
       body.tools = [

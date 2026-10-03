@@ -1,11 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { PlusIcon, SparklesIcon, Trash2Icon, PencilIcon } from "lucide-react"
+import { CopyIcon, PlusIcon, SparklesIcon, Trash2Icon, PencilIcon } from "lucide-react"
 
 import {
   alternarReceta,
   borrarReceta,
+  duplicarReceta,
   generarAhora,
   guardarReceta,
   type CamposReceta,
@@ -90,6 +91,14 @@ export function EditorRecetas({
     })
   }
 
+  const duplicar = (id: string) => {
+    setAviso(null)
+    startTransition(async () => {
+      const r = await duplicarReceta(id)
+      setAviso(r.ok ? "Receta duplicada. La copia queda apagada hasta que la enciendas." : `Error: ${r.error}`)
+    })
+  }
+
   const alternar = (id: string, enabled: boolean) => {
     startTransition(async () => {
       await alternarReceta(id, enabled)
@@ -142,6 +151,7 @@ export function EditorRecetas({
               disabled={pending}
               onEditar={() => abrirEdicion(r)}
               onBorrar={() => borrar(r.id)}
+              onDuplicar={() => duplicar(r.id)}
               onAlternar={(v) => alternar(r.id, v)}
               onGenerar={() => disparar(r.id)}
             />
@@ -174,6 +184,7 @@ function FilaReceta({
   disabled,
   onEditar,
   onBorrar,
+  onDuplicar,
   onAlternar,
   onGenerar,
 }: {
@@ -181,6 +192,7 @@ function FilaReceta({
   disabled: boolean
   onEditar: () => void
   onBorrar: () => void
+  onDuplicar: () => void
   onAlternar: (v: boolean) => void
   onGenerar: () => void
 }) {
@@ -223,6 +235,9 @@ function FilaReceta({
           </Button>
           <Button variant="ghost" size="icon" disabled={disabled} onClick={onEditar} aria-label="Editar">
             <PencilIcon className="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon" disabled={disabled} onClick={onDuplicar} title="Duplicar" aria-label="Duplicar">
+            <CopyIcon className="size-4" />
           </Button>
           <Button
             variant="ghost"

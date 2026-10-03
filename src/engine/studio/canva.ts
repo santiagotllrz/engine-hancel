@@ -5,14 +5,17 @@ import { canvaMcp } from "./canva-mcp"
 import { componerHTML, sinMarcas, type Grafico, type LaminaCompuesta, type Recurso } from "./compositor"
 import { elegirFotos } from "./fotos"
 import { generarImagen, proporcionPara } from "./imagenes"
+import { urlIcono } from "./iconos"
+import { ubicarPartes } from "./ubicar"
 
 /**
  * El subgenerador de Canva: convierte una pieza escrita en laminas dibujadas.
  *
  *   1. Prepara la imagen de cada lamina segun el estilo: una foto real de
  *      Pexels (Fotografico), una imagen generada sin texto (Ilustracion,
- *      Infografia) o ninguna, porque el grafico lo dibuja el compositor
- *      (Data-viz).
+ *      Infografia, Infografia de datos) o iconos del asunto (Data-viz, cuyo
+ *      grafico lo dibuja el compositor). En la Infografia, ademas, se ubica en
+ *      la imagen cada parte que nombran las etiquetas.
  *   2. El compositor escribe la pieza en HTML para el tamano del formato.
  *   3. Canva la importa como diseno editable; se exporta a PNG y las laminas se
  *      copian al storage, porque las urls de Canva caducan en horas.
@@ -30,6 +33,10 @@ export type LaminaPieza = {
   body?: string
   foto?: string
   visual?: string
+  /** Data-viz e Infografia de datos: el icono de la lamina, en ingles. */
+  icono?: string
+  /** Infografia: "partes" (etiquetas con linea) o "pasos" (numeros sobre la imagen). */
+  esquema?: "partes" | "pasos"
   etiquetas?: string[]
   grafico?: Grafico | null
   recurso?: Recurso | null
@@ -95,6 +102,10 @@ function laminasDe(pieza: PiezaParaDibujar, formatId: string, cierreFijo: boolea
     foto: null,
     recurso: l.recurso ?? null,
     antetitulo: (l.antetitulo ?? "").trim(),
+    icono: null,
+    esquema: l.esquema ?? "partes",
+    puntos: [],
+    aspecto: null,
     pedido: l,
   })
 
@@ -103,9 +114,13 @@ function laminasDe(pieza: PiezaParaDibujar, formatId: string, cierreFijo: boolea
     // La ultima es el cierre solo si es un cierre de verdad: si el agente la
     // escribio con foto, imagen o grafico, es contenido y se dibuja como tal
     // (tratarla como cierre perdia su imagen). Un cierre fijo se anade aparte.
+    // Las piezas nuevas marcan su cierre (type "cierre"); en las de antes se
+    // deduce.
     const ultima = s[s.length - 1]
     const ultimaEsCierre =
-      s.length > 2 && !cierreFijo && !ultima.foto && !ultima.visual && !ultima.grafico && !(ultima.etiquetas ?? []).length
+      !cierreFijo &&
+      (ultima.type === "cierre" ||
+        (s.length > 2 && !ultima.foto && !ultima.visual && !ultima.grafico && !(ultima.etiquetas ?? []).length))
     const salida = s.map((l, i) =>
       a(l, i === 0 ? "portada" : i === s.length - 1 && ultimaEsCierre ? "cierre" : "contenido")
     )
@@ -121,7 +136,8 @@ function cajaImagen(tipo: TipoEstilo, W: number, H: number, conEtiquetas: boolea
   const apaisado = W > H * 1.15
   if (tipo === "fotografico") return { w: W, h: H }
   if (apaisado) return { w: W * 0.5, h: H * 0.85 }
-  if (tipo === "infografia") return { w: (W - 160) * (conEtiquetas ? 0.6 : 1), h: H * 0.58 }
+  if (tipo === "infografia") return conEtiquetas ? { w: W - 160, h: H * 0.56 } : { w: W - 160, h: H * 0.6 }
+  if (tipo === "infodatos") return { w: W - 160, h: H * 0.3 }
   return { w: W - 160, h: H * 0.5 }
 }
 
@@ -167,55 +183,61 @@ export async function dibujarConCanva(opciones: {
         recursos.push(`Foto de ${f.autor || "Pexels"} (Pexels)`)
       } else avisos.push("Una lamina se quedo sin foto.")
     })
-  } else if (estilo.tipo === "ilustracion" || estilo.tipo === "infografia") {
+  } else if (estilo.tipo === "ilustracion" || estilo.tipo === "infografia" || estilo.tipo === "infodatos") {
     const c = estilo.estilo.colores
     for (let i = 0; i < conImagen.length; i += 3) {
       await Promise.all(
         conImagen.slice(i, i + 3).map(async ({ l, i: idx }) => {
           const caja = cajaImagen(estilo.tipo, W, H, l.etiquetas.length > 0)
           const base = l.pedido.visual || pieza.elemento || l.titulo
-          // En la infografia el objeto tiene que verse grande: las etiquetas
-          // señalan sus partes.
-          // En la infografia el objeto tiene que verse grande: las etiquetas
-          // señalan sus partes.
-          const prompt = estilo.tipo === "infografia" ? `${base}. The subject is large and fills most of the frame.` : base
+          // En la infografia el objeto tiene que verse grande y con sus partes
+          // separadas: las etiquetas las senalan. Sin marco: el generador
+          // tendia a dibujar un cuadro dentro del cuadro.
+          const prompt =
+            estilo.tipo === "ilustracion"
+              ? base
+              : `${base}. The subject is large and fills most of the frame, with its parts clearly visible and separated. Full-bleed, no frame, no border, no inset picture.`
+          const proporcion = proporcionPara(caja.w, caja.h)
           const r = await generarImagen({
             prompt,
             estiloVisual: estilo.estilo.estiloVisual,
             colores: [c.fondo, c.acento, c.texto],
-            proporcion: proporcionPara(caja.w, caja.h),
+            proporcion,
             ruta: `${carpeta}/imagen-${String(idx + 1).padStart(2, "0")}.png`,
           })
-          if ("url" in r) {
-            l.imagen = r.url
-            recursos.push("Imagen generada (Gemini)")
-          } else avisos.push(`Imagen de la lamina ${idx + 1}: ${r.error}`)
+          if (!("url" in r)) {
+            avisos.push(`Imagen de la lamina ${idx + 1}: ${r.error}`)
+            return
+          }
+          l.imagen = r.url
+          const [a, b] = proporcion.split(":").map(Number)
+          l.aspecto = a / b
+          recursos.push("Imagen generada (Gemini)")
+          // Las etiquetas de la infografia senalan lo que de verdad se ve: se
+          // ubica cada parte en la imagen ya generada.
+          if (estilo.tipo === "infografia" && l.etiquetas.length) {
+            l.puntos = await ubicarPartes(r.url, l.etiquetas, l.pedido.visual || l.titulo)
+            if (l.puntos.every((p) => !p)) avisos.push(`Lamina ${idx + 1}: no se pudieron ubicar las etiquetas en la imagen.`)
+          }
         })
       )
     }
   }
 
-  // Data-viz lleva ademas una foto real de apoyo, en una banda sobre el grafico.
-  if (estilo.tipo === "dataviz") {
-    const conFoto = conImagen.filter(({ l }) => l.pedido.foto)
-    if (conFoto.length) {
-      const apaisado = W > H * 1.15
-      const ancho = W
-      const alto = H * (apaisado ? 0.3 : 0.3)
-      const fotos = await elegirFotos(
-        conFoto.map(({ l }) => [l.pedido.foto ?? ""]),
-        opciones.terminosRespaldo,
-        ancho,
-        alto
-      )
-      conFoto.forEach(({ l }, k) => {
-        const f = fotos[k]
-        if (f) {
-          l.foto = f.url
-          recursos.push(`Foto de ${f.autor || "Pexels"} (Pexels)`)
-        }
-      })
-    }
+  // Los estilos de datos llevan iconos del asunto, en el color de acento: el de
+  // la lamina y los de las categorias del grafico.
+  if (estilo.tipo === "dataviz" || estilo.tipo === "infodatos") {
+    const color = estilo.estilo.colores.acento
+    await Promise.all(
+      conImagen.flatMap(({ l }) => [
+        (async () => {
+          if (estilo.tipo === "dataviz") l.icono = await urlIcono(l.pedido.icono, color)
+        })(),
+        ...(l.grafico?.items ?? []).map(async (it) => {
+          it.iconoUrl = (await urlIcono(it.icono, color)) ?? undefined
+        }),
+      ])
+    )
   }
 
   // ------------------------------------------------------- 2. componer

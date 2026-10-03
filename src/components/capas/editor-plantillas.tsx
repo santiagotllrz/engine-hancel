@@ -197,7 +197,7 @@ function FormEstilo({
     ["texto", "Texto"],
     ["textoSuave", "Texto suave"],
     ["acento", "Acento (dato clave)"],
-    ...(tipo === "dataviz"
+    ...(tipo === "dataviz" || tipo === "infodatos"
       ? ([
           ["subida", "Subida"],
           ["bajada", "Bajada"],
@@ -270,7 +270,7 @@ function FormEstilo({
             </Campo>
           ) : null}
         </div>
-        {tipo === "ilustracion" || tipo === "infografia" ? (
+        {tipo === "ilustracion" || tipo === "infografia" || tipo === "infodatos" ? (
           <Campo label="Cómo se piden las imágenes (en inglés: trazo, luz, fondo, nivel de detalle)">
             <Textarea rows={3} value={e.estiloVisual} disabled={disabled} onChange={(ev) => set("estiloVisual", ev.target.value)} className="font-mono text-xs" />
           </Campo>

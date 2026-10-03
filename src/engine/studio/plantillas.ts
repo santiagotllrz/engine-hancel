@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../supabase-admin"
-import { esTipo, normalizarEstilo, TIPOS, TIPOS_ESTILO, type TipoEstilo } from "@/lib/plantillas-catalogo"
+import { DESCRIPCION_DATAVIZ_CON_FOTO, esTipo, normalizarEstilo, TIPOS, TIPOS_ESTILO, type TipoEstilo } from "@/lib/plantillas-catalogo"
 import { dibujarConCanva, type EstiloUsable, type PiezaParaDibujar } from "./canva"
 
 /**
@@ -37,6 +37,15 @@ export async function asegurarEstilos(accountId: string): Promise<void> {
       .eq("id", vieja.id)
     vieja.tipo = "fotografico"
   }
+
+  // Data-viz dejo las fotos por iconos: la descripcion de serie de antes las
+  // pedia. Solo se cambia si nadie la edito.
+  await supabase
+    .from("content_templates")
+    .update({ descripcion: TIPOS.dataviz.descripcion, updated_at: new Date().toISOString() })
+    .eq("account_id", accountId)
+    .eq("tipo", "dataviz")
+    .eq("descripcion", DESCRIPCION_DATAVIZ_CON_FOTO)
 
   const faltan = TIPOS_ESTILO.filter((t) => !filas.some((f) => f.tipo === t))
   if (faltan.length === 0) return
@@ -115,19 +124,45 @@ const MUESTRAS: Record<TipoEstilo, PiezaParaDibujar> = {
         n: 1,
         type: "photo_hook",
         hook: "Ejemplo: así se ve una cifra protagonista",
-        grafico: { tipo: "cifras", unidad: "", items: [{ etiqueta: "Cifra de ejemplo", valor: "12,5 %", variacion: "sube", nota: "Dato ilustrativo, no real" }] },
+        icono: "coffee",
+        grafico: { tipo: "cifras", unidad: "", items: [{ etiqueta: "Cifra de ejemplo", valor: "12,5 %", variacion: "sube", nota: "Dato ilustrativo, no real", icono: "coffee beans" }] },
         fuente: "Ejemplo",
         periodo: "Muestra del estilo",
-        foto: "coffee beans harvest",
       },
       {
         n: 2,
         type: "text",
         title: "Ejemplo: una barra destaca el dato clave",
-        grafico: { tipo: "barras", unidad: "", items: [{ etiqueta: "Categoría A", valor: 82 }, { etiqueta: "Categoría B", valor: 64 }, { etiqueta: "Categoría C", valor: 41 }, { etiqueta: "Categoría D", valor: 27 }] },
+        icono: "chart bar",
+        grafico: { tipo: "barras", unidad: "", items: [{ etiqueta: "Categoría A", valor: 82, icono: "plant" }, { etiqueta: "Categoría B", valor: 64, icono: "tractor" }, { etiqueta: "Categoría C", valor: 41, icono: "drop" }, { etiqueta: "Categoría D", valor: 27, icono: "sun" }] },
         fuente: "Ejemplo",
         periodo: "Muestra del estilo",
-        foto: "coffee plantation hills",
+      },
+    ],
+  },
+  infodatos: {
+    title: "",
+    body: "",
+    fotos: [],
+    elemento: "",
+    slides: [
+      {
+        n: 1,
+        type: "photo_hook",
+        hook: "Ejemplo: la cifra y el objeto del que habla",
+        visual: "A burlap sack full of green coffee beans, a few beans spilled in front",
+        grafico: { tipo: "cifras", unidad: "", items: [{ etiqueta: "Cifra de ejemplo", valor: "12,5 %", variacion: "sube", nota: "Dato ilustrativo, no real" }] },
+        fuente: "Ejemplo",
+        periodo: "Muestra del estilo",
+      },
+      {
+        n: 2,
+        type: "text",
+        title: "Ejemplo: un ranking con su imagen clave",
+        visual: "A single ripe red coffee cherry branch with leaves",
+        grafico: { tipo: "ranking", unidad: "", items: [{ etiqueta: "Categoría A", valor: 82 }, { etiqueta: "Categoría B", valor: 64 }, { etiqueta: "Categoría C", valor: 41 }] },
+        fuente: "Ejemplo",
+        periodo: "Muestra del estilo",
       },
     ],
   },

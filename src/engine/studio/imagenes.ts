@@ -89,7 +89,9 @@ export async function generarImagen(opciones: {
     // Los colores van por su nombre: con el codigo hexadecimal, el generador lo
     // dibujaba como texto ("#FB56EC" en una esquina del dibujo).
     opciones.colores.length ? `Color palette limited to ${[...new Set(opciones.colores.map(nombreDeColor))].join(", ")}.` : "",
-    "Absolutely no text, letters, numbers, words, symbols, chemical formulas, color codes, captions, watermarks or logos anywhere in the image. If the idea suggests labels, draw the shapes and leave them blank.",
+    // Tampoco cajas vacias: con "deja las etiquetas en blanco" dibujaba
+    // recuadros vacios donde iria el texto.
+    "Absolutely no text, letters, numbers, words, symbols, chemical formulas, color codes, captions, watermarks or logos anywhere in the image. Do not draw empty labels, signs, boxes or frames meant for text either.",
   ]
     .filter(Boolean)
     .join(" ")

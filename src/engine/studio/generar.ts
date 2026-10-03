@@ -85,7 +85,7 @@ type Contexto = {
   subtema: string | null
   intencion: { name: string; description: string | null } | null
   narrativa: { name: string; description: string | null } | null
-  cta: string | null
+  cta: { name: string; description: string | null } | null
 }
 
 type PiezaPayload = {
@@ -114,8 +114,15 @@ function graficoDe(v: unknown): Grafico | null {
       valor: x.valor as number | string,
       variacion: ["sube", "baja", "estable"].includes(String(x.variacion)) ? (x.variacion as "sube" | "baja" | "estable") : undefined,
       nota: typeof x.nota === "string" ? x.nota.trim() : undefined,
+      icono: typeof x.icono === "string" && x.icono.trim() ? x.icono.trim() : undefined,
     }))
   if (items.length === 0) return null
+  // Barras, columnas y ranking comparan numeros: si algun valor es texto ("1
+  // etapa del recorrido"), el grafico no mide nada y se descarta. Las cifras
+  // si admiten un valor con su unidad ("15 cm").
+  const esNumero = (v: number | string) =>
+    typeof v === "number" || /^[▲▼+\-]?\s*(US\$|\$)?\s*[\d.,]+\s*(%|[a-zA-Z$/]{0,6})?$/.test(v.trim())
+  if (tipo !== "cifras" && !items.every((i) => esNumero(i.valor))) return null
   return {
     tipo,
     unidad: typeof g.unidad === "string" ? g.unidad.trim() : "",
@@ -148,17 +155,21 @@ CAPAS
 - tema: ${ctx.tema ?? "(sin tema)"}${ctx.subtema ? ` | subtema: ${ctx.subtema}` : ""}
 - intención: ${ctx.intencion?.name ?? "(sin intención)"}${ctx.intencion?.description ? ` (${ctx.intencion.description})` : ""}
 - narrativa: ${ctx.narrativa?.name ?? "(sin narrativa)"}${ctx.narrativa?.description ? ` (${ctx.narrativa.description})` : ""}
-- cta: ${ctx.cta ?? "(sin cta)"}
+- cta: ${ctx.cta?.name ?? "(sin cta)"}${ctx.cta?.description ? ` (${ctx.cta.description})` : ""}
 
 FORMATO
 - familia: ${familia}
 - formato: ${formatId}${bloqueEstilo}
-
+${familia === "laminas" ? `
+El cierre va aparte, en "cierre" ({"title","body"}), y es la invitación concreta al CTA de arriba. Es obligatorio.
+` : `
+El caption termina con el CTA de arriba.
+`}
 Recuerda: todo lo que escribas lleva sus tildes y sus eñes, aunque la idea de arriba venga sin ellas.`
 
   // Data-viz necesita datos reales: el agente los busca en la web en la misma
   // llamada y los cita. Los demas estilos no buscan nada.
-  const buscar = Boolean(estilo && conEstilo && estilo.tipo === "dataviz")
+  const buscar = Boolean(estilo && conEstilo && (estilo.tipo === "dataviz" || estilo.tipo === "infodatos"))
   const r = await llamarClaude({ model, system, prompt, maxTokens: buscar ? 6000 : 4000, buscarWeb: buscar, maxBusquedas: 5 })
   if (!r.ok) throw new Error(r.error)
 
@@ -176,6 +187,8 @@ Recuerda: todo lo que escribas lleva sus tildes y sus eñes, aunque la idea de a
         body: str(s.body) || undefined,
         foto: str(s.foto) || undefined,
         visual: str(s.visual) || undefined,
+        icono: str(s.icono) || undefined,
+        esquema: s.esquema === "pasos" ? ("pasos" as const) : s.esquema === "partes" ? ("partes" as const) : undefined,
         etiquetas: arr(s.etiquetas).slice(0, 4),
         grafico: graficoDe(s.grafico),
         recurso: recursoDe(s.recurso),
@@ -184,6 +197,31 @@ Recuerda: todo lo que escribas lleva sus tildes y sus eñes, aunque la idea de a
         periodo: str(s.periodo) || undefined,
       }))
     : []
+
+  // El cierre con el CTA va aparte y es obligatorio: dejarlo como "la ultima
+  // lamina" hacia que el agente a veces cerrara con una lamina de contenido (con
+  // imagen y etiquetas) y la pieza saliera sin CTA. Si aun asi no lo escribe, se
+  // arma con el ejemplo del propio CTA.
+  if (familia === "laminas" && slides.length) {
+    const c = (bruto.cierre ?? {}) as Record<string, unknown>
+    const ejemplo = /Ejemplo:\s*["“](.+?)["”]/.exec(ctx.cta?.description ?? "")?.[1]
+    // Con un prompt propio el agente puede seguir dejando el cierre como
+    // ultima lamina: si ademas trae "cierre", sobra; si no, es el cierre.
+    const ultima = slides[slides.length - 1]
+    if (slides.length > 1 && /cierre|cta|cta_close|close/i.test(ultima.type)) {
+      if (str(c.title)) slides.pop()
+      else ultima.type = "cierre"
+    }
+    if (slides[slides.length - 1].type !== "cierre") slides.push({
+      n: slides.length + 1,
+      type: "cierre",
+      title: str(c.title) || ejemplo || "Guarda esta pieza para tenerla a mano",
+      body: str(c.body) || undefined,
+      etiquetas: [],
+      grafico: null,
+      recurso: null,
+    })
+  }
 
   const payload: PiezaPayload = {
     familia,
@@ -236,7 +274,7 @@ async function contextoDe(accountId: string, cartuchos: CartuchoFila[]): Promise
     todas((d, h) => supabase.from("content_subtopics").select("id, name").eq("account_id", accountId).order("id").range(d, h)).then((data) => ({ data, error: null })),
     supabase.from("content_intents").select("id, name, description").eq("account_id", accountId),
     supabase.from("content_narratives").select("id, name, description").eq("account_id", accountId),
-    supabase.from("content_ctas").select("id, name").eq("account_id", accountId).order("position"),
+    supabase.from("content_ctas").select("id, name, description, position").eq("account_id", accountId).order("position"),
   ])
 
   const mapa = <T,>(data: unknown) =>
@@ -247,10 +285,18 @@ async function contextoDe(accountId: string, cartuchos: CartuchoFila[]): Promise
   const nInt = mapa<{ name: string; description: string | null }>(intenciones.data)
   const nNarr = mapa<{ name: string; description: string | null }>(narrativas.data)
 
-  // El cartucho no guarda un CTA concreto (el CTA es de la narrativa/receta); se
-  // toma el primero de la lista de la cuenta (el orden de Capas) como voz de
-  // conversion por defecto. Sin orden explicito podia tocar cualquiera.
-  const primerCta = ((ctas.data ?? []) as { name: string }[])[0]?.name ?? null
+  // El cartucho no guarda un CTA concreto. Va el de menor posicion en Capas, y
+  // si hay empate (o ninguno tiene orden) se reparte entre los empatados segun
+  // el cartucho: siempre el mismo para la misma idea, distinto entre ideas.
+  const lasCtas = (ctas.data ?? []) as { name: string; description: string | null; position: number }[]
+  const primeras = lasCtas.filter((c) => c.position === lasCtas[0]?.position)
+  const ctaDe = (id: string) => {
+    if (!primeras.length) return null
+    let h = 0
+    for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+    const c = primeras[h % primeras.length]
+    return { name: c.name, description: c.description }
+  }
 
   const out = new Map<string, Contexto>()
   for (const c of cartuchos) {
@@ -260,7 +306,7 @@ async function contextoDe(accountId: string, cartuchos: CartuchoFila[]): Promise
       subtema: c.subtopic_id ? (nSub.get(c.subtopic_id)?.name ?? null) : null,
       intencion: c.intent_id ? (nInt.get(c.intent_id) ?? null) : null,
       narrativa: c.narrative_id ? (nNarr.get(c.narrative_id) ?? null) : null,
-      cta: primerCta,
+      cta: ctaDe(c.id),
     })
   }
   return out
@@ -302,7 +348,7 @@ async function generarPieza(
     subtema: ctx.subtema,
     intencion: ctx.intencion?.name ?? null,
     narrativa: ctx.narrativa?.name ?? null,
-    cta: ctx.cta,
+    cta: ctx.cta?.name ?? null,
     canal: receta.channel,
     formato: receta.format,
     estilo: estilo ? estilo.name : null,

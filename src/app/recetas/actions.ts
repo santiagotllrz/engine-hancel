@@ -128,6 +128,41 @@ export async function borrarReceta(id: string): Promise<ActionResult> {
   }
 }
 
+/**
+ * Duplica una receta con el nombre "Copia de …". La copia nace apagada: si
+ * naciera encendida, a su hora produciria lo mismo que la original y el pilar
+ * gastaria el doble de cartuchos sin que nadie lo hubiera decidido.
+ */
+export async function duplicarReceta(id: string): Promise<ActionResult> {
+  if (!id) return { ok: false, error: "Falta el id." }
+  try {
+    const accountId = await idDeCuentaActual()
+    const supabase = supabaseAdmin()
+    const { data, error } = await supabase
+      .from("content_recipes")
+      .select("*")
+      .eq("id", id)
+      .eq("account_id", accountId)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!data) return { ok: false, error: "Esa receta no es de esta cuenta." }
+
+    // Sin id, fechas ni candado de hora: la copia es una receta nueva.
+    const resto = { ...(data as Record<string, unknown>) }
+    for (const campo of ["id", "created_at", "updated_at", "last_run_at"]) delete resto[campo]
+    const { error: errIns } = await supabase.from("content_recipes").insert({
+      ...resto,
+      name: `Copia de ${String(resto.name ?? "receta")}`.slice(0, 200),
+      enabled: false,
+    })
+    if (errIns) throw new Error(errIns.message)
+    revalidatePath("/recetas")
+    return { ok: true }
+  } catch (error) {
+    return fail(error, "No se pudo duplicar la receta.")
+  }
+}
+
 export async function alternarReceta(id: string, enabled: boolean): Promise<ActionResult> {
   try {
     const { error } = await supabaseAdmin()
