@@ -4,7 +4,23 @@ import { dayIn, hourIn } from "../schedule"
 import { familiaDeFormato, type TipoEstilo } from "@/lib/plantillas-catalogo"
 import { corregirTextos } from "./ortografia"
 import { dibujarConCanva, type LaminaPieza } from "./canva"
-import type { Grafico } from "./compositor"
+import type { Grafico, Recurso } from "./compositor"
+
+/** Normaliza el recurso grafico del estilo Fotografico; null si no sirve. */
+function recursoDe(v: unknown): Recurso | null {
+  if (!v || typeof v !== "object") return null
+  const r = v as Record<string, unknown>
+  const tipo = String(r.tipo)
+  const str = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : undefined)
+  if (tipo === "cifra" && str(r.valor)) return { tipo, valor: str(r.valor), texto: str(r.texto) }
+  if (tipo === "etiqueta" && str(r.texto)) return { tipo, texto: str(r.texto) }
+  if (tipo === "paso" && (str(r.valor) || typeof r.valor === "number")) return { tipo, valor: String(r.valor).trim() }
+  if (tipo === "lista" && Array.isArray(r.items)) {
+    const items = r.items.map(str).filter((x): x is string => Boolean(x)).slice(0, 3)
+    return items.length ? { tipo, items } : null
+  }
+  return null
+}
 import { estiloDe, type EstiloCompleto } from "./plantillas"
 import { INSTRUCCIONES_ESTILO } from "./prompts"
 import { studioConfig } from "./settings"
@@ -151,6 +167,7 @@ Recuerda: todo lo que escribas lleva sus tildes y sus eñes, aunque la idea de a
         visual: str(s.visual) || undefined,
         etiquetas: arr(s.etiquetas).slice(0, 4),
         grafico: graficoDe(s.grafico),
+        recurso: recursoDe(s.recurso),
         fuente: str(s.fuente) || undefined,
         periodo: str(s.periodo) || undefined,
       }))
@@ -187,6 +204,8 @@ Recuerda: todo lo que escribas lleva sus tildes y sus eñes, aunque la idea de a
         { leer: () => it.etiqueta, poner: (t: string) => (it.etiqueta = t) },
         ...(it.nota ? [{ leer: () => it.nota ?? "", poner: (t: string) => (it.nota = t) }] : []),
       ]),
+      ...(s.recurso?.texto ? [{ leer: () => s.recurso!.texto ?? "", poner: (t: string) => (s.recurso!.texto = t) }] : []),
+      ...(s.recurso?.items ?? []).map((_, i) => ({ leer: () => s.recurso!.items![i], poner: (t: string) => (s.recurso!.items![i] = t) })),
     ]),
   ]
   const corregidos = await corregirTextos(huecos.map((h) => h.leer()))
@@ -353,6 +372,12 @@ async function generarPieza(
         : { status: "failed", error: dibujo.error.slice(0, 500), canva_design_id: dibujo.designId ?? null }
     )
     .eq("id", pieceId)
+
+  // Si el dibujo falla, la idea vuelve a la despensa, igual que cuando falla la
+  // redaccion: la pieza queda anotada como fallida y otra pasada la rehace.
+  if (!dibujo.ok) {
+    await supabase.from("content_cartridges").update({ status: "available", used_at: null }).eq("id", cartucho.id)
+  }
 
   return dibujo.ok ? { ok: true, pieceId } : { ok: false, pieceId, error: dibujo.error }
 }

@@ -25,6 +25,14 @@ export type Grafico = {
   destacado?: number
 }
 
+/** Un apoyo grafico del estilo Fotografico: explica la idea sin tapar la foto. */
+export type Recurso = {
+  tipo: "cifra" | "etiqueta" | "paso" | "lista"
+  valor?: string
+  texto?: string
+  items?: string[]
+}
+
 export type LaminaCompuesta = {
   rol: "portada" | "contenido" | "cierre" | "unica"
   titulo: string
@@ -33,7 +41,11 @@ export type LaminaCompuesta = {
   grafico: Grafico | null
   fuente: string
   periodo: string
+  /** La imagen principal: foto (Fotografico), dibujo o render generado. */
   imagen: string | null
+  /** Una foto real de apoyo: la que acompana al dibujo o al grafico. */
+  foto: string | null
+  recurso: Recurso | null
 }
 
 type Ctx = {
@@ -191,52 +203,157 @@ function cierre(c: Ctx, l: LaminaCompuesta) {
 
 // -------------------------------------------------------------- fotografico
 
-function fotografico(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
-  const { W, H, k, m, e } = c
-  if (l.rol === "cierre") return cierre(c, l)
-  const portada = l.rol === "portada" || l.rol === "unica"
-  let html = l.imagen ? imagen(l.imagen, 0, 0, W, H, "foto") : ""
+/** El color de texto que se lee sobre un fondo dado. */
+function sobre(fondo: string) {
+  return luminancia(fondo) > 0.55 ? "#0A0A0A" : "#FFFFFF"
+}
 
-  // Franja de contraste: el degradado CSS no se importa de forma fiable, asi
-  // que se arma con escalones finos de velo creciente, que a la vista son un
-  // degradado. Debajo del ultimo, el velo pleno donde va el texto.
-  const ancho = c.apaisado ? W * 0.62 : W - 2 * m
-  const sizeT = ajustar(l.titulo, (portada ? 78 : 60) * k, portada ? 70 : 55)
-  const sizeC = 32 * k
-  const altoTexto = alto(l.titulo, sizeT, ancho, 1.08, PESO_GRUESO) + (l.cuerpo ? alto(l.cuerpo, sizeC, ancho, 1.35) + 24 * k : 0)
-  const yTexto = H - m - (portada && e.textoDesliza ? 90 * k : 30 * k) - altoTexto
-  const inicioVelo = Math.max(H * 0.3, yTexto - 120 * k)
-  const pasos = 10
-  const altoDegradado = 320 * k
-  for (let i = 0; i < pasos; i++) {
-    // Cada escalon baja hasta el pie y se suma a los anteriores: con la misma
-    // opacidad pequena en todos, la oscuridad acumulada crece paso a paso.
-    const op = e.velo / (pasos + 1)
-    html += bloque(0, inicioVelo - altoDegradado + (altoDegradado / pasos) * i, W, H, `background:rgba(0,0,0,${op.toFixed(3)});`)
+/**
+ * Un recurso grafico de apoyo, dibujado con su base en `yBase` (el borde de
+ * abajo). Devuelve el html y el alto que ocupa. Con `derecha`, la cifra se
+ * alinea al margen derecho.
+ */
+function recursoGrafico(c: Ctx, r: Recurso, x: number, yBase: number, derecha = false) {
+  const { k, e, W, m } = c
+  const tinta = sobre(e.colores.acento)
+  if (r.tipo === "cifra" && r.valor) {
+    const w = 360 * k
+    const h = r.texto ? 200 * k : 150 * k
+    const cx = derecha ? W - m - w : x
+    const y = yBase - h
+    let html = bloque(cx, y, w, h, `background:${e.colores.acento};border-radius:${px(24 * k)};`)
+    html += texto(r.valor, cx + 32 * k, y + 22 * k, w - 64 * k, `font-size:${px(ajustar(r.valor, 76 * k, 8))};line-height:1;font-weight:800;color:${tinta};`)
+    if (r.texto) html += texto(r.texto, cx + 32 * k, y + 120 * k, w - 64 * k, `font-size:${px(26 * k)};line-height:1.2;font-weight:700;color:${tinta};`)
+    return { html, h }
   }
-  html += bloque(0, inicioVelo, W, H - inicioVelo, `background:rgba(0,0,0,${(e.velo * 0.35).toFixed(2)});`)
+  if (r.tipo === "etiqueta" && r.texto) {
+    const t = r.texto.toUpperCase()
+    const h = 60 * k
+    const w = Math.min(W - 2 * m, t.length * 26 * k * 0.74 + 64 * k)
+    let html = bloque(x, yBase - h, w, h, `background:${e.colores.acento};border-radius:${px(h / 2)};`)
+    html += texto(t, x, yBase - h + 15 * k, w, `font-size:${px(26 * k)};line-height:1.1;font-weight:800;letter-spacing:2px;text-align:center;color:${tinta};`)
+    return { html, h }
+  }
+  if (r.tipo === "paso" && r.valor) {
+    const d = 120 * k
+    let html = bloque(x, yBase - d, d, d, `background:${e.colores.acento};border-radius:${px(d / 2)};`)
+    html += texto(r.valor, x, yBase - d + 22 * k, d, `font-size:${px(64 * k)};line-height:1.1;font-weight:800;text-align:center;color:${tinta};`)
+    return { html, h: d }
+  }
+  if (r.tipo === "lista" && r.items?.length) {
+    const items = r.items.slice(0, 3)
+    const fila = 54 * k
+    const w = 600 * k
+    const h = items.length * fila + 40 * k
+    const y = yBase - h
+    let html = bloque(x, y, w, h, `background:rgba(0,0,0,0.55);border-radius:${px(20 * k)};border-left:${px(8 * k)} solid ${e.colores.acento};`)
+    items.forEach((it, i) => {
+      html += texto("✓", x + 30 * k, y + 20 * k + i * fila, 40 * k, `font-size:${px(30 * k)};font-weight:800;color:${e.colores.acento};`)
+      html += texto(it, x + 76 * k, y + 20 * k + i * fila, w - 100 * k, `font-size:${px(30 * k)};line-height:1.2;font-weight:700;color:#FFFFFF;`)
+    })
+    return { html, h }
+  }
+  return { html: "", h: 0 }
+}
 
-  // El sello: una barra de acento sobre el titular.
-  html += bloque(m, yTexto - 34 * k, 90 * k, 10 * k, `background:${e.colores.acento};border-radius:${px(5 * k)};`)
-  html += texto(l.titulo, m, yTexto, ancho, `font-size:${px(sizeT)};line-height:1.08;font-weight:800;color:${e.colores.texto};`)
-  if (l.cuerpo) {
-    html += texto(l.cuerpo, m, yTexto + alto(l.titulo, sizeT, ancho, 1.08, PESO_GRUESO) + 24 * k, ancho, `font-size:${px(sizeC)};line-height:1.35;color:${e.colores.textoSuave};`)
-  }
-  // Logo y numeracion sobre pastillas translucidas: se leen sobre cualquier
-  // foto, clara u oscura. Un velo arriba dejaba rayas visibles en fotos claras.
+/** Logo y numeracion sobre pastillas translucidas: se leen sobre cualquier foto. */
+function cabeceraSobreFoto(c: Ctx, n: number, total: number) {
+  const { W, k, m, e } = c
+  let html = ""
   if (e.logo && c.logo) {
     html += bloque(m - 14 * k, m - 6 * k, 150 * k, 92 * k, `background:rgba(0,0,0,0.42);border-radius:${px(14 * k)};`)
     html += logo(c, m + 6 * k, m - 4 * k, 128 * k, true)
   }
   if (e.numeracion && total > 1) {
     html += bloque(W - m - 150 * k, m - 6 * k, 164 * k, 52 * k, `background:rgba(0,0,0,0.42);border-radius:${px(26 * k)};`)
-    html += texto(`${String(n).padStart(2, "0")} / ${String(total).padStart(2, "0")}`, W - m - 150 * k, m + 4 * k, 164 * k, `font-size:${px(26 * k)};font-weight:700;color:${e.colores.texto};text-align:center;`)
+    html += texto(`${String(n).padStart(2, "0")} / ${String(total).padStart(2, "0")}`, W - m - 150 * k, m + 4 * k, 164 * k, `font-size:${px(26 * k)};font-weight:700;color:#FFFFFF;text-align:center;`)
   }
+  return html
+}
+
+/**
+ * Fotografico. La foto manda, pero la composicion no es plana: las laminas
+ * alternan la foto a sangre (con el texto sobre un degradado) y la foto arriba
+ * con un panel solido para el texto. Un recurso grafico (cifra, etiqueta, paso
+ * o lista) explica la idea de la lamina sin tapar la foto.
+ */
+function fotografico(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
+  if (l.rol === "cierre") return cierre(c, l)
+  const portada = l.rol === "portada" || l.rol === "unica"
+  const dividida = !portada && !c.apaisado && n % 2 === 0
+  return dividida ? fotoDividida(c, l, n, total) : fotoInmersiva(c, l, n, total, portada)
+}
+
+function fotoInmersiva(c: Ctx, l: LaminaCompuesta, n: number, total: number, portada: boolean) {
+  const { W, H, k, m, e } = c
+  let html = l.imagen ? imagen(l.imagen, 0, 0, W, H, "foto") : ""
+  const ancho = c.apaisado ? W * 0.62 : W - 2 * m
+  const sizeT = ajustar(l.titulo, (portada ? 78 : 60) * k, portada ? 70 : 55)
+  const sizeC = 32 * k
+  const altoTexto = alto(l.titulo, sizeT, ancho, 1.08, PESO_GRUESO) + (l.cuerpo ? alto(l.cuerpo, sizeC, ancho, 1.35) + 24 * k : 0)
+  const yTexto = H - m - (portada && e.textoDesliza ? 90 * k : 30 * k) - altoTexto
+  const rec = l.recurso ? recursoGrafico(c, l.recurso, m, yTexto - 70 * k) : { html: "", h: 0 }
+
+  // Degradado de contraste: escalones finos de velo, porque el degradado CSS
+  // no se importa de forma fiable. Arranca por encima del recurso.
+  const inicioVelo = Math.max(H * 0.3, yTexto - 120 * k - rec.h)
+  const pasos = 10
+  const altoDegradado = 320 * k
+  for (let i = 0; i < pasos; i++) {
+    html += bloque(0, inicioVelo - altoDegradado + (altoDegradado / pasos) * i, W, H, `background:rgba(0,0,0,${(e.velo / (pasos + 1)).toFixed(3)});`)
+  }
+  html += bloque(0, inicioVelo, W, H - inicioVelo, `background:rgba(0,0,0,${(e.velo * 0.35).toFixed(2)});`)
+
+  html += rec.html
+  html += bloque(m, yTexto - 34 * k, 90 * k, 10 * k, `background:${e.colores.acento};border-radius:${px(5 * k)};`)
+  html += texto(l.titulo, m, yTexto, ancho, `font-size:${px(sizeT)};line-height:1.08;font-weight:800;color:${e.colores.texto};`)
+  if (l.cuerpo) {
+    html += texto(l.cuerpo, m, yTexto + alto(l.titulo, sizeT, ancho, 1.08, PESO_GRUESO) + 24 * k, ancho, `font-size:${px(sizeC)};line-height:1.35;color:${e.colores.textoSuave};`)
+  }
+  html += cabeceraSobreFoto(c, n, total)
   if (l.rol === "portada") html += desliza(c, e.colores.textoSuave)
   return html
 }
 
+function fotoDividida(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
+  const { W, H, k, m, e } = c
+  const fotoH = H * 0.56
+  let html = l.imagen ? imagen(l.imagen, 0, 0, W, fotoH, "foto") : ""
+  html += bloque(0, fotoH, W, H - fotoH, `background:${e.colores.fondo};`)
+
+  // El recurso se apoya en el borde entre la foto y el panel.
+  if (l.recurso) {
+    const r = l.recurso
+    if (r.tipo === "cifra") html += recursoGrafico(c, r, m, fotoH + 100 * k, true).html
+    else if (r.tipo === "paso") html += recursoGrafico(c, r, W - m - 120 * k, fotoH + 60 * k).html
+    else html += recursoGrafico(c, r, m, fotoH - 36 * k).html
+  }
+
+  // Si el recurso cae a la derecha del panel, el texto le deja sitio.
+  const ancho = W - 2 * m - (l.recurso?.tipo === "cifra" ? 380 * k : l.recurso?.tipo === "paso" ? 140 * k : 0)
+  const sizeT = ajustar(l.titulo, 56 * k, 55)
+  // El bloque de texto se centra en el panel: arriba del todo dejaba media
+  // lamina negra debajo.
+  const bloqueTexto = alto(l.titulo, sizeT, ancho, 1.1, PESO_GRUESO) + (l.cuerpo ? 22 * k + alto(l.cuerpo, 30 * k, W - 2 * m, 1.4) : 0)
+  let y = Math.max(fotoH + 120 * k, fotoH + (H - fotoH - bloqueTexto) / 2)
+  html += bloque(m, y - 40 * k, 90 * k, 10 * k, `background:${e.colores.acento};border-radius:${px(5 * k)};`)
+  html += texto(l.titulo, m, y, ancho, `font-size:${px(sizeT)};line-height:1.1;font-weight:800;color:${e.colores.texto};`)
+  y += alto(l.titulo, sizeT, ancho, 1.1, PESO_GRUESO) + 22 * k
+  if (l.cuerpo) html += texto(l.cuerpo, m, y, W - 2 * m, `font-size:${px(30 * k)};line-height:1.4;color:${e.colores.textoSuave};`)
+  html += cabeceraSobreFoto(c, n, total)
+  return html
+}
+
 // -------------------------------------------------------------- ilustracion
+
+/** Una foto real en un circulo con un aro del color de fondo, para separarla del dibujo. */
+function fotoCircular(c: Ctx, url: string, x: number, y: number, d: number) {
+  const aro = 12 * c.k
+  return (
+    bloque(x - aro, y - aro, d + 2 * aro, d + 2 * aro, `background:${c.e.colores.fondo};border-radius:${px(d / 2 + aro)};`) +
+    imagen(url, x, y, d, d, "foto", `border-radius:${px(d / 2)};`)
+  )
+}
 
 function ilustracion(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
   const { W, H, k, m, e } = c
@@ -252,6 +369,7 @@ function ilustracion(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
     html += texto(l.cuerpo, m, yC, colTexto, `font-size:${px(28 * k)};line-height:1.4;color:${e.colores.textoSuave};`)
     html += pastillas(c, l.etiquetas, m, H - m - 140 * k, colTexto).html
     if (l.imagen) html += imagen(l.imagen, W * 0.5, m, W * 0.5 - m, H - 2 * m, "ilustracion", `border-radius:${px(28 * k)};`)
+    if (l.foto) html += fotoCircular(c, l.foto, W * 0.5 + 24 * k, H - m - 24 * k - H * 0.42, H * 0.42)
   } else {
     const sizeT = ajustar(l.titulo, (portada ? 80 : 60) * k, portada ? 60 : 55)
     const yT = m + 60 * k
@@ -264,6 +382,13 @@ function ilustracion(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
     const reservaAbajo = (l.etiquetas.length ? 150 * k : 0) + (portada && e.textoDesliza ? 70 * k : 0) + m
     const altoImg = Math.max(H * 0.32, H - y - reservaAbajo)
     if (l.imagen) html += imagen(l.imagen, m, y, W - 2 * m, altoImg, "ilustracion", `border-radius:${px(32 * k)};`)
+    // La foto real aterriza el dibujo: un recorte circular en la esquina del cuadro.
+    // A caballo del borde inferior del cuadro, en la esquina que el dibujo deja
+    // libre: asi no tapa lo que el dibujo explica.
+    if (l.foto) {
+      const d = Math.min(340 * k, altoImg * 0.48)
+      html += fotoCircular(c, l.foto, W - m - d + 10 * k, y + altoImg - d * 0.62, d)
+    }
     html += pastillas(c, l.etiquetas, m, y + altoImg + 30 * k, W - 2 * m).html
   }
   html += numeracion(c, n, total, e.colores.textoSuave)
@@ -342,19 +467,55 @@ function grafico(c: Ctx, g: Grafico, x: number, y: number, w: number, h: number)
   let html = ""
 
   if (g.tipo === "cifras") {
-    // La tarjeta se ajusta a lo que lleva: una cifra no tiene por que ocupar
-    // toda la zona y dejar media lamina vacia.
-    const alto1 = Math.min(420 * k, (h - 30 * k * (items.length - 1)) / items.length)
-    // El grupo de tarjetas se centra en la zona.
-    const y0 = y + Math.max(0, (h - (items.length * alto1 + 30 * k * (items.length - 1))) / 2)
+    // Cada tarjeta mide lo que lleva dentro (cifra, nombre y nota), y la cifra
+    // se encoge si la zona no da: antes la tarjeta se encogia y la nota quedaba
+    // fuera, tapada por la tarjeta siguiente.
+    const gap = 30 * k
+    const pad = 34 * k
+    const fijo = (it: (typeof items)[number]) => 2 * pad + 14 * k + 40 * k + (it.nota ? 40 * k : 0)
+    const disponible = (h - gap * (items.length - 1)) / items.length
+    const sizeMax = Math.min(150 * k, Math.max(60 * k, disponible - Math.max(...items.map(fijo))))
+    const altos = items.map((it) => {
+      const valor = flecha(it.variacion) + unidad(formatearValor(it.valor))
+      const size = ajustar(valor, sizeMax, 10)
+      return { size, h: fijo(it) + alto(valor, size, w - 100 * k, 1, PESO_GRUESO) }
+    })
+    const total = altos.reduce((s, a) => s + a.h, 0) + gap * (items.length - 1)
+    const fondoTarjeta = luminancia(e.colores.fondo) > 0.5 ? "#F2F2F2" : "#1C1C1C"
+
+    // Si apiladas no caben, van lado a lado: mismas tarjetas, en una fila.
+    if (total > h && items.length > 1) {
+      const wc = (w - gap * (items.length - 1)) / items.length
+      const valores = items.map((it) => flecha(it.variacion) + unidad(formatearValor(it.valor)))
+      // Con margen (0.9): justo en el limite, la cifra salta de linea.
+      const size = Math.min(110 * k, ...valores.map((v) => (0.9 * (wc - 60 * k)) / Math.max(4, v.length * PESO_GRUESO)))
+      const altoValor = Math.max(...valores.map((v) => alto(v, size, wc - 60 * k, 1, PESO_GRUESO)))
+      const hc = Math.max(...items.map(fijo)) + altoValor + 40 * k
+      const cy0 = y + Math.max(0, (h - hc) / 2)
+      items.forEach((it, i) => {
+        const cx = x + i * (wc + gap)
+        html += bloque(cx, cy0, wc, hc, `background:${fondoTarjeta};border-radius:${px(24 * k)};`)
+        let ty = cy0 + pad
+        html += texto(valores[i], cx + 30 * k, ty, wc - 60 * k, `font-size:${px(size)};line-height:1;font-weight:800;color:${it.variacion ? colorVar(it.variacion) : i === destacado ? e.colores.acento : e.colores.texto};`)
+        ty += alto(valores[i], size, wc - 60 * k, 1, PESO_GRUESO) + 14 * k
+        html += texto(it.etiqueta, cx + 30 * k, ty, wc - 60 * k, `font-size:${px(28 * k)};line-height:1.2;font-weight:700;color:${e.colores.texto};`)
+        ty += alto(it.etiqueta, 28 * k, wc - 60 * k, 1.2, PESO_GRUESO) + 6 * k
+        if (it.nota) html += texto(it.nota, cx + 30 * k, ty, wc - 60 * k, `font-size:${px(24 * k)};line-height:1.2;color:${e.colores.textoSuave};`)
+      })
+      return html
+    }
+
+    let cy = y + Math.max(0, (h - total) / 2)
     items.forEach((it, i) => {
-      const cy = y0 + i * (alto1 + 30 * k)
-      const fondoTarjeta = luminancia(e.colores.fondo) > 0.5 ? "#F2F2F2" : "#1C1C1C"
+      const { size, h: alto1 } = altos[i]
       html += bloque(x, cy, w, alto1, `background:${fondoTarjeta};border-radius:${px(24 * k)};`)
-      const size = Math.min(150 * k, alto1 * 0.45)
-      html += texto(flecha(it.variacion) + unidad(formatearValor(it.valor)), x + 50 * k, cy + alto1 * 0.16, w - 100 * k, `font-size:${px(size)};line-height:1;font-weight:800;color:${it.variacion ? colorVar(it.variacion) : i === destacado ? e.colores.acento : e.colores.texto};`)
-      html += texto(it.etiqueta, x + 50 * k, cy + alto1 * 0.16 + size * 1.15, w - 100 * k, `font-size:${px(32 * k)};line-height:1.25;font-weight:700;color:${e.colores.texto};`)
-      if (it.nota) html += texto(it.nota, x + 50 * k, cy + alto1 * 0.16 + size * 1.15 + 50 * k, w - 100 * k, `font-size:${px(26 * k)};color:${e.colores.textoSuave};`)
+      let ty = cy + pad
+      html += texto(flecha(it.variacion) + unidad(formatearValor(it.valor)), x + 50 * k, ty, w - 100 * k, `font-size:${px(size)};line-height:1;font-weight:800;color:${it.variacion ? colorVar(it.variacion) : i === destacado ? e.colores.acento : e.colores.texto};`)
+      ty += alto(flecha(it.variacion) + unidad(formatearValor(it.valor)), size, w - 100 * k, 1, PESO_GRUESO) + 14 * k
+      html += texto(it.etiqueta, x + 50 * k, ty, w - 100 * k, `font-size:${px(32 * k)};line-height:1.2;font-weight:700;color:${e.colores.texto};`)
+      ty += 40 * k
+      if (it.nota) html += texto(it.nota, x + 50 * k, ty, w - 100 * k, `font-size:${px(26 * k)};line-height:1.2;color:${e.colores.textoSuave};`)
+      cy += alto1 + gap
     })
     return html
   }
@@ -377,15 +538,19 @@ function grafico(c: Ctx, g: Grafico, x: number, y: number, w: number, h: number)
   const paso = Math.min(170 * k, h / items.length)
   const rank = g.tipo === "ranking"
   const xb = x + (rank ? 80 * k : 0)
-  // A la derecha de la barra mas larga tiene que caber su cifra, con flecha.
-  const wb = w - (rank ? 80 * k : 0) - 280 * k
+  // A la derecha de la barra mas larga tiene que caber su cifra, con flecha y
+  // unidad, en una sola linea: se reserva el ancho del valor mas largo.
+  const valores = items.map((it) => flecha(it.variacion) + unidad(formatearValor(it.valor)))
+  const sizeValor = Math.min(...valores.map((v) => ajustar(v, 38 * k, 10)))
+  const reserva = Math.min(w * 0.45, Math.max(...valores.map((v) => v.length)) * sizeValor * PESO_GRUESO + 40 * k)
+  const wb = w - (rank ? 80 * k : 0) - reserva
   items.forEach((it, i) => {
     const cy = y + i * paso
     if (rank) html += texto(String(i + 1), x, cy + 18 * k, 70 * k, `font-size:${px(56 * k)};font-weight:800;color:${i === destacado ? e.colores.acento : e.colores.textoSuave};`)
     html += texto(it.etiqueta, xb, cy, wb, `font-size:${px(30 * k)};font-weight:700;color:${e.colores.texto};`)
     const wBarra = Math.max(10 * k, (Math.abs(numericos[i]) / max) * wb)
     html += bloque(xb, cy + 48 * k, wBarra, 52 * k, `background:${i === destacado ? e.colores.acento : neutro};border-radius:${px(6 * k)};`)
-    html += texto(flecha(it.variacion) + unidad(formatearValor(it.valor)), xb + wBarra + 18 * k, cy + 50 * k, 260 * k, `font-size:${px(38 * k)};font-weight:800;color:${it.variacion ? colorVar(it.variacion) : e.colores.texto};`)
+    html += texto(valores[i], xb + wBarra + 18 * k, cy + 50 * k + (38 * k - sizeValor) / 2, reserva, `font-size:${px(sizeValor)};font-weight:800;color:${it.variacion ? colorVar(it.variacion) : e.colores.texto};`)
   })
   return html
 }
@@ -396,9 +561,19 @@ function dataviz(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
   const portada = l.rol === "portada" || l.rol === "unica"
   let html = ""
 
+  // La foto real del asunto, en una banda arriba: da contexto a la cifra sin
+  // competir con ella. El logo y la numeracion van sobre ella en pastillas.
+  // Mas alta en la portada, salvo que lleve grafico: entonces el espacio es suyo.
+  const banda = l.foto ? H * (portada && !l.grafico ? 0.3 : 0.22) : 0
+  if (l.foto) {
+    html += imagen(l.foto, 0, 0, W, banda, "foto")
+    html += bloque(0, banda - 8 * k, W, 8 * k, `background:${e.colores.acento};`)
+    html += cabeceraSobreFoto(c, n, total)
+  }
+
   const anchoTit = c.apaisado ? W * 0.42 : W - 2 * m
   const sizeT = ajustar(l.titulo, (portada ? 72 : 58) * k, 55)
-  const yT = m + 50 * k
+  const yT = (l.foto ? banda : m) + 50 * k
   html += texto(l.titulo, m, yT, anchoTit, `font-size:${px(sizeT)};line-height:1.06;font-weight:800;color:${e.colores.texto};`)
   let y = yT + alto(l.titulo, sizeT, anchoTit, 1.06, PESO_GRUESO) + 16 * k
   if (l.cuerpo) {
@@ -408,12 +583,12 @@ function dataviz(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
 
   if (l.grafico) {
     const zona = c.apaisado
-      ? { x: W * 0.47, y: m + 20 * k, w: W * 0.53 - m, h: H - 2 * m - 70 * k }
+      ? { x: W * 0.47, y: (l.foto ? banda : m) + 20 * k, w: W * 0.53 - m, h: H - (l.foto ? banda : m) - m - 90 * k }
       : { x: m, y: y + 20 * k, w: W - 2 * m, h: H - y - m - 120 * k - (l.rol === "portada" && e.textoDesliza ? 50 * k : 0) }
     html += grafico(c, l.grafico, zona.x, zona.y, zona.w, zona.h)
   }
   html += pieDeDatos(c, l)
-  html += numeracion(c, n, total, e.colores.textoSuave)
+  if (!l.foto) html += numeracion(c, n, total, e.colores.textoSuave)
   if (l.rol === "portada" && !l.fuente) html += desliza(c, e.colores.textoSuave)
   return html
 }

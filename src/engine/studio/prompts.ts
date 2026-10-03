@@ -68,9 +68,15 @@ Antes de responder confirma: sin guiones largos, títulos dentro del límite, to
 export const INSTRUCCIONES_ESTILO: Record<TipoEstilo, string> = {
   fotografico: `CAMPOS DEL ESTILO FOTOGRÁFICO (en cada lámina menos el cierre):
 - "foto": la búsqueda de la foto real para esa lámina, EN INGLÉS, de 2 a 4 palabras, literal al asunto: el cultivo, la labor, el producto, el lugar, las manos trabajando. Escenas auténticas y cercanas, nada genérico ("business", "nature" no sirven). Personas solo trabajando dentro de la escena, nunca un retrato como sujeto. Cada lámina pide una foto distinta.
-- El texto es poco: el "title" corto y directo, y el "body" breve o vacío. La foto cuenta la historia.`,
+- "recurso" (en al menos la mitad de las láminas, y nunca dos seguidas con el mismo tipo): un apoyo gráfico que explica la idea de la lámina sin tapar la foto. Uno de:
+  * {"tipo":"cifra","valor":"<número con unidad, corto: '15 cm', '3 veces'>","texto":"<qué es, 2 a 5 palabras>"} solo si el número es un dato conocido y seguro del sector, nunca inventado.
+  * {"tipo":"etiqueta","texto":"<la idea en 1 a 3 palabras: 'Señal de alerta', 'Paso clave'>"}
+  * {"tipo":"paso","valor":"<número del paso: '1', '2'…>"} cuando la narrativa es un paso a paso.
+  * {"tipo":"lista","items":["<2 a 3 puntos de 1 a 4 palabras>"]}
+- El texto es poco: el "title" corto y directo, y el "body" breve o vacío. La foto cuenta la historia; el recurso la explica.`,
   ilustracion: `CAMPOS DEL ESTILO ILUSTRACIÓN (en cada lámina menos el cierre):
 - "visual": la escena que hay que dibujar, EN INGLÉS, en una o dos frases concretas: qué se ve, qué pasa, desde qué punto de vista. Piensa en un dibujo plano y didáctico que explique la idea de la lámina (un proceso, las partes de algo, una situación). Personajes sencillos si ayudan. Nunca pidas texto dentro del dibujo.
+- "foto": una foto real que acompaña al dibujo y lo aterriza, EN INGLÉS, de 2 a 4 palabras, literal al asunto (el cultivo, el producto, la herramienta, la labor). Si el dibujo explica cómo se toma una muestra de suelo, la foto es "soil sample hands". Cosas y trabajo, nunca un retrato como sujeto. Una distinta por lámina.
 - "etiquetas" (opcional): de 0 a 3 etiquetas de 1 a 3 palabras en español, para nombrar lo importante del dibujo.
 - Texto breve y amable: "title" claro y "body" de una línea.`,
   infografia: `CAMPOS DEL ESTILO INFOGRAFÍA (en cada lámina menos el cierre):
@@ -83,6 +89,7 @@ export const INSTRUCCIONES_ESTILO: Record<TipoEstilo, string> = {
   * "cifras": 1 a 3 cifras grandes (ideal para la portada). "barras" o "ranking": 3 a 6 categorías comparadas. "columnas": 3 a 6 periodos.
   * Una sola lectura principal por gráfico. Sin decimales innecesarios.
 - "fuente": quién publica el dato (nombre corto). "periodo": la fecha o el periodo de los datos.
+- "foto": una foto real del asunto de los datos, EN INGLÉS, de 2 a 4 palabras, literal (el cultivo, el producto, el puerto, la labor): da contexto a la cifra. Una distinta por lámina; cosas y trabajo, nunca un retrato como sujeto.
 - El "title" enuncia la CONCLUSIÓN del dato, no el tema ("El café ya vale 30 % más que hace un año", no "Precio del café"). "body" opcional y corto.
 - Si para una lámina no encuentras datos confiables, convierte esa lámina en una explicación sin gráfico (sin "grafico") antes que inventar.`,
 }

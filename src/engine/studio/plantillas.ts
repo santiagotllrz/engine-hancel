@@ -82,7 +82,7 @@ const MUESTRAS: Record<TipoEstilo, PiezaParaDibujar> = {
     elemento: "",
     slides: [
       { n: 1, type: "photo_hook", hook: "La cosecha de café se decide en la floración.", foto: "coffee farmer hands harvest" },
-      { n: 2, type: "text", title: "Una flor que se cae es un grano que no llega.", body: "El estrés hídrico en floración recorta la cosecha antes de que se vea.", foto: "coffee plant flowers" },
+      { n: 2, type: "text", title: "Una flor que se cae es un grano que no llega.", body: "El estrés hídrico en floración recorta la cosecha antes de que se vea.", foto: "coffee plant flowers", recurso: { tipo: "etiqueta", texto: "Señal de alerta" } },
     ],
   },
   ilustracion: {
@@ -91,8 +91,8 @@ const MUESTRAS: Record<TipoEstilo, PiezaParaDibujar> = {
     fotos: [],
     elemento: "",
     slides: [
-      { n: 1, type: "photo_hook", hook: "Así se toma una muestra de suelo bien hecha.", visual: "A farmer kneeling in a coffee field taking a soil sample with a small shovel and a bucket, simple friendly character" },
-      { n: 2, type: "text", title: "Recorre el lote en zigzag.", body: "Toma 15 a 20 submuestras y mézclalas en un balde limpio.", etiquetas: ["Zigzag", "20 puntos", "Balde limpio"], visual: "Top view of a field plot with a zigzag dotted path and small markers where samples are taken" },
+      { n: 1, type: "photo_hook", hook: "Así se toma una muestra de suelo bien hecha.", visual: "A farmer kneeling in a coffee field taking a soil sample with a small shovel and a bucket, simple friendly character", foto: "soil sample hands" },
+      { n: 2, type: "text", title: "Recorre el lote en zigzag.", body: "Toma 15 a 20 submuestras y mézclalas en un balde limpio.", etiquetas: ["Zigzag", "20 puntos", "Balde limpio"], visual: "Top view of a field plot with a zigzag dotted path and small markers where samples are taken", foto: "coffee farm field rows" },
     ],
   },
   infografia: {
@@ -118,6 +118,7 @@ const MUESTRAS: Record<TipoEstilo, PiezaParaDibujar> = {
         grafico: { tipo: "cifras", unidad: "", items: [{ etiqueta: "Cifra de ejemplo", valor: "12,5 %", variacion: "sube", nota: "Dato ilustrativo, no real" }] },
         fuente: "Ejemplo",
         periodo: "Muestra del estilo",
+        foto: "coffee beans harvest",
       },
       {
         n: 2,
@@ -126,6 +127,7 @@ const MUESTRAS: Record<TipoEstilo, PiezaParaDibujar> = {
         grafico: { tipo: "barras", unidad: "", items: [{ etiqueta: "Categoría A", valor: 82 }, { etiqueta: "Categoría B", valor: 64 }, { etiqueta: "Categoría C", valor: 41 }, { etiqueta: "Categoría D", valor: 27 }] },
         fuente: "Ejemplo",
         periodo: "Muestra del estilo",
+        foto: "coffee plantation hills",
       },
     ],
   },

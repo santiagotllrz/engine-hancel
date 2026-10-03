@@ -2,7 +2,7 @@ import { supabaseAdmin } from "../supabase-admin"
 import { formatoPorId } from "@/lib/canales-catalogo"
 import { familiaDeFormato, type EstiloPlantilla, type TipoEstilo } from "@/lib/plantillas-catalogo"
 import { canvaMcp } from "./canva-mcp"
-import { componerHTML, type Grafico, type LaminaCompuesta } from "./compositor"
+import { componerHTML, type Grafico, type LaminaCompuesta, type Recurso } from "./compositor"
 import { elegirFotos } from "./fotos"
 import { generarImagen, proporcionPara } from "./imagenes"
 
@@ -32,6 +32,7 @@ export type LaminaPieza = {
   visual?: string
   etiquetas?: string[]
   grafico?: Grafico | null
+  recurso?: Recurso | null
   fuente?: string
   periodo?: string
 }
@@ -59,17 +60,24 @@ export async function logoDe(accountId: string): Promise<string | null> {
 
 /** Copia una imagen temporal (de Canva) al storage, para que no caduque. */
 export async function guardarImagen(url: string, ruta: string): Promise<string | null> {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
-    if (!res.ok) return null
-    const buffer = Buffer.from(await res.arrayBuffer())
-    const tipo = res.headers.get("content-type")?.split(";")[0] || "image/png"
-    const { error } = await supabaseAdmin().storage.from(BUCKET).upload(ruta, buffer, { contentType: tipo, upsert: true })
-    if (error) return null
-    return `${supabaseAdmin().storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl}?v=${Date.now().toString(36)}`
-  } catch {
-    return null
+  // Tres intentos: un corte de red al bajar una lamina no puede tumbar una
+  // pieza que ya esta dibujada y exportada.
+  for (let intento = 0; intento < 3; intento++) {
+    try {
+      if (intento > 0) await new Promise((r) => setTimeout(r, 1500 * intento))
+      const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+      if (!res.ok) continue
+      const buffer = Buffer.from(await res.arrayBuffer())
+      if (buffer.byteLength === 0) continue
+      const tipo = res.headers.get("content-type")?.split(";")[0] || "image/png"
+      const { error } = await supabaseAdmin().storage.from(BUCKET).upload(ruta, buffer, { contentType: tipo, upsert: true })
+      if (error) continue
+      return `${supabaseAdmin().storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl}?v=${Date.now().toString(36)}`
+    } catch {
+      // Se reintenta.
+    }
   }
+  return null
 }
 
 /** Ordena las laminas de la pieza en portada, contenido y cierre. */
@@ -83,6 +91,8 @@ function laminasDe(pieza: PiezaParaDibujar, formatId: string, cierreFijo: boolea
     fuente: l.fuente ?? "",
     periodo: l.periodo ?? "",
     imagen: null,
+    foto: null,
+    recurso: l.recurso ?? null,
     pedido: l,
   })
 
@@ -158,7 +168,15 @@ export async function dibujarConCanva(opciones: {
           const base = l.pedido.visual || pieza.elemento || l.titulo
           // En la infografia el objeto tiene que verse grande: las etiquetas
           // señalan sus partes.
-          const prompt = estilo.tipo === "infografia" ? `${base}. The subject is large and fills most of the frame.` : base
+          // En la infografia el objeto se ve grande (las etiquetas senalan sus
+          // partes). En la ilustracion se deja libre la esquina inferior
+          // derecha, donde va la foto real de apoyo.
+          const prompt =
+            estilo.tipo === "infografia"
+              ? `${base}. The subject is large and fills most of the frame.`
+              : l.pedido.foto
+                ? `${base}. Compose the scene towards the left and top, leaving the bottom-right quarter of the frame as empty plain background.`
+                : base
           const r = await generarImagen({
             prompt,
             estiloVisual: estilo.estilo.estiloVisual,
@@ -172,6 +190,30 @@ export async function dibujarConCanva(opciones: {
           } else avisos.push(`Imagen de la lamina ${idx + 1}: ${r.error}`)
         })
       )
+    }
+  }
+
+  // Ilustracion y Data-viz llevan ademas una foto real de apoyo: en un recorte
+  // circular junto al dibujo, o en una banda sobre el grafico.
+  if (estilo.tipo === "ilustracion" || estilo.tipo === "dataviz") {
+    const conFoto = conImagen.filter(({ l }) => l.pedido.foto)
+    if (conFoto.length) {
+      const apaisado = W > H * 1.15
+      const ancho = estilo.tipo === "ilustracion" ? 600 : W
+      const alto = estilo.tipo === "ilustracion" ? 600 : apaisado ? H * 0.3 : H * 0.3
+      const fotos = await elegirFotos(
+        conFoto.map(({ l }) => [l.pedido.foto ?? ""]),
+        opciones.terminosRespaldo,
+        ancho,
+        alto
+      )
+      conFoto.forEach(({ l }, k) => {
+        const f = fotos[k]
+        if (f) {
+          l.foto = f.url
+          recursos.push(`Foto de ${f.autor || "Pexels"} (Pexels)`)
+        }
+      })
     }
   }
 
