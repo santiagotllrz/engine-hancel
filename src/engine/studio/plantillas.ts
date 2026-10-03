@@ -81,8 +81,8 @@ const MUESTRAS: Record<TipoEstilo, PiezaParaDibujar> = {
     fotos: ["coffee farmer hands harvest", "coffee cherries branch"],
     elemento: "",
     slides: [
-      { n: 1, type: "photo_hook", hook: "La cosecha de café se decide en la floración.", foto: "coffee farmer hands harvest" },
-      { n: 2, type: "text", title: "Una flor que se cae es un grano que no llega.", body: "El estrés hídrico en floración recorta la cosecha antes de que se vea.", foto: "coffee plant flowers", recurso: { tipo: "etiqueta", texto: "Señal de alerta" } },
+      { n: 1, type: "photo_hook", hook: "La cosecha de café *se decide en la floración*", foto: "coffee farmer hands harvest" },
+      { n: 2, type: "text", antetitulo: "Señal de alerta", title: "Una flor que se cae es *un grano que no llega*", body: "El estrés hídrico en floración **recorta la cosecha** antes de que se vea.", foto: "coffee plant flowers", recurso: { tipo: "lista", items: ["Riego en floración", "Sombra regulada", "Suelo con cobertura"] } },
     ],
   },
   ilustracion: {

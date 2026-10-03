@@ -25,9 +25,12 @@ export type Grafico = {
   destacado?: number
 }
 
-/** Un apoyo grafico del estilo Fotografico: explica la idea sin tapar la foto. */
+/**
+ * Un apoyo del estilo Fotografico, dentro de la columna de texto: solo los que
+ * informan. "lista" numerada, "cifra" con su explicacion, "datos" en pastillas.
+ */
 export type Recurso = {
-  tipo: "cifra" | "etiqueta" | "paso" | "lista"
+  tipo: "cifra" | "lista" | "datos"
   valor?: string
   texto?: string
   items?: string[]
@@ -35,6 +38,8 @@ export type Recurso = {
 
 export type LaminaCompuesta = {
   rol: "portada" | "contenido" | "cierre" | "unica"
+  /** Fotografico: la palabra o frase corta que encabeza ("PASO 02", "EL ERROR"). */
+  antetitulo: string
   titulo: string
   cuerpo: string
   etiquetas: string[]
@@ -190,8 +195,9 @@ function pastillas(c: Ctx, etiquetas: string[], x: number, y: number, ancho: num
 
 function cierre(c: Ctx, l: LaminaCompuesta) {
   const { W, H, k, m, e } = c
-  const titulo = e.cierre.modo === "fijo" ? e.cierre.titulo : l.titulo
-  const cuerpo = e.cierre.modo === "fijo" ? e.cierre.texto : l.cuerpo
+  // Sin las marcas de enfasis: en el cierre se veria el asterisco.
+  const titulo = sinMarcas(e.cierre.modo === "fijo" ? e.cierre.titulo : l.titulo)
+  const cuerpo = sinMarcas(e.cierre.modo === "fijo" ? e.cierre.texto : l.cuerpo)
   const lado = 300 * k
   const sizeT = ajustar(titulo, 72 * k, 40)
   let html = logo(c, (W - lado * (c.oscuro ? 1 : 0.7)) / 2 + (c.oscuro ? lado * 0.18 : 0), H * 0.17, lado, c.oscuro)
@@ -208,52 +214,89 @@ function sobre(fondo: string) {
   return luminancia(fondo) > 0.55 ? "#0A0A0A" : "#FFFFFF"
 }
 
+/** Un color de la paleta con transparencia. */
+function conAlfa(hex: string, a: number) {
+  const h = hex.replace("#", "")
+  const n = parseInt(h.length === 3 ? h.split("").map((x) => x + x).join("") : h, 16)
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
+}
+
+type Tramo = { texto: string; marca: "normal" | "acento" | "negrita" }
+
 /**
- * Un recurso grafico de apoyo, dibujado con su base en `yBase` (el borde de
- * abajo). Devuelve el html y el alto que ocupa. Con `derecha`, la cifra se
- * alinea al margen derecho.
+ * Lee las marcas del agente: *acento* en los titulos y **negrita** en el
+ * cuerpo. Son las que dan jerarquia dentro de la frase, como en un carrusel
+ * hecho a mano: la idea clave cambia de color y de peso.
  */
-function recursoGrafico(c: Ctx, r: Recurso, x: number, yBase: number, derecha = false) {
-  const { k, e, W, m } = c
-  const tinta = sobre(e.colores.acento)
-  if (r.tipo === "cifra" && r.valor) {
-    const w = 360 * k
-    const h = r.texto ? 200 * k : 150 * k
-    const cx = derecha ? W - m - w : x
-    const y = yBase - h
-    let html = bloque(cx, y, w, h, `background:${e.colores.acento};border-radius:${px(24 * k)};`)
-    html += texto(r.valor, cx + 32 * k, y + 22 * k, w - 64 * k, `font-size:${px(ajustar(r.valor, 76 * k, 8))};line-height:1;font-weight:800;color:${tinta};`)
-    if (r.texto) html += texto(r.texto, cx + 32 * k, y + 120 * k, w - 64 * k, `font-size:${px(26 * k)};line-height:1.2;font-weight:700;color:${tinta};`)
-    return { html, h }
+function tramos(t: string): Tramo[] {
+  const salida: Tramo[] = []
+  const re = /\*\*(.+?)\*\*|\*(.+?)\*/g
+  let ultimo = 0
+  for (let m = re.exec(t); m; m = re.exec(t)) {
+    if (m.index > ultimo) salida.push({ texto: t.slice(ultimo, m.index), marca: "normal" })
+    salida.push({ texto: m[1] ?? m[2], marca: m[1] ? "negrita" : "acento" })
+    ultimo = m.index + m[0].length
   }
-  if (r.tipo === "etiqueta" && r.texto) {
-    const t = r.texto.toUpperCase()
-    const h = 60 * k
-    const w = Math.min(W - 2 * m, t.length * 26 * k * 0.74 + 64 * k)
-    let html = bloque(x, yBase - h, w, h, `background:${e.colores.acento};border-radius:${px(h / 2)};`)
-    html += texto(t, x, yBase - h + 15 * k, w, `font-size:${px(26 * k)};line-height:1.1;font-weight:800;letter-spacing:2px;text-align:center;color:${tinta};`)
-    return { html, h }
+  if (ultimo < t.length) salida.push({ texto: t.slice(ultimo), marca: "normal" })
+  return salida.filter((x) => x.texto.trim())
+}
+
+export const sinMarcas = (t: string) => t.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1")
+
+/**
+ * Texto con tramos de distinto estilo, con las lineas partidas por el sistema
+ * (Canva las parte con otra fuente si se le deja). `saltoAntesDeAcento` pone
+ * la parte destacada en su propia linea, como la portada de un carrusel.
+ */
+function textoRico(
+  t: string,
+  x: number,
+  y: number,
+  ancho: number,
+  base: { size: number; lh: number; peso: number; css: string },
+  estilos: Record<Tramo["marca"], string>,
+  saltoAntesDeAcento = false
+): { html: string; h: number } {
+  const palabras: { p: string; marca: Tramo["marca"]; corte: boolean }[] = []
+  for (const tr of tramos(t)) {
+    tr.texto
+      .trim()
+      .split(/\s+/)
+      .forEach((p, i) => palabras.push({ p, marca: tr.marca, corte: saltoAntesDeAcento && tr.marca === "acento" && i === 0 }))
   }
-  if (r.tipo === "paso" && r.valor) {
-    const d = 120 * k
-    let html = bloque(x, yBase - d, d, d, `background:${e.colores.acento};border-radius:${px(d / 2)};`)
-    html += texto(r.valor, x, yBase - d + 22 * k, d, `font-size:${px(64 * k)};line-height:1.1;font-weight:800;text-align:center;color:${tinta};`)
-    return { html, h: d }
+  const porLinea = Math.max(6, Math.floor(ancho / (base.size * base.peso)))
+  const lineasP: (typeof palabras)[] = [[]]
+  let largo = 0
+  for (const w of palabras) {
+    const actual = lineasP[lineasP.length - 1]
+    if (actual.length && (w.corte || largo + 1 + w.p.length > porLinea)) {
+      lineasP.push([w])
+      largo = w.p.length
+    } else {
+      actual.push(w)
+      largo += (actual.length > 1 ? 1 : 0) + w.p.length
+    }
   }
-  if (r.tipo === "lista" && r.items?.length) {
-    const items = r.items.slice(0, 3)
-    const fila = 54 * k
-    const w = 600 * k
-    const h = items.length * fila + 40 * k
-    const y = yBase - h
-    let html = bloque(x, y, w, h, `background:rgba(0,0,0,0.55);border-radius:${px(20 * k)};border-left:${px(8 * k)} solid ${e.colores.acento};`)
-    items.forEach((it, i) => {
-      html += texto("✓", x + 30 * k, y + 20 * k + i * fila, 40 * k, `font-size:${px(30 * k)};font-weight:800;color:${e.colores.acento};`)
-      html += texto(it, x + 76 * k, y + 20 * k + i * fila, w - 100 * k, `font-size:${px(30 * k)};line-height:1.2;font-weight:700;color:#FFFFFF;`)
+  const html = lineasP
+    .map((linea) => {
+      let out = ""
+      let i = 0
+      while (i < linea.length) {
+        const marca = linea[i].marca
+        const run: string[] = []
+        while (i < linea.length && linea[i].marca === marca) run.push(linea[i++].p)
+        const pedazo = esc(run.join(" "))
+        const sep = out ? " " : ""
+        out += marca === "normal" ? sep + pedazo : `${sep}<span style="${estilos[marca]}">${pedazo}</span>`
+      }
+      return out
     })
-    return { html, h }
+    .join("<br>")
+  const h = lineasP.length * base.size * base.lh
+  return {
+    html: `<p style="position:absolute;left:${px(x)};top:${px(y)};width:${px(ancho)};min-height:${px(h * 1.15 + base.size * 0.4)};margin:0;font-size:${px(base.size)};line-height:${base.lh};${base.css}">${html}</p>`,
+    h,
   }
-  return { html: "", h: 0 }
 }
 
 /** Logo y numeracion sobre pastillas translucidas: se leen sobre cualquier foto. */
@@ -271,11 +314,135 @@ function cabeceraSobreFoto(c: Ctx, n: number, total: number) {
   return html
 }
 
+/** "Desliza" como un boton: una pastilla con flecha, abajo a la izquierda. */
+function botonDesliza(c: Ctx) {
+  const { k, m, H, e } = c
+  if (!e.textoDesliza) return ""
+  const t = e.textoDesliza.replace(/→/g, "").trim()
+  const w = t.length * 24 * k * 0.66 + 130 * k
+  const h = 56 * k
+  const y = H - m - h + 10 * k
+  return (
+    // Relleno solido, sin borde: con borde, Canva dibujaba un recuadro cuadrado
+    // alrededor de la pastilla redondeada.
+    bloque(m, y, w, h, `background:${e.colores.acento};border-radius:${px(h / 2)};`) +
+    texto(`${t}  →`, m, y + 14 * k, w, `font-size:${px(24 * k)};line-height:1.1;font-weight:700;letter-spacing:2px;text-align:center;color:${sobre(e.colores.acento)};`)
+  )
+}
+
 /**
- * Fotografico. La foto manda, pero la composicion no es plana: las laminas
- * alternan la foto a sangre (con el texto sobre un degradado) y la foto arriba
- * con un panel solido para el texto. Un recurso grafico (cifra, etiqueta, paso
- * o lista) explica la idea de la lamina sin tapar la foto.
+ * Un recurso de apoyo dentro de la columna de texto, de arriba abajo. Solo los
+ * que informan: una lista numerada, una cifra con su explicacion o pastillas
+ * con datos. Devuelve el html y el alto.
+ */
+function recursoEnColumna(c: Ctx, r: Recurso, x: number, y: number, ancho: number) {
+  const { k, e } = c
+  if (r.tipo === "lista" && r.items?.length) {
+    const size = 32 * k
+    let html = ""
+    r.items.slice(0, 4).forEach((it, i) => {
+      const fila = textoRico(`*${String(i + 1).padStart(2, "0")}* ${it}`, x, y + i * size * 1.6, ancho, { size, lh: 1.3, peso: PESO_NORMAL, css: `font-weight:400;color:${e.colores.texto};` }, { normal: "", negrita: "", acento: `color:${e.colores.acento};font-weight:800;` })
+      html += fila.html
+    })
+    return { html, h: r.items.slice(0, 4).length * size * 1.6 }
+  }
+  if (r.tipo === "cifra" && r.valor) {
+    const size = ajustar(r.valor, 92 * k, 7)
+    // La cifra en negrita gruesa es mas ancha que un texto normal ("%" sobre
+    // todo): se mide con margen para que la linea separadora no la pise.
+    const anchoValor = Math.min(ancho * 0.55, r.valor.length * size * 0.74 + 10 * k)
+    let html = texto(r.valor, x, y, anchoValor + 40 * k, `font-size:${px(size)};line-height:1;font-weight:800;color:${e.colores.acento};`)
+    if (r.texto) {
+      const xTexto = x + anchoValor + 48 * k
+      const anchoTexto = ancho - anchoValor - 48 * k
+      const altoTexto = alto(r.texto, 28 * k, anchoTexto, 1.2)
+      html += bloque(x + anchoValor + 22 * k, y + size * 0.1, 3 * k, size * 0.8, `background:${conAlfa(e.colores.texto, 0.5)};`)
+      // La explicacion, centrada en vertical respecto a la cifra.
+      html += texto(r.texto, xTexto, y + Math.max(0, (size - altoTexto) / 2), anchoTexto, `font-size:${px(28 * k)};line-height:1.2;font-weight:400;color:${e.colores.textoSuave};`)
+    }
+    return { html, h: size * 1.05 }
+  }
+  if (r.tipo === "datos" && r.items?.length) {
+    const size = 24 * k
+    const h = 50 * k
+    let cx = x
+    let cy = y
+    let html = ""
+    r.items.slice(0, 3).forEach((it, i) => {
+      const w = Math.min(ancho, it.length * size * 0.62 + 50 * k)
+      if (cx + w > x + ancho) {
+        cx = x
+        cy += h + 12 * k
+      }
+      const fondo = i === 0 ? e.colores.acento : conAlfa(e.colores.texto, 0.16)
+      html += bloque(cx, cy, w, h, `background:${fondo};border-radius:${px(h / 2)};`)
+      html += texto(it, cx, cy + (h - size * 1.2) / 2, w, `font-size:${px(size)};line-height:1.2;font-weight:700;text-align:center;color:${i === 0 ? sobre(e.colores.acento) : e.colores.texto};`)
+      cx += w + 12 * k
+    })
+    return { html, h: cy - y + h }
+  }
+  return { html: "", h: 0 }
+}
+
+/**
+ * El bloque de texto de una lamina fotografica: antetitulo, titulo en dos
+ * tonos (la idea clave en acento y otro peso), cuerpo con la frase clave en
+ * negrita y, si informa, un recurso. Se mide antes de colocarlo.
+ */
+function bloqueFoto(c: Ctx, l: LaminaCompuesta, ancho: number, portada: boolean) {
+  const { k, e } = c
+  const partes: { h: number; html: (x: number, y: number) => string }[] = []
+  const sep = (h: number) => partes.push({ h, html: () => "" })
+
+  if (l.antetitulo) {
+    const t = l.antetitulo.toUpperCase()
+    partes.push({ h: 24 * k * 1.3, html: (x, y) => texto(t, x, y, ancho, `font-size:${px(24 * k)};line-height:1.3;font-weight:700;letter-spacing:3px;color:${e.colores.acento};`) })
+    sep(16 * k)
+  }
+
+  const sizeT = ajustar(sinMarcas(l.titulo), (portada ? 80 : 60) * k, portada ? 60 : 55)
+  const baseT = { size: sizeT, lh: 1.06, peso: PESO_GRUESO, css: `font-weight:800;color:${e.colores.texto};` }
+  const estT = { normal: "", negrita: "", acento: `color:${e.colores.acento};font-weight:300;${portada ? "text-transform:uppercase;" : ""}` }
+  const medidaT = textoRico(l.titulo, 0, 0, ancho, baseT, estT, portada)
+  partes.push({ h: medidaT.h, html: (x, y) => textoRico(l.titulo, x, y, ancho, baseT, estT, portada).html })
+
+  if (l.cuerpo) {
+    sep(22 * k)
+    const baseC = { size: 32 * k, lh: 1.38, peso: PESO_NORMAL, css: `font-weight:300;color:${e.colores.textoSuave};` }
+    const estC = { normal: "", acento: `color:${e.colores.acento};font-weight:700;`, negrita: `font-weight:800;color:${e.colores.texto};` }
+    const medidaC = textoRico(l.cuerpo, 0, 0, ancho, baseC, estC)
+    partes.push({ h: medidaC.h, html: (x, y) => textoRico(l.cuerpo, x, y, ancho, baseC, estC).html })
+  }
+
+  if (l.recurso && !portada) {
+    const medida = recursoEnColumna(c, l.recurso, 0, 0, ancho)
+    if (medida.h) {
+      sep(30 * k)
+      partes.push({ h: medida.h, html: (x, y) => recursoEnColumna(c, l.recurso!, x, y, ancho).html })
+    }
+  }
+
+  const h = partes.reduce((s, p) => s + p.h, 0)
+  return {
+    h,
+    html: (x: number, y: number) => {
+      let out = ""
+      let cy = y
+      for (const p of partes) {
+        out += p.html(x, cy)
+        cy += p.h
+      }
+      return out
+    },
+  }
+}
+
+/**
+ * Fotografico. La foto manda. La composicion alterna la foto a sangre (con el
+ * texto sobre un degradado) y la foto arriba con un panel solido, y el
+ * refuerzo visual esta en el texto mismo: jerarquia de antetitulo, titulo en
+ * dos tonos, frase clave en negrita, y recursos que informan (lista, cifra,
+ * datos). Nada de formas que solo adornan.
  */
 function fotografico(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
   if (l.rol === "cierre") return cierre(c, l)
@@ -284,55 +451,17 @@ function fotografico(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
   return dividida ? fotoDividida(c, l, n, total) : fotoInmersiva(c, l, n, total, portada)
 }
 
-/**
- * Marco de enfoque: cuatro esquinas de acento que encuadran una zona de la
- * foto, como el visor de una camara. Senala sin tapar.
- */
-function marcoEnfoque(c: Ctx, x: number, y: number, w: number, h: number) {
-  const { k, e } = c
-  const g = 8 * k
-  const brazo = Math.min(80 * k, w / 4, h / 4)
-  const s = `background:${e.colores.acento};border-radius:${px(g / 2)};`
-  let html = ""
-  for (const [cx, cy, dx, dy] of [
-    [x, y, 1, 1],
-    [x + w, y, -1, 1],
-    [x, y + h, 1, -1],
-    [x + w, y + h, -1, -1],
-  ] as const) {
-    html += bloque(dx > 0 ? cx : cx - brazo, dy > 0 ? cy : cy - g, brazo, g, s)
-    html += bloque(dx > 0 ? cx : cx - g, dy > 0 ? cy : cy - brazo, g, brazo, s)
-  }
-  return html
-}
-
-/** Una reticula de puntos de acento: un detalle grafico que da ritmo. */
-function puntos(c: Ctx, x: number, y: number, columnas: number, filas: number, color: string) {
-  const { k } = c
-  const d = 10 * k
-  const paso = 28 * k
-  let html = ""
-  for (let f = 0; f < filas; f++) {
-    for (let col = 0; col < columnas; col++) {
-      html += bloque(x + col * paso, y + f * paso, d, d, `background:${color};border-radius:${px(d / 2)};`)
-    }
-  }
-  return html
-}
-
 function fotoInmersiva(c: Ctx, l: LaminaCompuesta, n: number, total: number, portada: boolean) {
   const { W, H, k, m, e } = c
   let html = l.imagen ? imagen(l.imagen, 0, 0, W, H, "foto") : ""
   const ancho = c.apaisado ? W * 0.62 : W - 2 * m
-  const sizeT = ajustar(l.titulo, (portada ? 78 : 60) * k, portada ? 70 : 55)
-  const sizeC = 32 * k
-  const altoTexto = alto(l.titulo, sizeT, ancho, 1.08, PESO_GRUESO) + (l.cuerpo ? alto(l.cuerpo, sizeC, ancho, 1.35) + 24 * k : 0)
-  const yTexto = H - m - (portada && e.textoDesliza ? 90 * k : 30 * k) - altoTexto
-  const rec = l.recurso ? recursoGrafico(c, l.recurso, m, yTexto - 70 * k) : { html: "", h: 0 }
+  const bloqueT = bloqueFoto(c, l, ancho, portada)
+  const pie = l.rol === "portada" && e.textoDesliza ? 110 * k : 40 * k
+  const yTexto = H - m - pie - bloqueT.h
 
   // Degradado de contraste: escalones finos de velo, porque el degradado CSS
-  // no se importa de forma fiable. Arranca por encima del recurso.
-  const inicioVelo = Math.max(H * 0.3, yTexto - 120 * k - rec.h)
+  // no se importa de forma fiable.
+  const inicioVelo = Math.max(H * 0.25, yTexto - 120 * k)
   const pasos = 10
   const altoDegradado = 320 * k
   for (let i = 0; i < pasos; i++) {
@@ -340,63 +469,24 @@ function fotoInmersiva(c: Ctx, l: LaminaCompuesta, n: number, total: number, por
   }
   html += bloque(0, inicioVelo, W, H - inicioVelo, `background:rgba(0,0,0,${(e.velo * 0.35).toFixed(2)});`)
 
-  // Formas de apoyo en las laminas de contenido: un marco de enfoque sobre la
-  // zona central de la foto y una reticula de puntos. Senalan y dan ritmo; la
-  // foto sigue mandando.
-  if (!portada && !c.apaisado) {
-    const arriba = m + 210 * k
-    const abajo = inicioVelo - 60 * k
-    if (abajo - arriba > 240 * k) {
-      html += marcoEnfoque(c, m + 60 * k, arriba, W - 2 * m - 120 * k, abajo - arriba)
-    }
-    html += puntos(c, W - m - 100 * k, m + 90 * k, 4, 3, e.colores.acento)
-  }
-
-  html += rec.html
-  html += bloque(m, yTexto - 34 * k, 90 * k, 10 * k, `background:${e.colores.acento};border-radius:${px(5 * k)};`)
-  html += texto(l.titulo, m, yTexto, ancho, `font-size:${px(sizeT)};line-height:1.08;font-weight:800;color:${e.colores.texto};`)
-  if (l.cuerpo) {
-    html += texto(l.cuerpo, m, yTexto + alto(l.titulo, sizeT, ancho, 1.08, PESO_GRUESO) + 24 * k, ancho, `font-size:${px(sizeC)};line-height:1.35;color:${e.colores.textoSuave};`)
-  }
+  html += bloqueT.html(m, yTexto)
   html += cabeceraSobreFoto(c, n, total)
-  if (l.rol === "portada") html += desliza(c, e.colores.textoSuave)
+  if (l.rol === "portada") html += botonDesliza(c)
   return html
 }
 
 function fotoDividida(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
   const { W, H, k, m, e } = c
-  const fotoH = H * 0.6
+  // El panel crece con el texto: la foto cede lo justo (nunca menos del 40 %)
+  // para que el bloque respire arriba y abajo.
+  const bloqueT = bloqueFoto(c, l, W - 2 * m, false)
+  const fotoH = Math.max(H * 0.4, Math.min(H * 0.55, H - bloqueT.h - 2 * 80 * k))
   let html = l.imagen ? imagen(l.imagen, 0, 0, W, fotoH, "foto") : ""
-  // Marco de enfoque sobre la foto.
-  html += marcoEnfoque(c, m + 40 * k, m + 130 * k, W - 2 * m - 80 * k, fotoH - m - 230 * k)
   html += bloque(0, fotoH, W, H - fotoH, `background:${e.colores.fondo};`)
-  // El panel no es solo texto: el numero de la lamina en grande y tenue de
-  // fondo, un aro de acento que asoma por la esquina y una reticula de puntos.
-  const tenue = luminancia(e.colores.fondo) < 0.5 ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"
-  html += texto(String(n).padStart(2, "0"), W - m - 330 * k, fotoH + 30 * k, 330 * k, `font-size:${px(250 * k)};line-height:1;font-weight:800;text-align:right;color:${tenue};`)
-  const d = 300 * k
-  html += bloque(W - d * 0.55, H - d * 0.55, d, d, `border:${px(12 * k)} solid ${e.colores.acento};border-radius:${px(d / 2)};`)
-  html += puntos(c, m, H - m - 40 * k, 6, 2, e.colores.acento)
-
-  // El recurso se apoya en el borde entre la foto y el panel.
-  if (l.recurso) {
-    const r = l.recurso
-    if (r.tipo === "cifra") html += recursoGrafico(c, r, m, fotoH + 100 * k, true).html
-    else if (r.tipo === "paso") html += recursoGrafico(c, r, W - m - 120 * k, fotoH + 60 * k).html
-    else html += recursoGrafico(c, r, m, fotoH - 36 * k).html
-  }
-
-  // Si el recurso cae a la derecha del panel, el texto le deja sitio.
-  const ancho = W - 2 * m - (l.recurso?.tipo === "cifra" ? 380 * k : l.recurso?.tipo === "paso" ? 140 * k : 0)
-  const sizeT = ajustar(l.titulo, 56 * k, 55)
-  // El bloque de texto se centra en el panel: arriba del todo dejaba media
-  // lamina negra debajo.
-  const bloqueTexto = alto(l.titulo, sizeT, ancho, 1.1, PESO_GRUESO) + (l.cuerpo ? 22 * k + alto(l.cuerpo, 30 * k, W - 2 * m, 1.4) : 0)
-  let y = Math.max(fotoH + 120 * k, fotoH + (H - fotoH - bloqueTexto) / 2)
-  html += bloque(m, y - 40 * k, 90 * k, 10 * k, `background:${e.colores.acento};border-radius:${px(5 * k)};`)
-  html += texto(l.titulo, m, y, ancho, `font-size:${px(sizeT)};line-height:1.1;font-weight:800;color:${e.colores.texto};`)
-  y += alto(l.titulo, sizeT, ancho, 1.1, PESO_GRUESO) + 22 * k
-  if (l.cuerpo) html += texto(l.cuerpo, m, y, W - 2 * m, `font-size:${px(30 * k)};line-height:1.4;color:${e.colores.textoSuave};`)
+  // Una linea de acento marca el corte entre la foto y el panel.
+  html += bloque(0, fotoH, W, 6 * k, `background:${e.colores.acento};`)
+  const y = Math.max(fotoH + 70 * k, fotoH + (H - fotoH - bloqueT.h) / 2)
+  html += bloqueT.html(m, y)
   html += cabeceraSobreFoto(c, n, total)
   return html
 }

@@ -6,20 +6,30 @@ import { corregirTextos } from "./ortografia"
 import { dibujarConCanva, type LaminaPieza } from "./canva"
 import type { Grafico, Recurso } from "./compositor"
 
-/** Normaliza el recurso grafico del estilo Fotografico; null si no sirve. */
+/**
+ * Normaliza el recurso del estilo Fotografico; null si no sirve. Solo los que
+ * informan: lista, cifra y datos. Una "etiqueta" o un "paso" no son recursos:
+ * son el antetitulo de la lamina (ver antetituloDe).
+ */
 function recursoDe(v: unknown): Recurso | null {
   if (!v || typeof v !== "object") return null
   const r = v as Record<string, unknown>
   const tipo = String(r.tipo)
   const str = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : undefined)
+  const items = Array.isArray(r.items) ? r.items.map(str).filter((x): x is string => Boolean(x)) : []
   if (tipo === "cifra" && str(r.valor)) return { tipo, valor: str(r.valor), texto: str(r.texto) }
-  if (tipo === "etiqueta" && str(r.texto)) return { tipo, texto: str(r.texto) }
-  if (tipo === "paso" && (str(r.valor) || typeof r.valor === "number")) return { tipo, valor: String(r.valor).trim() }
-  if (tipo === "lista" && Array.isArray(r.items)) {
-    const items = r.items.map(str).filter((x): x is string => Boolean(x)).slice(0, 3)
-    return items.length ? { tipo, items } : null
-  }
+  if (tipo === "lista" && items.length) return { tipo, items: items.slice(0, 4) }
+  if (tipo === "datos" && items.length) return { tipo, items: items.slice(0, 3) }
   return null
+}
+
+/** El antetitulo de una lamina, o el que se deduce de un recurso viejo de etiqueta o paso. */
+function antetituloDe(s: Record<string, unknown>): string | undefined {
+  if (typeof s.antetitulo === "string" && s.antetitulo.trim()) return s.antetitulo.trim()
+  const r = (s.recurso ?? {}) as Record<string, unknown>
+  if (r.tipo === "etiqueta" && typeof r.texto === "string") return r.texto.trim()
+  if (r.tipo === "paso" && r.valor !== undefined) return `Paso ${String(r.valor).padStart(2, "0")}`
+  return undefined
 }
 import { estiloDe, type EstiloCompleto } from "./plantillas"
 import { INSTRUCCIONES_ESTILO } from "./prompts"
@@ -168,6 +178,7 @@ Recuerda: todo lo que escribas lleva sus tildes y sus eñes, aunque la idea de a
         etiquetas: arr(s.etiquetas).slice(0, 4),
         grafico: graficoDe(s.grafico),
         recurso: recursoDe(s.recurso),
+        antetitulo: antetituloDe(s),
         fuente: str(s.fuente) || undefined,
         periodo: str(s.periodo) || undefined,
       }))
@@ -204,6 +215,7 @@ Recuerda: todo lo que escribas lleva sus tildes y sus eñes, aunque la idea de a
         { leer: () => it.etiqueta, poner: (t: string) => (it.etiqueta = t) },
         ...(it.nota ? [{ leer: () => it.nota ?? "", poner: (t: string) => (it.nota = t) }] : []),
       ]),
+      ...(s.antetitulo ? [{ leer: () => s.antetitulo ?? "", poner: (t: string) => (s.antetitulo = t) }] : []),
       ...(s.recurso?.texto ? [{ leer: () => s.recurso!.texto ?? "", poner: (t: string) => (s.recurso!.texto = t) }] : []),
       ...(s.recurso?.items ?? []).map((_, i) => ({ leer: () => s.recurso!.items![i], poner: (t: string) => (s.recurso!.items![i] = t) })),
     ]),

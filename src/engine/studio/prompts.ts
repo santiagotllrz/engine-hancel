@@ -68,12 +68,17 @@ Antes de responder confirma: sin guiones largos, títulos dentro del límite, to
 export const INSTRUCCIONES_ESTILO: Record<TipoEstilo, string> = {
   fotografico: `CAMPOS DEL ESTILO FOTOGRÁFICO (en cada lámina menos el cierre):
 - "foto": la búsqueda de la foto real para esa lámina, EN INGLÉS, de 2 a 4 palabras, literal al asunto: el cultivo, la labor, el producto, el lugar, las manos trabajando. Escenas auténticas y cercanas, nada genérico ("business", "nature" no sirven). Personas solo trabajando dentro de la escena, nunca un retrato como sujeto. Cada lámina pide una foto distinta.
-- "recurso" (OBLIGATORIO en cada lámina menos el cierre, y nunca dos seguidas con el mismo tipo): un apoyo gráfico que realza la idea de la lámina sin tapar la foto. Ninguna lámina puede quedar solo con foto y texto. Uno de:
-  * {"tipo":"cifra","valor":"<número con unidad, corto: '15 cm', '3 veces'>","texto":"<qué es, 2 a 5 palabras>"} solo si el número es un dato conocido y seguro del sector, nunca inventado.
-  * {"tipo":"etiqueta","texto":"<la idea en 1 a 3 palabras: 'Señal de alerta', 'Paso clave'>"}
-  * {"tipo":"paso","valor":"<número del paso: '1', '2'…>"} cuando la narrativa es un paso a paso.
-  * {"tipo":"lista","items":["<2 a 3 puntos de 1 a 4 palabras>"]}
-- El texto es poco: el "title" corto y directo, y el "body" breve o vacío. La foto cuenta la historia; el recurso la explica.`,
+
+EL TEXTO NO ES PLANO: LA JERARQUÍA VA DENTRO DEL TEXTO
+La foto es la protagonista. El refuerzo visual no son adornos: es el propio texto con jerarquía, y solo los recursos que informan.
+- "antetitulo": 1 a 3 palabras que encabezan y ubican la lámina ("Paso 02", "El error", "Dato clave", "Señal de alerta"). En todas las láminas menos la portada.
+- En "hook" y "title", marca entre *asteriscos simples* la parte clave (2 a 4 palabras): se pinta en el color de acento y con otro peso. Una sola marca por título. Ejemplos: "El riego del mediodía *se evapora*", "La cosecha *se decide en la floración*".
+- En "body", marca entre **dobles asteriscos** la frase que más importa (una sola, 2 a 6 palabras): va en negrita. Ejemplo: "El calor se lleva **hasta un tercio del agua** antes de llegar a la raíz."
+- "recurso" (solo cuando aporta información que el texto no da; al menos en la mitad de las láminas, nunca dos seguidas del mismo tipo):
+  * {"tipo":"lista","items":["<2 a 4 puntos de 1 a 5 palabras>"]} se numera 01, 02… cuando hay pasos, causas o señales.
+  * {"tipo":"cifra","valor":"<número con unidad, corto: '15 cm', '3 veces'>","texto":"<qué es, 2 a 6 palabras>"} solo si el dato es conocido y seguro del sector, nunca inventado.
+  * {"tipo":"datos","items":["<2 a 3 datos cortos: 'Clima frío', 'pH 5,5', 'Siembra'>"]} en pastillas, para condiciones o atributos.
+- Pocas palabras: el "title" corto y directo, el "body" de una o dos líneas.`,
   ilustracion: `CAMPOS DEL ESTILO ILUSTRACIÓN (en cada lámina menos el cierre):
 - "visual": la escena que hay que dibujar, EN INGLÉS, en una o dos frases concretas: qué se ve, qué pasa, desde qué punto de vista. Piensa en un dibujo plano y didáctico que explique la idea de la lámina (un proceso, las partes de algo, una situación). Personajes sencillos si ayudan. Nunca pidas texto dentro del dibujo.
 - "etiquetas" (opcional): de 0 a 3 etiquetas de 1 a 3 palabras en español, para nombrar lo importante del dibujo.

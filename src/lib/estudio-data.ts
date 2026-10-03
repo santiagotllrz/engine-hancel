@@ -73,6 +73,8 @@ type Payload = {
   capas?: Partial<Record<keyof FichaPieza, string | null>>
 }
 
+const limpiar = (t: string) => t.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1")
+
 export async function getEstudio(): Promise<PilarEstudio[]> {
   const supabase = supabaseAdmin()
   const accountId = await idDeCuentaActual()
@@ -183,7 +185,8 @@ export async function getEstudio(): Promise<PilarEstudio[]> {
       imagenes: p.imagenes ?? [],
       caption: p.caption ?? "",
       hashtags: p.hashtags ?? [],
-      laminas: (p.slides ?? []).map((s) => ({ titulo: s.hook || s.title || "", cuerpo: s.body || "" })),
+      // Sin las marcas de enfasis del estilo Fotografico (*acento*, **negrita**).
+      laminas: (p.slides ?? []).map((s) => ({ titulo: limpiar(s.hook || s.title || ""), cuerpo: limpiar(s.body || "") })),
       parrafos: p.parrafos ?? (p.title ? [p.title, p.body ?? ""].filter(Boolean) : []),
       canvaEditUrl: p.canva_edit_url ?? null,
       aviso: p.aviso ?? null,

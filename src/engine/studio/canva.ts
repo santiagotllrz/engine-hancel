@@ -2,7 +2,7 @@ import { supabaseAdmin } from "../supabase-admin"
 import { formatoPorId } from "@/lib/canales-catalogo"
 import { familiaDeFormato, type EstiloPlantilla, type TipoEstilo } from "@/lib/plantillas-catalogo"
 import { canvaMcp } from "./canva-mcp"
-import { componerHTML, type Grafico, type LaminaCompuesta, type Recurso } from "./compositor"
+import { componerHTML, sinMarcas, type Grafico, type LaminaCompuesta, type Recurso } from "./compositor"
 import { elegirFotos } from "./fotos"
 import { generarImagen, proporcionPara } from "./imagenes"
 
@@ -33,6 +33,7 @@ export type LaminaPieza = {
   etiquetas?: string[]
   grafico?: Grafico | null
   recurso?: Recurso | null
+  antetitulo?: string
   fuente?: string
   periodo?: string
 }
@@ -93,6 +94,7 @@ function laminasDe(pieza: PiezaParaDibujar, formatId: string, cierreFijo: boolea
     imagen: null,
     foto: null,
     recurso: l.recurso ?? null,
+    antetitulo: (l.antetitulo ?? "").trim(),
     pedido: l,
   })
 
@@ -137,6 +139,12 @@ export async function dibujarConCanva(opciones: {
   const W = fmt?.formato.ancho || 1080
   const H = fmt?.formato.alto || 1350
   const laminas = laminasDe(pieza, formatId, estilo.estilo.cierre.modo === "fijo")
+  if (estilo.tipo !== "fotografico") {
+    for (const l of laminas) {
+      l.titulo = sinMarcas(l.titulo)
+      l.cuerpo = sinMarcas(l.cuerpo)
+    }
+  }
   if (laminas.length === 0) return { ok: false, error: "La pieza no trae laminas." }
 
   const avisos: string[] = []
