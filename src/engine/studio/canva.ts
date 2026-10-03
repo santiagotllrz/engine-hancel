@@ -2,7 +2,8 @@ import { supabaseAdmin } from "../supabase-admin"
 import { formatoPorId } from "@/lib/canales-catalogo"
 import { familiaDeFormato, type EstiloPlantilla, type TipoEstilo } from "@/lib/plantillas-catalogo"
 import { canvaMcp } from "./canva-mcp"
-import { componerHTML, sinMarcas, type Grafico, type LaminaCompuesta, type Recurso } from "./compositor"
+import { componerHTML, sinMarcas, solapesDeLaUltimaPieza, type Grafico, type LaminaCompuesta, type Recurso } from "./compositor"
+import { cargarFuente } from "./metricas"
 import { elegirFotos } from "./fotos"
 import { generarImagen, proporcionPara } from "./imagenes"
 import { urlIcono } from "./iconos"
@@ -241,6 +242,8 @@ export async function dibujarConCanva(opciones: {
   }
 
   // ------------------------------------------------------- 2. componer
+  // El compositor mide cada texto con la fuente real del estilo.
+  await cargarFuente(estilo.estilo.fuente)
   const html = componerHTML({
     tipo: estilo.tipo,
     estilo: estilo.estilo,
@@ -250,6 +253,7 @@ export async function dibujarConCanva(opciones: {
     logo: await logoDe(opciones.accountId),
     titulo: opciones.titulo,
   })
+  avisos.push(...solapesDeLaUltimaPieza())
   const supabase = supabaseAdmin()
   const rutaHtml = `${carpeta}/pieza-${Date.now().toString(36)}.html`
   const { error: errSubida } = await supabase.storage.from(BUCKET).upload(rutaHtml, Buffer.from(html, "utf8"), {

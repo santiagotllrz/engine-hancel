@@ -29,6 +29,7 @@ const IDENTIDAD_CLAUDE_CODE = "You are Claude Code, Anthropic's official CLI for
 
 /** El timeout es generoso: una generacion larga (un carrusel) puede tardar. */
 const TIMEOUT_MS = 120_000
+const TIMEOUT_MS_BUSQUEDA = 180_000
 
 export type LlamadaClaude = {
   /** Id de modelo. Haiku para volumen barato, Sonnet/Opus para escribir. */
@@ -144,7 +145,9 @@ export async function llamarClaude(opciones: LlamadaClaude): Promise<ResultadoCl
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      // Con busqueda web la llamada hace varias busquedas antes de escribir: los
+      // estilos de datos llegaron a pasar de 120 s y se cortaban.
+      signal: AbortSignal.timeout(opciones.buscarWeb ? TIMEOUT_MS_BUSQUEDA : TIMEOUT_MS),
     })
 
     const cuerpo = await response.text()
