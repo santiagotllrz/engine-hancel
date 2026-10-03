@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/engine/supabase-admin"
 import { idDeCuentaActual } from "@/lib/accounts"
 import { getSettings } from "@/engine/schedule"
 import { formatoPorId } from "@/lib/canales-catalogo"
+import { todas } from "@/engine/paginar"
 
 /**
  * Lo que produce el pipeline nuevo, agrupado por pilar.
@@ -102,7 +103,7 @@ export async function getEstudio(): Promise<PilarEstudio[]> {
       .select("id, pillar_id, idea, status, topic_id, subtopic_id, intent_id, narrative_id")
       .eq("account_id", accountId),
     supabase.from("content_topics").select("id, name").eq("account_id", accountId),
-    supabase.from("content_subtopics").select("id, name").eq("account_id", accountId),
+    todas((d, h) => supabase.from("content_subtopics").select("id, name").eq("account_id", accountId).order("id").range(d, h)).then((data) => ({ data, error: null })),
     supabase.from("content_intents").select("id, name").eq("account_id", accountId),
     supabase.from("content_narratives").select("id, name").eq("account_id", accountId),
     supabase.from("content_templates").select("id, name").eq("account_id", accountId),

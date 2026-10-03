@@ -1,12 +1,13 @@
 import { DashboardShell } from "@/components/dashboard-shell"
 import { EditorIntenciones } from "@/components/capas/editor-intenciones"
+import { EditorListas } from "@/components/capas/editor-listas"
 import { EditorPilares } from "@/components/capas/editor-pilares"
 import { EditorPlantillas } from "@/components/capas/editor-plantillas"
 import { EditorSimple } from "@/components/capas/editor-simple"
 import { VistaCanales } from "@/components/capas/vista-canales"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CANALES } from "@/lib/canales-catalogo"
-import { getIntenciones, getPilares, getSimples } from "@/lib/capas-data"
+import { getIntenciones, getListas, getPilares, getSimples } from "@/lib/capas-data"
 import { getPlantillas } from "@/lib/plantillas-data"
 import { cuentaActual } from "@/lib/accounts"
 import { getLinkedinStatus } from "@/engine/publish/linkedin"
@@ -26,13 +27,14 @@ export const metadata = { title: "Capas · Engine Hancel" }
  * cualquier receta. Fuente queda de placeholder.
  */
 export default async function CapasPage() {
-  const [pilares, intenciones, narrativas, ctas, cuenta, plantillas] = await Promise.all([
+  const [pilares, intenciones, narrativas, ctas, cuenta, plantillas, listas] = await Promise.all([
     getPilares(),
     getIntenciones(),
     getSimples("content_narratives"),
     getSimples("content_ctas"),
     cuentaActual(),
     getPlantillas(),
+    getListas(),
   ])
 
   const linkedin = await getLinkedinStatus(cuenta.id)
@@ -57,7 +59,10 @@ export default async function CapasPage() {
 
         <div className="max-w-3xl">
           <TabsContent value="pilares">
-            <EditorPilares pilares={pilares} />
+            <div className="flex flex-col gap-8">
+              <EditorPilares pilares={pilares} listas={listas.map((l) => ({ id: l.id, name: l.name, total: l.elementos.length }))} />
+              <EditorListas listas={listas} />
+            </div>
           </TabsContent>
 
           <TabsContent value="intencion">

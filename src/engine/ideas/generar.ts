@@ -1,6 +1,7 @@
 import { llamarClaude, parsearJSONDeClaude, type UsoClaude } from "../claude/messages"
 import { arreglarOrtografia } from "../render/carousel"
 import { supabaseAdmin } from "../supabase-admin"
+import { todas } from "../paginar"
 
 /**
  * El agente de ideas: convierte las capas de un pilar en cartuchos.
@@ -62,7 +63,7 @@ async function combinacionesDe(accountId: string, pillarId: string): Promise<Com
 
   const [temas, subtemas, intenciones, narrativas, enlaces] = await Promise.all([
     supabase.from("content_topics").select("id, name, description").eq("pillar_id", pillarId),
-    supabase.from("content_subtopics").select("id, name, description, topic_id").eq("account_id", accountId),
+    todas((d, h) => supabase.from("content_subtopics").select("id, name, description, topic_id").eq("account_id", accountId).order("id").range(d, h)).then((data) => ({ data, error: null })),
     supabase.from("content_intents").select("id, name, description").eq("account_id", accountId),
     supabase.from("content_narratives").select("id, name, description").eq("account_id", accountId),
     supabase.from("content_intent_narratives").select("intent_id, narrative_id").eq("account_id", accountId),
@@ -130,6 +131,12 @@ export type ResultadoIdeas = {
 const LOTE = 25
 
 /**
+ * Tope de combinaciones por ronda: cuatro llamadas de 25, que caben en el
+ * tiempo de una pasada. Por encima, la ronda toma las menos cubiertas.
+ */
+const MAX_POR_RONDA = 100
+
+/**
  * Genera una ronda de cartuchos para un pilar.
  *
  * Si hay muchas combinaciones se lotea, y a cada lote se le pasan los titulos
@@ -143,11 +150,38 @@ export async function generarRonda(
   system: string = IDEAS_SYSTEM
 ): Promise<ResultadoIdeas> {
   const supabase = supabaseAdmin()
-  const combs = await combinacionesDe(accountId, pillarId)
+  const todasLasCombs = await combinacionesDe(accountId, pillarId)
 
   const uso: UsoClaude = { entrada: 0, salida: 0 }
-  if (combs.length === 0) {
+  if (todasLasCombs.length === 0) {
     return { pillarId, generadas: 0, ronda: 0, uso, error: "El pilar no tiene combinaciones: le faltan temas, intenciones o narrativas enlazadas." }
+  }
+
+  // Con listas grandes las combinaciones se disparan (100 frutas x 3
+  // intenciones x 4 narrativas son 1.200): una ronda no las abarca en una sola
+  // pasada. Se toma un lote, empezando por las que menos ideas tienen, y las
+  // rondas siguientes siguen por las demas: con el tiempo se cubren todas.
+  let combs = todasLasCombs
+  if (todasLasCombs.length > MAX_POR_RONDA) {
+    const previos = await todas<{ topic_id: string | null; subtopic_id: string | null; intent_id: string | null; narrative_id: string | null }>((d, h) =>
+      supabase
+        .from("content_cartridges")
+        .select("id, topic_id, subtopic_id, intent_id, narrative_id")
+        .eq("pillar_id", pillarId)
+        .order("id")
+        .range(d, h)
+    )
+    const clave = (t: string | null, s: string | null, i: string | null, n: string | null) => `${t}|${s}|${i}|${n}`
+    const veces = new Map<string, number>()
+    for (const c of previos) {
+      const k = clave(c.topic_id, c.subtopic_id, c.intent_id, c.narrative_id)
+      veces.set(k, (veces.get(k) ?? 0) + 1)
+    }
+    combs = [...todasLasCombs]
+      .map((c) => ({ c, v: veces.get(clave(c.topicId, c.subtopicId, c.intentId, c.narrativeId)) ?? 0, azar: Math.random() }))
+      .sort((a, b) => a.v - b.v || a.azar - b.azar)
+      .slice(0, MAX_POR_RONDA)
+      .map((x) => x.c)
   }
 
   // La ronda es la siguiente a la ultima que haya de este pilar.

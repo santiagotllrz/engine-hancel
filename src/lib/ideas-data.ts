@@ -2,6 +2,7 @@ import "server-only"
 
 import { supabaseAdmin } from "@/engine/supabase-admin"
 import { idDeCuentaActual } from "@/lib/accounts"
+import { todas } from "@/engine/paginar"
 
 /**
  * Los cartuchos de la cuenta, agrupados por pilar.
@@ -37,7 +38,7 @@ export async function getIdeasPorPilar(): Promise<PilarConIdeas[]> {
     supabase.from("content_pillars").select("id, name").eq("account_id", accountId).order("position"),
     supabase.from("content_cartridges").select("*").eq("account_id", accountId).order("created_at", { ascending: false }),
     supabase.from("content_topics").select("id, name").eq("account_id", accountId),
-    supabase.from("content_subtopics").select("id, name").eq("account_id", accountId),
+    todas((d, h) => supabase.from("content_subtopics").select("id, name").eq("account_id", accountId).order("id").range(d, h)).then((data) => ({ data, error: null })),
     supabase.from("content_intents").select("id, name").eq("account_id", accountId),
     supabase.from("content_narratives").select("id, name").eq("account_id", accountId),
   ])

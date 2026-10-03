@@ -1,17 +1,20 @@
 "use client"
 
 import * as React from "react"
-import { ChevronRightIcon, PlusIcon, Trash2Icon } from "lucide-react"
+import { ChevronRightIcon, ListIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react"
 
 import { borrarFila, guardarFila } from "@/app/capas/actions"
+import { quitarLista, subtemasEnBloque, usarLista } from "@/app/capas/listas-actions"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 
 type Fila = { id: string; name: string; description: string | null; position: number }
-type Tema = Fila & { pillar_id: string; subtemas: Fila[] }
+type Tema = Fila & { pillar_id: string; subtemas: Fila[]; listas: { id: string; name: string; total: number }[] }
 type Pilar = Fila & { temas: Tema[] }
+type ListaOpcion = { id: string; name: string; total: number }
 
 /**
  * El arbol pilar -> tema -> subtema.
@@ -24,7 +27,7 @@ type Pilar = Fila & { temas: Tema[] }
  * enfocado a ese subtema. "Suelo/Abono" con subtema "cafe" es contenido de
  * suelos para cafe, no de suelos en general.
  */
-export function EditorPilares({ pilares }: { pilares: Pilar[] }) {
+export function EditorPilares({ pilares, listas }: { pilares: Pilar[]; listas: ListaOpcion[] }) {
   const [error, setError] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
   const [nuevoPilar, setNuevoPilar] = React.useState("")
@@ -59,7 +62,7 @@ export function EditorPilares({ pilares }: { pilares: Pilar[] }) {
       {error ? <p className="text-destructive text-sm">{error}</p> : null}
 
       {pilares.map((p) => (
-        <PilarCard key={p.id} pilar={p} disabled={pending} accion={accion} />
+        <PilarCard key={p.id} pilar={p} listas={listas} disabled={pending} accion={accion} />
       ))}
 
       <Card className="border-dashed">
@@ -82,10 +85,12 @@ export function EditorPilares({ pilares }: { pilares: Pilar[] }) {
 
 function PilarCard({
   pilar,
+  listas,
   disabled,
   accion,
 }: {
   pilar: Pilar
+  listas: ListaOpcion[]
   disabled: boolean
   accion: (fn: () => Promise<{ ok: boolean; error?: string }>) => void
 }) {
@@ -109,7 +114,7 @@ function PilarCard({
 
         <div className="border-muted flex flex-col gap-2 border-l-2 pl-4">
           {pilar.temas.map((t) => (
-            <TemaFila key={t.id} tema={t} disabled={disabled} accion={accion} />
+            <TemaFila key={t.id} tema={t} listas={listas} disabled={disabled} accion={accion} />
           ))}
 
           <div className="flex items-center gap-2">
@@ -137,10 +142,12 @@ function PilarCard({
 
 function TemaFila({
   tema,
+  listas,
   disabled,
   accion,
 }: {
   tema: Tema
+  listas: ListaOpcion[]
   disabled: boolean
   accion: (fn: () => Promise<{ ok: boolean; error?: string }>) => void
 }) {
@@ -164,9 +171,9 @@ function TemaFila({
           className="text-sm font-medium"
           onGuardar={(name) => accion(() => guardarFila("content_topics", { id: tema.id, name }))}
         />
-        {tema.subtemas.length > 0 ? (
+        {tema.subtemas.length + tema.listas.reduce((s, l) => s + l.total, 0) > 0 ? (
           <Badge variant="outline" className="shrink-0 text-[10px]">
-            {tema.subtemas.length}
+            {tema.subtemas.length + tema.listas.reduce((s, l) => s + l.total, 0)}
           </Badge>
         ) : null}
         <BotonBorrar disabled={disabled} onClick={() => accion(() => borrarFila("content_topics", tema.id))} />
@@ -174,6 +181,26 @@ function TemaFila({
 
       {abierto ? (
         <div className="border-muted ml-5 flex flex-col gap-1 border-l pl-3">
+          {/* Las listas que usa el tema: aportan sus elementos como subtemas. */}
+          {tema.listas.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5 py-1">
+              {tema.listas.map((l) => (
+                <span key={l.id} className="bg-secondary inline-flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 text-xs">
+                  <ListIcon className="size-3" />
+                  {l.name} · {l.total}
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => accion(() => quitarLista(tema.id, l.id))}
+                    className="text-muted-foreground hover:text-destructive rounded-full p-0.5"
+                    aria-label={`Dejar de usar ${l.name}`}
+                  >
+                    <XIcon className="size-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
           {tema.subtemas.map((s) => (
             <div key={s.id} className="flex items-center gap-1.5">
               <NombreEditable
@@ -188,9 +215,16 @@ function TemaFila({
           <Input
             value={nuevoSub}
             disabled={disabled}
-            placeholder="Nuevo subtema: cafe, aguacate…"
+            placeholder="Nuevo subtema (o pega varios, uno por línea)"
             className="h-7 text-xs"
             onChange={(e) => setNuevoSub(e.target.value)}
+            onPaste={(e) => {
+              // Pegar varios renglones crea un subtema por renglon.
+              const texto = e.clipboardData.getData("text")
+              if (!texto.includes("\n")) return
+              e.preventDefault()
+              accion(() => subtemasEnBloque(tema.id, texto))
+            }}
             onKeyDown={(e) => {
               if (e.key !== "Enter" || !nuevoSub.trim()) return
               accion(async () => {
@@ -200,6 +234,22 @@ function TemaFila({
               })
             }}
           />
+          {listas.filter((l) => !tema.listas.some((u) => u.id === l.id)).length > 0 ? (
+            <Select value="" onValueChange={(v) => v && accion(() => usarLista(tema.id, v as string))}>
+              <SelectTrigger size="sm" className="mt-1 h-7 w-fit text-xs" disabled={disabled}>
+                <SelectValue>{() => "Usar una lista de subtemas…"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {listas
+                  .filter((l) => !tema.listas.some((u) => u.id === l.id))
+                  .map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name} ({l.total})
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          ) : null}
         </div>
       ) : null}
     </div>

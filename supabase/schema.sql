@@ -193,6 +193,39 @@ create table if not exists public.content_subtopics (
   created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 alter table public.content_subtopics add column if not exists description text;
+
+-- Listas de subtemas reutilizables: "Frutas" se escribe una vez y la usan los
+-- temas que la necesiten. Sus elementos se materializan como subtemas del tema
+-- (list_item_id), asi las ideas y los cartuchos no cambian.
+create table if not exists public.content_subtopic_lists (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts (id) on delete cascade,
+  name text not null, description text,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create table if not exists public.content_subtopic_list_items (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts (id) on delete cascade,
+  list_id uuid not null references public.content_subtopic_lists (id) on delete cascade,
+  name text not null, description text, position integer not null default 0,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.content_topic_lists (
+  account_id uuid not null references public.accounts (id) on delete cascade,
+  topic_id uuid not null references public.content_topics (id) on delete cascade,
+  list_id uuid not null references public.content_subtopic_lists (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (topic_id, list_id)
+);
+alter table public.content_subtopics
+  add column if not exists list_item_id uuid references public.content_subtopic_list_items (id) on delete cascade;
+create unique index if not exists content_subtopics_tema_elemento_idx
+  on public.content_subtopics (topic_id, list_item_id) where list_item_id is not null;
+create index if not exists content_subtopic_lists_account_idx on public.content_subtopic_lists (account_id);
+create index if not exists content_subtopic_list_items_list_idx on public.content_subtopic_list_items (list_id, position);
+alter table public.content_subtopic_lists      enable row level security;
+alter table public.content_subtopic_list_items enable row level security;
+alter table public.content_topic_lists         enable row level security;
 create table if not exists public.content_intents (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts (id) on delete cascade,

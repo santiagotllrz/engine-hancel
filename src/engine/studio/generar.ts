@@ -34,6 +34,7 @@ function antetituloDe(s: Record<string, unknown>): string | undefined {
 import { estiloDe, type EstiloCompleto } from "./plantillas"
 import { INSTRUCCIONES_ESTILO } from "./prompts"
 import { studioConfig } from "./settings"
+import { todas } from "../paginar"
 
 /**
  * El agente de contenido: convierte cartuchos en piezas.
@@ -232,7 +233,7 @@ async function contextoDe(accountId: string, cartuchos: CartuchoFila[]): Promise
   const [pilares, temas, subtemas, intenciones, narrativas, ctas] = await Promise.all([
     supabase.from("content_pillars").select("id, name").eq("account_id", accountId),
     supabase.from("content_topics").select("id, name").eq("account_id", accountId),
-    supabase.from("content_subtopics").select("id, name").eq("account_id", accountId),
+    todas((d, h) => supabase.from("content_subtopics").select("id, name").eq("account_id", accountId).order("id").range(d, h)).then((data) => ({ data, error: null })),
     supabase.from("content_intents").select("id, name, description").eq("account_id", accountId),
     supabase.from("content_narratives").select("id, name, description").eq("account_id", accountId),
     supabase.from("content_ctas").select("id, name").eq("account_id", accountId).order("position"),
