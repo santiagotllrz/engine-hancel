@@ -189,9 +189,10 @@ create table if not exists public.content_subtopics (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts (id) on delete cascade,
   topic_id uuid not null references public.content_topics (id) on delete cascade,
-  name text not null, position integer not null default 0,
+  name text not null, description text, position integer not null default 0,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
+alter table public.content_subtopics add column if not exists description text;
 create table if not exists public.content_intents (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts (id) on delete cascade,

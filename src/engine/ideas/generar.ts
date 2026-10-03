@@ -62,7 +62,7 @@ async function combinacionesDe(accountId: string, pillarId: string): Promise<Com
 
   const [temas, subtemas, intenciones, narrativas, enlaces] = await Promise.all([
     supabase.from("content_topics").select("id, name, description").eq("pillar_id", pillarId),
-    supabase.from("content_subtopics").select("id, name, topic_id").eq("account_id", accountId),
+    supabase.from("content_subtopics").select("id, name, description, topic_id").eq("account_id", accountId),
     supabase.from("content_intents").select("id, name, description").eq("account_id", accountId),
     supabase.from("content_narratives").select("id, name, description").eq("account_id", accountId),
     supabase.from("content_intent_narratives").select("intent_id, narrative_id").eq("account_id", accountId),
@@ -95,7 +95,7 @@ async function combinacionesDe(accountId: string, pillarId: string): Promise<Com
           const narr = narrPorId.get(narrId)
           if (!narr) continue
           n++
-          const foco = sub ? `${tema.name} enfocado a ${sub.name}` : tema.name
+          const foco = sub ? `${tema.name} enfocado a ${sub.name}${sub.description ? ` (${sub.description})` : ""}` : tema.name
           combs.push({
             n,
             topicId: tema.id,
