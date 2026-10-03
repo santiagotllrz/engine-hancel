@@ -89,7 +89,8 @@ export type BufferResult =
  * mandarle el de Instagram a una pagina de Facebook es un error de validacion.
  *
  * `shareNow` publica en el momento; `addToQueue` lo deja en la cola de Buffer
- * para su siguiente hueco.
+ * para su siguiente hueco; con `programarPara` (ISO) sale a esa hora exacta
+ * (`customScheduled`), que es como publica el estudio.
  *
  * No lanza: el fallo viaja en el resultado, igual que en LinkedIn.
  */
@@ -99,8 +100,9 @@ export async function publicarEnBuffer(opciones: {
   texto: string
   imagenes: string[]
   ahora?: boolean
+  programarPara?: string
 }): Promise<BufferResult> {
-  const { channelId, red, texto, imagenes, ahora = true } = opciones
+  const { channelId, red, texto, imagenes, ahora = true, programarPara } = opciones
 
   if (imagenes.length === 0) {
     return { ok: false, error: "La publicacion no tiene imagenes." }
@@ -129,7 +131,8 @@ export async function publicarEnBuffer(opciones: {
           channelId,
           text: texto,
           assets: imagenes.map((url) => ({ image: { url } })),
-          mode: ahora ? "shareNow" : "addToQueue",
+          mode: programarPara ? "customScheduled" : ahora ? "shareNow" : "addToQueue",
+          ...(programarPara ? { dueAt: programarPara } : {}),
           schedulingType: "automatic",
           needsApproval: false,
           metadata,

@@ -349,6 +349,39 @@ alter table public.content_recipes enable row level security;
 alter table public.studio_pieces   enable row level security;
 alter table public.studio_settings enable row level security;
 
+-- La publicacion del estudio: cuando y donde sale cada pieza. El agente de
+-- publicacion arma el plan del dia (un hueco cada publicar_cada_min minutos
+-- desde publicar_desde, alternando pilares y recetas) y deja cada pieza
+-- programada en Buffer a la hora de su hueco, en cada red de publicar_redes.
+alter table public.studio_settings
+  add column if not exists publicar_activo boolean not null default false,
+  add column if not exists publicar_desde text not null default '09:30',
+  add column if not exists publicar_cada_min integer not null default 15,
+  add column if not exists publicar_redes text[] not null default '{instagram,facebook}';
+
+create table if not exists public.studio_publications (
+  id             uuid primary key default gen_random_uuid(),
+  account_id     uuid        not null references public.accounts (id) on delete cascade,
+  piece_id       uuid        not null references public.studio_pieces (id) on delete cascade,
+  recipe_id      uuid        references public.content_recipes (id) on delete set null,
+  dia            date        not null,
+  slot           integer     not null,
+  red            text        not null,
+  status         text        not null default 'programando',
+  due_at         timestamptz,
+  buffer_post_id text,
+  error          text,
+  intentos       integer     not null default 0,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  constraint studio_publications_red_check check (red in ('instagram', 'facebook')),
+  constraint studio_publications_status_check check (status in ('programando', 'programada', 'publicada', 'error')),
+  -- Un hueco del dia, una vez por red: dos pasadas no programan lo mismo.
+  constraint studio_publications_slot_unico unique (account_id, dia, slot, red)
+);
+create index if not exists studio_publications_piece_idx on public.studio_publications (piece_id);
+alter table public.studio_publications enable row level security;
+
 -- Reclamo atomico de cartuchos: dos agentes que corren a la vez no se llevan la
 -- misma idea. FOR UPDATE SKIP LOCKED salta las filas que otro ya bloqueo.
 create or replace function public.reclamar_cartuchos(

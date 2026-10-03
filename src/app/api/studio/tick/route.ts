@@ -4,6 +4,7 @@ import { todasLasCuentas } from "@/engine/accounts"
 import { getSettings } from "@/engine/schedule"
 import { correrRecetas } from "@/engine/studio/generar"
 import { asegurarCartuchos } from "@/engine/ideas/cadencia"
+import { programarPublicaciones } from "@/engine/studio/publicar"
 import { authorizeEngineRequest } from "@/lib/api-auth"
 
 export const dynamic = "force-dynamic"
@@ -21,7 +22,8 @@ export const maxDuration = 300
 const PRESUPUESTO = 2
 
 /**
- * El tick del estudio: rellena ideas si hacen falta y corre las recetas.
+ * El tick del estudio: programa las publicaciones del dia, rellena ideas si
+ * hacen falta y corre las recetas.
  *
  * Lo llama el cron de Postgres cada diez minutos (fire_studio_tick); que receta
  * toca lo decide su horario, no el cron. Primero la cadencia del
@@ -30,7 +32,8 @@ const PRESUPUESTO = 2
  * Cada cuenta en su propio try: un fallo en una no frena a las demas.
  *
  * `?force=1` salta el horario de las recetas. `?cuenta=<slug>` corre una sola.
- * `?soloCadencia=1` solo rellena ideas; `?soloContenido=1` solo produce piezas.
+ * `?soloCadencia=1` solo rellena ideas; `?soloContenido=1` solo produce piezas;
+ * `?soloPublicacion=1` solo programa las publicaciones.
  */
 async function handle(request: Request) {
   const denied = authorizeEngineRequest(request)
@@ -41,6 +44,7 @@ async function handle(request: Request) {
   const soloCuenta = url.searchParams.get("cuenta")
   const soloCadencia = url.searchParams.get("soloCadencia") === "1"
   const soloContenido = url.searchParams.get("soloContenido") === "1"
+  const soloPublicacion = url.searchParams.get("soloPublicacion") === "1"
 
   const now = new Date()
   const cuentas = (await todasLasCuentas()).filter((c) => !soloCuenta || c.slug === soloCuenta)
@@ -50,12 +54,17 @@ async function handle(request: Request) {
     try {
       const { timezone } = await getSettings(cuenta.id)
 
-      const cadencia = soloContenido ? null : await asegurarCartuchos(cuenta.id)
-      const recetas = soloCadencia
+      // Primero la publicacion: es rapida y tiene hora; si generar se come la
+      // pasada, lo programado ya quedo en Buffer.
+      const publicacion = await programarPublicaciones(cuenta.id, now).catch((error) => ({
+        error: error instanceof Error ? error.message : String(error),
+      }))
+      const cadencia = soloContenido || soloPublicacion ? null : await asegurarCartuchos(cuenta.id)
+      const recetas = soloCadencia || soloPublicacion
         ? null
         : await correrRecetas({ accountId: cuenta.id, timezone, now, force, presupuesto: PRESUPUESTO })
 
-      corridas.push({ cuenta: cuenta.slug, cadencia, recetas })
+      corridas.push({ cuenta: cuenta.slug, publicacion, cadencia, recetas })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       corridas.push({ cuenta: cuenta.slug, error: message })
