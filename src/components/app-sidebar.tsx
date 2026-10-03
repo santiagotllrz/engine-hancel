@@ -17,7 +17,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { BotIcon, ChefHatIcon, GalleryHorizontalEndIcon, KanbanIcon, LayersIcon, LightbulbIcon, SettingsIcon } from "lucide-react"
+import { BotIcon, ChefHatIcon, GalleryHorizontalEndIcon, KanbanIcon, LayersIcon, LightbulbIcon, SendIcon, SettingsIcon } from "lucide-react"
 
 import { AGENTES } from "@/lib/agentes-catalogo"
 
@@ -71,6 +71,15 @@ export function AppSidebar({
       url: "/recetas",
       icon: <ChefHatIcon />,
       isActive: pathname.startsWith("/recetas"),
+      items: [],
+    },
+    {
+      // El agente de publicacion del estudio: publica lo que producen las
+      // recetas. Es otro que el "Publicacion" de Agentes, que es el de noticias.
+      title: "Publicación",
+      url: "/publicacion",
+      icon: <SendIcon />,
+      isActive: pathname.startsWith("/publicacion"),
       items: [],
     },
     {

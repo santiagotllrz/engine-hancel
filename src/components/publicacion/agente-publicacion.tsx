@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { guardarPublicacion } from "@/app/recetas/actions"
+import { guardarPublicacion } from "@/app/publicacion/actions"
 import type { EstadoRed, PublicacionVista } from "@/lib/publicacion-data"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
