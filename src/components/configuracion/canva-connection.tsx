@@ -32,7 +32,7 @@ export function CanvaConnection({ estado, recienConectado }: { estado: EstadoCan
         <CardTitle className="text-base">Canva</CardTitle>
         <p className="text-muted-foreground mt-1 text-sm">
           {estado.conectado
-            ? "Conectado. El agente de contenido dibuja las piezas con tus plantillas de Canva."
+            ? "Conectado. El agente de contenido dibuja las piezas en Canva con tus estilos gráficos."
             : "Sin conectar. Inicia sesion en Canva para que el agente de contenido pueda dibujar las piezas."}
         </p>
       </CardHeader>

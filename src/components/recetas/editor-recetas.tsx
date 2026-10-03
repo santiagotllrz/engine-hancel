@@ -418,7 +418,7 @@ function FormReceta({
             </SelectContent>
           </Select>
           <p className="text-muted-foreground text-xs">
-            Los estilos se ajustan en Capas → Plantilla. Sirven para cualquier formato.
+            Los estilos se ajustan en Capas → Estilo. Sirven para cualquier formato.
           </p>
         </div>
       ) : null}

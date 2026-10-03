@@ -3,7 +3,7 @@
 import * as React from "react"
 import { ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon, ImageOffIcon } from "lucide-react"
 
-import type { PiezaEstudio, PilarEstudio } from "@/lib/estudio-data"
+import type { FichaPieza, PiezaEstudio, PilarEstudio } from "@/lib/estudio-data"
 import { formatoPorId } from "@/lib/canales-catalogo"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -101,9 +101,20 @@ function TarjetaPieza({ pieza, onAbrir }: { pieza: PiezaEstudio; onAbrir: () => 
       </div>
       <div className="flex flex-col gap-0.5 px-0.5">
         <p className="line-clamp-2 text-sm leading-snug font-medium">{pieza.idea ?? pieza.laminas[0]?.titulo ?? "Pieza"}</p>
+        {pieza.ficha.tema ? (
+          <p className="text-muted-foreground line-clamp-1 text-xs">
+            {pieza.ficha.tema}
+            {pieza.ficha.subtema ? ` › ${pieza.ficha.subtema}` : ""}
+          </p>
+        ) : null}
         <p className="text-muted-foreground text-xs">
           {fmt ? `${fmt.canal.nombre} · ${fmt.formato.nombre}` : pieza.format} · {pieza.fecha}
         </p>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {pieza.ficha.estilo ? <Badge variant="secondary">{pieza.ficha.estilo}</Badge> : null}
+          {pieza.ficha.intencion ? <Badge variant="outline">{pieza.ficha.intencion}</Badge> : null}
+          {pieza.ficha.narrativa ? <Badge variant="outline">{pieza.ficha.narrativa}</Badge> : null}
+        </div>
       </div>
     </button>
   )
@@ -200,6 +211,7 @@ function VisorPieza({ pieza }: { pieza: PiezaEstudio }) {
         </div>
 
         <div className="flex flex-col gap-4">
+          <Ficha ficha={pieza.ficha} />
           {pieza.caption ? (
             <div className="flex flex-col gap-1.5">
               <p className="text-xs font-medium tracking-wide uppercase">Texto del post</p>
@@ -217,6 +229,37 @@ function VisorPieza({ pieza }: { pieza: PiezaEstudio }) {
           ) : null}
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Con que se hizo la pieza: cada capa, de la idea al estilo. */
+const CAMPOS_FICHA: [keyof FichaPieza, string][] = [
+  ["pilar", "Pilar"],
+  ["tema", "Tema"],
+  ["subtema", "Subtema"],
+  ["intencion", "Intención"],
+  ["narrativa", "Narrativa"],
+  ["cta", "CTA"],
+  ["canal", "Canal"],
+  ["formato", "Formato"],
+  ["estilo", "Estilo"],
+  ["receta", "Receta"],
+  ["generador", "Generador"],
+]
+
+function Ficha({ ficha }: { ficha: FichaPieza }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs font-medium tracking-wide uppercase">Ficha</p>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-lg border p-3 text-sm">
+        {CAMPOS_FICHA.map(([clave, etiqueta]) => (
+          <div key={clave} className="contents">
+            <dt className="text-muted-foreground">{etiqueta}</dt>
+            <dd className={ficha[clave] ? "" : "text-muted-foreground"}>{ficha[clave] ?? "—"}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   )
 }

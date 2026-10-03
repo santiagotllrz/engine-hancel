@@ -53,6 +53,7 @@ type CartuchoFila = {
 
 /** El contexto de capas que se le da al agente, resuelto a nombres y descripciones. */
 type Contexto = {
+  pilar: string | null
   tema: string | null
   subtema: string | null
   intencion: { name: string; description: string | null } | null
@@ -197,28 +198,32 @@ Recuerda: todo lo que escribas lleva sus tildes y sus eñes, aunque la idea de a
 /** El contexto de capas de un cartucho, resuelto en una sola consulta por lote. */
 async function contextoDe(accountId: string, cartuchos: CartuchoFila[]): Promise<Map<string, Contexto>> {
   const supabase = supabaseAdmin()
-  const [temas, subtemas, intenciones, narrativas, ctas] = await Promise.all([
+  const [pilares, temas, subtemas, intenciones, narrativas, ctas] = await Promise.all([
+    supabase.from("content_pillars").select("id, name").eq("account_id", accountId),
     supabase.from("content_topics").select("id, name").eq("account_id", accountId),
     supabase.from("content_subtopics").select("id, name").eq("account_id", accountId),
     supabase.from("content_intents").select("id, name, description").eq("account_id", accountId),
     supabase.from("content_narratives").select("id, name, description").eq("account_id", accountId),
-    supabase.from("content_ctas").select("id, name").eq("account_id", accountId),
+    supabase.from("content_ctas").select("id, name").eq("account_id", accountId).order("position"),
   ])
 
   const mapa = <T,>(data: unknown) =>
     new Map(((data ?? []) as (T & { id: string })[]).map((r) => [r.id, r]))
+  const nPilar = mapa<{ name: string }>(pilares.data)
   const nTema = mapa<{ name: string }>(temas.data)
   const nSub = mapa<{ name: string }>(subtemas.data)
   const nInt = mapa<{ name: string; description: string | null }>(intenciones.data)
   const nNarr = mapa<{ name: string; description: string | null }>(narrativas.data)
 
   // El cartucho no guarda un CTA concreto (el CTA es de la narrativa/receta); se
-  // toma el primero de la cuenta como voz de conversion por defecto.
+  // toma el primero de la lista de la cuenta (el orden de Capas) como voz de
+  // conversion por defecto. Sin orden explicito podia tocar cualquiera.
   const primerCta = ((ctas.data ?? []) as { name: string }[])[0]?.name ?? null
 
   const out = new Map<string, Contexto>()
   for (const c of cartuchos) {
     out.set(c.id, {
+      pilar: nPilar.get(c.pillar_id)?.name ?? null,
       tema: c.topic_id ? (nTema.get(c.topic_id)?.name ?? null) : null,
       subtema: c.subtopic_id ? (nSub.get(c.subtopic_id)?.name ?? null) : null,
       intencion: c.intent_id ? (nInt.get(c.intent_id) ?? null) : null,
@@ -256,6 +261,23 @@ async function generarPieza(
     format: receta.format,
   }
 
+  // La ficha de la pieza: con que capas se hizo. Se guarda tal cual en el
+  // momento de generar, para que el estudio la muestre aunque despues se
+  // renombre o se borre alguna capa.
+  const capas = {
+    pilar: ctx.pilar,
+    tema: ctx.tema,
+    subtema: ctx.subtema,
+    intencion: ctx.intencion?.name ?? null,
+    narrativa: ctx.narrativa?.name ?? null,
+    cta: ctx.cta,
+    canal: receta.channel,
+    formato: receta.format,
+    estilo: estilo ? estilo.name : null,
+    receta: receta.name,
+    generador: receta.generator,
+  }
+
   let payload: PiezaPayload
   try {
     const r = await redactar(cartucho, ctx, receta.format, system, model, estilo)
@@ -271,7 +293,7 @@ async function generarPieza(
       .eq("id", cartucho.id)
     const { data } = await supabase
       .from("studio_pieces")
-      .insert({ ...base, status: "failed", error: msg.slice(0, 500) })
+      .insert({ ...base, status: "failed", error: msg.slice(0, 500), payload: { capas } })
       .select("id")
       .maybeSingle()
     return { ok: false, pieceId: (data as { id: string } | null)?.id, error: msg }
@@ -289,7 +311,7 @@ async function generarPieza(
     .insert({
       ...base,
       status: dibujar ? "generating" : "generated",
-      payload: aviso ? { ...payload, aviso } : payload,
+      payload: { ...payload, capas, ...(aviso ? { aviso } : {}) },
     })
     .select("id")
     .maybeSingle()
@@ -320,6 +342,7 @@ async function generarPieza(
             canva_design_id: dibujo.designId,
             payload: {
               ...payload,
+              capas,
               imagenes: dibujo.imagenes,
               canva_edit_url: dibujo.editUrl,
               plantilla_id: estilo.id,

@@ -90,7 +90,7 @@ export function ConfigEstudio({ config }: { config: Config }) {
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Subgenerador Canva</CardTitle>
           <p className="text-muted-foreground mt-1 text-sm">
-            Genera las imagenes de las piezas con tus plantillas de Canva. Se conecta iniciando
+            Dibuja las piezas en Canva con tus estilos gráficos. Se conecta iniciando
             sesion, una sola vez, y sirve a todas las cuentas.
           </p>
         </CardHeader>

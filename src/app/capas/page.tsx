@@ -12,7 +12,7 @@ import { cuentaActual } from "@/lib/accounts"
 import { getLinkedinStatus } from "@/engine/publish/linkedin"
 
 export const dynamic = "force-dynamic"
-// Construir una plantilla en Canva corre dentro de la accion y tarda.
+// Generar la muestra de un estilo en Canva corre dentro de la accion y tarda.
 export const maxDuration = 300
 
 export const metadata = { title: "Capas · Engine Hancel" }
@@ -22,8 +22,8 @@ export const metadata = { title: "Capas · Engine Hancel" }
  *
  * Una pantalla, una pestana por capa. Pilar y tema comparten pestana porque son
  * el mismo arbol; canal y formato tambien, porque el formato solo se entiende
- * dibujado dentro de su canal. Plantilla construye el estilo de cada formato en
- * Canva. Fuente queda de placeholder.
+ * dibujado dentro de su canal. Estilo define los estilos graficos, que sirven a
+ * cualquier receta. Fuente queda de placeholder.
  */
 export default async function CapasPage() {
   const [pilares, intenciones, narrativas, ctas, cuenta, plantillas] = await Promise.all([
@@ -51,7 +51,7 @@ export default async function CapasPage() {
           <TabsTrigger value="narracion">Narracion</TabsTrigger>
           <TabsTrigger value="cta">CTA</TabsTrigger>
           <TabsTrigger value="canales">Canales</TabsTrigger>
-          <TabsTrigger value="plantilla">Plantilla</TabsTrigger>
+          <TabsTrigger value="estilo">Estilo</TabsTrigger>
           <TabsTrigger value="fuente">Fuente</TabsTrigger>
         </TabsList>
 
@@ -90,7 +90,7 @@ export default async function CapasPage() {
             <VistaCanales canales={CANALES} conectados={conectados} />
           </TabsContent>
 
-          <TabsContent value="plantilla">
+          <TabsContent value="estilo">
             <EditorPlantillas plantillas={plantillas} />
           </TabsContent>
 
