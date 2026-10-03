@@ -168,15 +168,9 @@ export async function dibujarConCanva(opciones: {
           const base = l.pedido.visual || pieza.elemento || l.titulo
           // En la infografia el objeto tiene que verse grande: las etiquetas
           // señalan sus partes.
-          // En la infografia el objeto se ve grande (las etiquetas senalan sus
-          // partes). En la ilustracion se deja libre la esquina inferior
-          // derecha, donde va la foto real de apoyo.
-          const prompt =
-            estilo.tipo === "infografia"
-              ? `${base}. The subject is large and fills most of the frame.`
-              : l.pedido.foto
-                ? `${base}. Compose the scene towards the left and top, leaving the bottom-right quarter of the frame as empty plain background.`
-                : base
+          // En la infografia el objeto tiene que verse grande: las etiquetas
+          // señalan sus partes.
+          const prompt = estilo.tipo === "infografia" ? `${base}. The subject is large and fills most of the frame.` : base
           const r = await generarImagen({
             prompt,
             estiloVisual: estilo.estilo.estiloVisual,
@@ -193,14 +187,13 @@ export async function dibujarConCanva(opciones: {
     }
   }
 
-  // Ilustracion y Data-viz llevan ademas una foto real de apoyo: en un recorte
-  // circular junto al dibujo, o en una banda sobre el grafico.
-  if (estilo.tipo === "ilustracion" || estilo.tipo === "dataviz") {
+  // Data-viz lleva ademas una foto real de apoyo, en una banda sobre el grafico.
+  if (estilo.tipo === "dataviz") {
     const conFoto = conImagen.filter(({ l }) => l.pedido.foto)
     if (conFoto.length) {
       const apaisado = W > H * 1.15
-      const ancho = estilo.tipo === "ilustracion" ? 600 : W
-      const alto = estilo.tipo === "ilustracion" ? 600 : apaisado ? H * 0.3 : H * 0.3
+      const ancho = W
+      const alto = H * (apaisado ? 0.3 : 0.3)
       const fotos = await elegirFotos(
         conFoto.map(({ l }) => [l.pedido.foto ?? ""]),
         opciones.terminosRespaldo,

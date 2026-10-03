@@ -284,6 +284,42 @@ function fotografico(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
   return dividida ? fotoDividida(c, l, n, total) : fotoInmersiva(c, l, n, total, portada)
 }
 
+/**
+ * Marco de enfoque: cuatro esquinas de acento que encuadran una zona de la
+ * foto, como el visor de una camara. Senala sin tapar.
+ */
+function marcoEnfoque(c: Ctx, x: number, y: number, w: number, h: number) {
+  const { k, e } = c
+  const g = 8 * k
+  const brazo = Math.min(80 * k, w / 4, h / 4)
+  const s = `background:${e.colores.acento};border-radius:${px(g / 2)};`
+  let html = ""
+  for (const [cx, cy, dx, dy] of [
+    [x, y, 1, 1],
+    [x + w, y, -1, 1],
+    [x, y + h, 1, -1],
+    [x + w, y + h, -1, -1],
+  ] as const) {
+    html += bloque(dx > 0 ? cx : cx - brazo, dy > 0 ? cy : cy - g, brazo, g, s)
+    html += bloque(dx > 0 ? cx : cx - g, dy > 0 ? cy : cy - brazo, g, brazo, s)
+  }
+  return html
+}
+
+/** Una reticula de puntos de acento: un detalle grafico que da ritmo. */
+function puntos(c: Ctx, x: number, y: number, columnas: number, filas: number, color: string) {
+  const { k } = c
+  const d = 10 * k
+  const paso = 28 * k
+  let html = ""
+  for (let f = 0; f < filas; f++) {
+    for (let col = 0; col < columnas; col++) {
+      html += bloque(x + col * paso, y + f * paso, d, d, `background:${color};border-radius:${px(d / 2)};`)
+    }
+  }
+  return html
+}
+
 function fotoInmersiva(c: Ctx, l: LaminaCompuesta, n: number, total: number, portada: boolean) {
   const { W, H, k, m, e } = c
   let html = l.imagen ? imagen(l.imagen, 0, 0, W, H, "foto") : ""
@@ -304,6 +340,18 @@ function fotoInmersiva(c: Ctx, l: LaminaCompuesta, n: number, total: number, por
   }
   html += bloque(0, inicioVelo, W, H - inicioVelo, `background:rgba(0,0,0,${(e.velo * 0.35).toFixed(2)});`)
 
+  // Formas de apoyo en las laminas de contenido: un marco de enfoque sobre la
+  // zona central de la foto y una reticula de puntos. Senalan y dan ritmo; la
+  // foto sigue mandando.
+  if (!portada && !c.apaisado) {
+    const arriba = m + 210 * k
+    const abajo = inicioVelo - 60 * k
+    if (abajo - arriba > 240 * k) {
+      html += marcoEnfoque(c, m + 60 * k, arriba, W - 2 * m - 120 * k, abajo - arriba)
+    }
+    html += puntos(c, W - m - 100 * k, m + 90 * k, 4, 3, e.colores.acento)
+  }
+
   html += rec.html
   html += bloque(m, yTexto - 34 * k, 90 * k, 10 * k, `background:${e.colores.acento};border-radius:${px(5 * k)};`)
   html += texto(l.titulo, m, yTexto, ancho, `font-size:${px(sizeT)};line-height:1.08;font-weight:800;color:${e.colores.texto};`)
@@ -317,9 +365,18 @@ function fotoInmersiva(c: Ctx, l: LaminaCompuesta, n: number, total: number, por
 
 function fotoDividida(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
   const { W, H, k, m, e } = c
-  const fotoH = H * 0.56
+  const fotoH = H * 0.6
   let html = l.imagen ? imagen(l.imagen, 0, 0, W, fotoH, "foto") : ""
+  // Marco de enfoque sobre la foto.
+  html += marcoEnfoque(c, m + 40 * k, m + 130 * k, W - 2 * m - 80 * k, fotoH - m - 230 * k)
   html += bloque(0, fotoH, W, H - fotoH, `background:${e.colores.fondo};`)
+  // El panel no es solo texto: el numero de la lamina en grande y tenue de
+  // fondo, un aro de acento que asoma por la esquina y una reticula de puntos.
+  const tenue = luminancia(e.colores.fondo) < 0.5 ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"
+  html += texto(String(n).padStart(2, "0"), W - m - 330 * k, fotoH + 30 * k, 330 * k, `font-size:${px(250 * k)};line-height:1;font-weight:800;text-align:right;color:${tenue};`)
+  const d = 300 * k
+  html += bloque(W - d * 0.55, H - d * 0.55, d, d, `border:${px(12 * k)} solid ${e.colores.acento};border-radius:${px(d / 2)};`)
+  html += puntos(c, m, H - m - 40 * k, 6, 2, e.colores.acento)
 
   // El recurso se apoya en el borde entre la foto y el panel.
   if (l.recurso) {
@@ -346,14 +403,6 @@ function fotoDividida(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
 
 // -------------------------------------------------------------- ilustracion
 
-/** Una foto real en un circulo con un aro del color de fondo, para separarla del dibujo. */
-function fotoCircular(c: Ctx, url: string, x: number, y: number, d: number) {
-  const aro = 12 * c.k
-  return (
-    bloque(x - aro, y - aro, d + 2 * aro, d + 2 * aro, `background:${c.e.colores.fondo};border-radius:${px(d / 2 + aro)};`) +
-    imagen(url, x, y, d, d, "foto", `border-radius:${px(d / 2)};`)
-  )
-}
 
 function ilustracion(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
   const { W, H, k, m, e } = c
@@ -369,7 +418,6 @@ function ilustracion(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
     html += texto(l.cuerpo, m, yC, colTexto, `font-size:${px(28 * k)};line-height:1.4;color:${e.colores.textoSuave};`)
     html += pastillas(c, l.etiquetas, m, H - m - 140 * k, colTexto).html
     if (l.imagen) html += imagen(l.imagen, W * 0.5, m, W * 0.5 - m, H - 2 * m, "ilustracion", `border-radius:${px(28 * k)};`)
-    if (l.foto) html += fotoCircular(c, l.foto, W * 0.5 + 24 * k, H - m - 24 * k - H * 0.42, H * 0.42)
   } else {
     const sizeT = ajustar(l.titulo, (portada ? 80 : 60) * k, portada ? 60 : 55)
     const yT = m + 60 * k
@@ -382,13 +430,6 @@ function ilustracion(c: Ctx, l: LaminaCompuesta, n: number, total: number) {
     const reservaAbajo = (l.etiquetas.length ? 150 * k : 0) + (portada && e.textoDesliza ? 70 * k : 0) + m
     const altoImg = Math.max(H * 0.32, H - y - reservaAbajo)
     if (l.imagen) html += imagen(l.imagen, m, y, W - 2 * m, altoImg, "ilustracion", `border-radius:${px(32 * k)};`)
-    // La foto real aterriza el dibujo: un recorte circular en la esquina del cuadro.
-    // A caballo del borde inferior del cuadro, en la esquina que el dibujo deja
-    // libre: asi no tapa lo que el dibujo explica.
-    if (l.foto) {
-      const d = Math.min(340 * k, altoImg * 0.48)
-      html += fotoCircular(c, l.foto, W - m - d + 10 * k, y + altoImg - d * 0.62, d)
-    }
     html += pastillas(c, l.etiquetas, m, y + altoImg + 30 * k, W - 2 * m).html
   }
   html += numeracion(c, n, total, e.colores.textoSuave)

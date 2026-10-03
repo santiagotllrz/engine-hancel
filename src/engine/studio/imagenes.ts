@@ -19,6 +19,42 @@ const BUCKET = "carousels"
 
 export type Proporcion = "1:1" | "4:5" | "9:16" | "16:9" | "3:4" | "4:3"
 
+/** Un nombre de color en ingles para un hexadecimal: "dark green", "warm off-white"... */
+export function nombreDeColor(hex: string): string {
+  const h = hex.replace("#", "")
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16)
+  if (!Number.isFinite(n)) return "neutral gray"
+  const r = ((n >> 16) & 255) / 255
+  const g = ((n >> 8) & 255) / 255
+  const b = (n & 255) / 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  const s = max === min ? 0 : l > 0.5 ? (max - min) / (2 - max - min) : (max - min) / (max + min)
+  let tono = 0
+  if (max !== min) {
+    if (max === r) tono = ((g - b) / (max - min) + (g < b ? 6 : 0)) * 60
+    else if (max === g) tono = ((b - r) / (max - min) + 2) * 60
+    else tono = ((r - g) / (max - min) + 4) * 60
+  }
+  if (l > 0.93) return s > 0.3 ? "warm off-white" : "white"
+  if (l < 0.1) return "near black"
+  if (s < 0.12) return l > 0.6 ? "light gray" : l > 0.3 ? "gray" : "dark charcoal"
+  const nombres: [number, string][] = [
+    [15, "red"],
+    [40, "orange"],
+    [65, "yellow"],
+    [165, "green"],
+    [200, "teal"],
+    [255, "blue"],
+    [290, "purple"],
+    [335, "pink"],
+    [360, "red"],
+  ]
+  const base = nombres.find(([limite]) => tono < limite)?.[1] ?? "red"
+  return `${l < 0.35 ? "dark " : l > 0.75 ? "light " : ""}${base}`
+}
+
 /** La proporcion soportada mas cercana a un hueco. */
 export function proporcionPara(ancho: number, alto: number): Proporcion {
   const r = ancho / alto
@@ -50,8 +86,10 @@ export async function generarImagen(opciones: {
   const prompt = [
     opciones.prompt.trim(),
     opciones.estiloVisual.trim(),
-    opciones.colores.length ? `Color palette limited to: ${opciones.colores.join(", ")}.` : "",
-    "Absolutely no text, letters, numbers, words, captions, watermarks or logos anywhere in the image.",
+    // Los colores van por su nombre: con el codigo hexadecimal, el generador lo
+    // dibujaba como texto ("#FB56EC" en una esquina del dibujo).
+    opciones.colores.length ? `Color palette limited to ${[...new Set(opciones.colores.map(nombreDeColor))].join(", ")}.` : "",
+    "Absolutely no text, letters, numbers, words, symbols, chemical formulas, color codes, captions, watermarks or logos anywhere in the image. If the idea suggests labels, draw the shapes and leave them blank.",
   ]
     .filter(Boolean)
     .join(" ")

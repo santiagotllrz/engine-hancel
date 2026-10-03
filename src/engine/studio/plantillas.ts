@@ -91,8 +91,8 @@ const MUESTRAS: Record<TipoEstilo, PiezaParaDibujar> = {
     fotos: [],
     elemento: "",
     slides: [
-      { n: 1, type: "photo_hook", hook: "Así se toma una muestra de suelo bien hecha.", visual: "A farmer kneeling in a coffee field taking a soil sample with a small shovel and a bucket, simple friendly character", foto: "soil sample hands" },
-      { n: 2, type: "text", title: "Recorre el lote en zigzag.", body: "Toma 15 a 20 submuestras y mézclalas en un balde limpio.", etiquetas: ["Zigzag", "20 puntos", "Balde limpio"], visual: "Top view of a field plot with a zigzag dotted path and small markers where samples are taken", foto: "coffee farm field rows" },
+      { n: 1, type: "photo_hook", hook: "Así se toma una muestra de suelo bien hecha.", visual: "A farmer kneeling in a coffee field taking a soil sample with a small shovel and a bucket, simple friendly character" },
+      { n: 2, type: "text", title: "Recorre el lote en zigzag.", body: "Toma 15 a 20 submuestras y mézclalas en un balde limpio.", etiquetas: ["Zigzag", "20 puntos", "Balde limpio"], visual: "Top view of a field plot with a zigzag dotted path and small markers where samples are taken" },
     ],
   },
   infografia: {
