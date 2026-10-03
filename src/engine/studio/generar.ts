@@ -1,9 +1,12 @@
 import { llamarClaude, parsearJSONDeClaude, type UsoClaude } from "../claude/messages"
 import { supabaseAdmin } from "../supabase-admin"
 import { dayIn, hourIn } from "../schedule"
-import { familiaDeFormato, type EstructuraPlantilla } from "@/lib/plantillas-catalogo"
+import { familiaDeFormato, type TipoEstilo } from "@/lib/plantillas-catalogo"
 import { corregirTextos } from "./ortografia"
-import { dibujarConCanva, laminasDeContenido, type PlantillaUsable } from "./canva"
+import { dibujarConCanva, type LaminaPieza } from "./canva"
+import type { Grafico } from "./compositor"
+import { estiloDe, type EstiloCompleto } from "./plantillas"
+import { INSTRUCCIONES_ESTILO } from "./prompts"
 import { studioConfig } from "./settings"
 
 /**
@@ -59,14 +62,38 @@ type Contexto = {
 
 type PiezaPayload = {
   familia: "laminas" | "imagen" | "texto"
+  estilo: TipoEstilo | null
   caption: string
   hashtags: string[]
   fotos: string[]
   elemento: string
-  slides: { n: number; type: string; hook?: string; title?: string; body?: string }[]
+  slides: LaminaPieza[]
   title: string
   body: string
   parrafos: string[]
+}
+
+/** Normaliza un grafico de data-viz; null si no trae datos usables. */
+function graficoDe(v: unknown): Grafico | null {
+  if (!v || typeof v !== "object") return null
+  const g = v as Record<string, unknown>
+  const tipo = ["barras", "columnas", "ranking", "cifras"].includes(String(g.tipo)) ? (g.tipo as Grafico["tipo"]) : "barras"
+  const items = (Array.isArray(g.items) ? g.items : [])
+    .map((x) => x as Record<string, unknown>)
+    .filter((x) => typeof x.etiqueta === "string" && (typeof x.valor === "number" || typeof x.valor === "string"))
+    .map((x) => ({
+      etiqueta: String(x.etiqueta).trim(),
+      valor: x.valor as number | string,
+      variacion: ["sube", "baja", "estable"].includes(String(x.variacion)) ? (x.variacion as "sube" | "baja" | "estable") : undefined,
+      nota: typeof x.nota === "string" ? x.nota.trim() : undefined,
+    }))
+  if (items.length === 0) return null
+  return {
+    tipo,
+    unidad: typeof g.unidad === "string" ? g.unidad.trim() : "",
+    items,
+    destacado: typeof g.destacado === "number" ? g.destacado : undefined,
+  }
 }
 
 /** Pide a Claude la pieza y la normaliza a una forma estable. */
@@ -76,14 +103,12 @@ async function redactar(
   formatId: string,
   system: string,
   model: string,
-  /** Tope de laminas que admite la plantilla (portada y cierre incluidos). */
-  maxLaminas?: number
+  estilo: EstiloCompleto | null
 ): Promise<{ payload: PiezaPayload; uso: UsoClaude }> {
   const familia = familiaDeFormato(formatId)
-  const lineaLaminas =
-    familia === "laminas" && maxLaminas
-      ? `\n- láminas: entre ${Math.min(5, maxLaminas)} y ${maxLaminas}, contando la portada y el cierre. La plantilla no admite más.`
-      : ""
+  const conEstilo = estilo !== null && familia !== "texto"
+  const bloqueEstilo =
+    estilo && conEstilo ? `\n\nESTILO GRÁFICO: ${estilo.name}\n${estilo.descripcion}\n\n${INSTRUCCIONES_ESTILO[estilo.tipo]}` : ""
 
   // Las etiquetas van acentuadas: el modelo imita como estan escritas las
   // instrucciones, y unas etiquetas sin tildes tambien se contagian.
@@ -99,57 +124,69 @@ CAPAS
 
 FORMATO
 - familia: ${familia}
-- formato: ${formatId}${lineaLaminas}
+- formato: ${formatId}${bloqueEstilo}
 
 Recuerda: todo lo que escribas lleva sus tildes y sus eñes, aunque la idea de arriba venga sin ellas.`
 
-  const r = await llamarClaude({ model, system, prompt, maxTokens: 3600 })
+  // Data-viz necesita datos reales: el agente los busca en la web en la misma
+  // llamada y los cita. Los demas estilos no buscan nada.
+  const buscar = Boolean(estilo && conEstilo && estilo.tipo === "dataviz")
+  const r = await llamarClaude({ model, system, prompt, maxTokens: buscar ? 6000 : 4000, buscarWeb: buscar, maxBusquedas: 5 })
   if (!r.ok) throw new Error(r.error)
 
   const bruto = parsearJSONDeClaude(r.texto) as Record<string, unknown>
   const arr = (v: unknown): string[] =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0) : []
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()) : []
   const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "")
 
-  const slides = Array.isArray(bruto.slides)
+  const slides: LaminaPieza[] = Array.isArray(bruto.slides)
     ? (bruto.slides as Record<string, unknown>[]).map((s, i) => ({
         n: typeof s.n === "number" ? s.n : i + 1,
-        type: str(s.type) || (i === 0 ? "photo_hook" : "text"),
+        type: str(s.type) || (i === 0 ? "portada" : "text"),
         hook: str(s.hook) || undefined,
         title: str(s.title) || undefined,
         body: str(s.body) || undefined,
+        foto: str(s.foto) || undefined,
+        visual: str(s.visual) || undefined,
+        etiquetas: arr(s.etiquetas).slice(0, 4),
+        grafico: graficoDe(s.grafico),
+        fuente: str(s.fuente) || undefined,
+        periodo: str(s.periodo) || undefined,
       }))
     : []
 
   const payload: PiezaPayload = {
     familia,
+    estilo: estilo && conEstilo ? estilo.tipo : null,
     caption: str(bruto.caption),
     hashtags: arr(bruto.hashtags),
-    fotos: arr(bruto.fotos),
+    fotos: slides.map((s) => s.foto).filter((f): f is string => Boolean(f)),
     elemento: str(bruto.elemento),
     slides,
-    title: str(bruto.title),
-    body: str(bruto.body),
+    title: str(bruto.title) || slides[0]?.title || slides[0]?.hook || "",
+    body: str(bruto.body) || slides[0]?.body || "",
     parrafos: arr(bruto.parrafos),
   }
 
   // Todo lo que se publica pasa por el corrector, en una sola llamada. Las
-  // busquedas de foto van en ingles y los hashtags sin tildes, asi que no.
+  // busquedas de foto y las escenas van en ingles, y los hashtags sin tildes,
+  // asi que esas no.
   type Hueco = { leer: () => string; poner: (t: string) => void }
   const huecos: Hueco[] = [
     { leer: () => payload.caption, poner: (t) => (payload.caption = t) },
-    { leer: () => payload.elemento, poner: (t) => (payload.elemento = t) },
     { leer: () => payload.title, poner: (t) => (payload.title = t) },
     { leer: () => payload.body, poner: (t) => (payload.body = t) },
-    ...payload.parrafos.map((_, i) => ({
-      leer: () => payload.parrafos[i],
-      poner: (t: string) => (payload.parrafos[i] = t),
-    })),
-    ...payload.slides.flatMap((s) =>
-      (["hook", "title", "body"] as const)
+    ...payload.parrafos.map((_, i) => ({ leer: () => payload.parrafos[i], poner: (t: string) => (payload.parrafos[i] = t) })),
+    ...payload.slides.flatMap((s) => [
+      ...(["hook", "title", "body"] as const)
         .filter((k) => s[k])
-        .map((k) => ({ leer: () => s[k] ?? "", poner: (t: string) => (s[k] = t) }))
-    ),
+        .map((k) => ({ leer: () => s[k] ?? "", poner: (t: string) => (s[k] = t) })),
+      ...(s.etiquetas ?? []).map((_, i) => ({ leer: () => s.etiquetas![i], poner: (t: string) => (s.etiquetas![i] = t) })),
+      ...(s.grafico?.items ?? []).flatMap((it) => [
+        { leer: () => it.etiqueta, poner: (t: string) => (it.etiqueta = t) },
+        ...(it.nota ? [{ leer: () => it.nota ?? "", poner: (t: string) => (it.nota = t) }] : []),
+      ]),
+    ]),
   ]
   const corregidos = await corregirTextos(huecos.map((h) => h.leer()))
   huecos.forEach((h, i) => h.poner(corregidos[i]))
@@ -194,20 +231,6 @@ async function contextoDe(accountId: string, cartuchos: CartuchoFila[]): Promise
 
 export type ResultadoPieza = { ok: boolean; pieceId?: string; error?: string }
 
-/** La plantilla de una receta, si esta lista para dibujar. */
-async function plantillaDe(receta: Receta): Promise<PlantillaUsable | null> {
-  if (!receta.template_id) return null
-  const { data } = await supabaseAdmin()
-    .from("content_templates")
-    .select("id, format, canva_design_id, estilo, estructura, status")
-    .eq("id", receta.template_id)
-    .eq("account_id", receta.account_id)
-    .maybeSingle()
-  const t = data as (PlantillaUsable & { status: string; canva_design_id: string | null; estructura: EstructuraPlantilla | null }) | null
-  if (!t || t.status !== "lista" || !t.canva_design_id || !t.estructura) return null
-  return t as PlantillaUsable
-}
-
 /** Genera una pieza a partir de un cartucho ya reclamado. */
 async function generarPieza(
   receta: Receta,
@@ -218,8 +241,11 @@ async function generarPieza(
 ): Promise<ResultadoPieza> {
   const supabase = supabaseAdmin()
   const familia = familiaDeFormato(receta.format)
-  const plantilla = receta.generator === "canva" && familia !== "texto" ? await plantillaDe(receta) : null
-  const maxLaminas = plantilla ? laminasDeContenido(plantilla.estructura) + 2 : undefined
+  // El estilo grafico de la receta. Vale para cualquier formato; los de solo
+  // texto no lo usan.
+  const estilo =
+    receta.template_id && familia !== "texto" ? await estiloDe(receta.template_id, receta.account_id) : null
+  const dibujar = receta.generator === "canva" && familia !== "texto" && estilo !== null
 
   const base = {
     account_id: receta.account_id,
@@ -232,7 +258,7 @@ async function generarPieza(
 
   let payload: PiezaPayload
   try {
-    const r = await redactar(cartucho, ctx, receta.format, system, model, maxLaminas)
+    const r = await redactar(cartucho, ctx, receta.format, system, model, estilo)
     payload = r.payload
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -254,15 +280,15 @@ async function generarPieza(
   // Una receta de Canva sin plantilla lista no se cae: la pieza sale como
   // texto y queda dicho por que no lleva imagenes.
   const aviso =
-    receta.generator === "canva" && familia !== "texto" && !plantilla
-      ? "La receta no tiene una plantilla lista: la pieza quedo solo como texto."
+    receta.generator === "canva" && familia !== "texto" && !estilo
+      ? "La receta no tiene estilo gráfico: la pieza quedó solo como texto."
       : null
 
   const { data: fila, error: errIns } = await supabase
     .from("studio_pieces")
     .insert({
       ...base,
-      status: plantilla ? "generating" : "generated",
+      status: dibujar ? "generating" : "generated",
       payload: aviso ? { ...payload, aviso } : payload,
     })
     .select("id")
@@ -272,11 +298,12 @@ async function generarPieza(
   const pieceId = (fila as { id: string } | null)?.id
   if (!pieceId) return { ok: false, error: "No se pudo crear la pieza." }
 
-  if (!plantilla) return { ok: true, pieceId }
+  if (!dibujar || !estilo) return { ok: true, pieceId }
 
   const dibujo = await dibujarConCanva({
-    plantilla,
+    estilo,
     pieza: payload,
+    formatId: receta.format,
     titulo: cartucho.idea,
     accountId: receta.account_id,
     pieceId,
@@ -295,8 +322,8 @@ async function generarPieza(
               ...payload,
               imagenes: dibujo.imagenes,
               canva_edit_url: dibujo.editUrl,
-              plantilla_id: plantilla.id,
-              fotos_usadas: dibujo.fotos.map((f) => ({ url: f.url, autor: f.autor })),
+              plantilla_id: estilo.id,
+              recursos: dibujo.recursos,
               ...(dibujo.avisos.length ? { avisos: dibujo.avisos } : {}),
             },
           }

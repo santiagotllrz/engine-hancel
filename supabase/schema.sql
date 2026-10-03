@@ -361,6 +361,17 @@ create table if not exists public.content_templates (
 create index if not exists content_templates_account_idx on public.content_templates (account_id, format);
 alter table public.content_templates enable row level security;
 
+-- La plantilla es un estilo grafico transversal (Infografia, Data-viz,
+-- Fotografico, Ilustracion), no un diseno por formato: sirve a cualquier
+-- receta y el sistema compone cada pieza para el tamano de su formato. tipo y
+-- descripcion la definen; format queda sin uso.
+alter table public.content_templates alter column format drop not null;
+alter table public.content_templates add column if not exists tipo text;
+alter table public.content_templates add column if not exists descripcion text;
+alter table public.content_templates drop constraint if exists content_templates_tipo_check;
+alter table public.content_templates add constraint content_templates_tipo_check
+  check (tipo is null or tipo in ('infografia', 'dataviz', 'fotografico', 'ilustracion'));
+
 -- La receta apunta a su plantilla (la columna template, jsonb, quedo sin uso).
 alter table public.content_recipes
   add column if not exists template_id uuid references public.content_templates (id) on delete set null;

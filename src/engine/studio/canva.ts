@@ -1,181 +1,225 @@
+import { supabaseAdmin } from "../supabase-admin"
 import { formatoPorId } from "@/lib/canales-catalogo"
-import {
-  familiaDeFormato,
-  normalizarEstilo,
-  type EstructuraPlantilla,
-} from "@/lib/plantillas-catalogo"
-import { canvaMcp, textoDe, type Transaccion } from "./canva-mcp"
-import { ponerFotos, type FotoPuesta } from "./fotos"
-import { guardarImagen } from "./plantillas"
+import { familiaDeFormato, type EstiloPlantilla, type TipoEstilo } from "@/lib/plantillas-catalogo"
+import { canvaMcp } from "./canva-mcp"
+import { componerHTML, type Grafico, type LaminaCompuesta } from "./compositor"
+import { elegirFotos } from "./fotos"
+import { generarImagen, proporcionPara } from "./imagenes"
 
 /**
- * El subgenerador de Canva: dibuja una pieza copiando su plantilla.
+ * El subgenerador de Canva: convierte una pieza escrita en laminas dibujadas.
  *
- *   1. Copia el diseno maestro con solo las paginas que la pieza usa (portada,
- *      tantas laminas de contenido como escribio el agente, cierre).
- *   2. Abre una transaccion de edicion en la copia.
- *   3. Reemplaza los marcadores ({{hook}}, {{titulo}}, {{cuerpo}}, {{n}}) por
- *      el texto de cada lamina y pone una foto nueva en cada hueco "foto".
- *   4. Guarda, exporta a PNG y copia las imagenes al storage: las urls de
- *      Canva caducan en horas.
+ *   1. Prepara la imagen de cada lamina segun el estilo: una foto real de
+ *      Pexels (Fotografico), una imagen generada sin texto (Ilustracion,
+ *      Infografia) o ninguna, porque el grafico lo dibuja el compositor
+ *      (Data-viz).
+ *   2. El compositor escribe la pieza en HTML para el tamano del formato.
+ *   3. Canva la importa como diseno editable; se exporta a PNG y las laminas se
+ *      copian al storage, porque las urls de Canva caducan en horas.
  *
- * El diseno de cada pieza queda en Canva, por si se quiere retocar a mano.
+ * El diseno queda en Canva por si se quiere retocar a mano.
  */
 
-export type PlantillaUsable = {
-  id: string
-  format: string
-  canva_design_id: string
-  estilo: unknown
-  estructura: EstructuraPlantilla
+const BUCKET = "carousels"
+
+export type LaminaPieza = {
+  n: number
+  type: string
+  hook?: string
+  title?: string
+  body?: string
+  foto?: string
+  visual?: string
+  etiquetas?: string[]
+  grafico?: Grafico | null
+  fuente?: string
+  periodo?: string
 }
 
-type Lamina = { hook?: string; title?: string; body?: string }
-
 export type PiezaParaDibujar = {
-  slides: (Lamina & { n: number; type: string })[]
+  slides: LaminaPieza[]
   title: string
   body: string
-  caption: string
   fotos: string[]
   elemento: string
 }
 
+export type EstiloUsable = { id: string; tipo: TipoEstilo; estilo: EstiloPlantilla }
+
 export type ResultadoDibujo =
-  | { ok: true; imagenes: string[]; designId: string; editUrl: string | null; fotos: FotoPuesta[]; avisos: string[] }
+  | { ok: true; imagenes: string[]; designId: string; editUrl: string | null; avisos: string[]; recursos: string[] }
   | { ok: false; error: string; designId?: string }
 
-/** Cuantas laminas de contenido admite la plantilla. Lo usa el agente al escribir. */
-export function laminasDeContenido(estructura: EstructuraPlantilla): number {
-  return estructura.paginas.filter((p) => p.rol === "contenido").length
+/** El logo claro de la marca. "perfil" es una captura del perfil, no un logo. */
+export async function logoDe(accountId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin().from("generation_config").select("carousel").eq("account_id", accountId).maybeSingle()
+  const logos = (data as { carousel?: { logos?: { claro?: string | null } } } | null)?.carousel?.logos
+  return logos?.claro ?? null
+}
+
+/** Copia una imagen temporal (de Canva) al storage, para que no caduque. */
+export async function guardarImagen(url: string, ruta: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+    if (!res.ok) return null
+    const buffer = Buffer.from(await res.arrayBuffer())
+    const tipo = res.headers.get("content-type")?.split(";")[0] || "image/png"
+    const { error } = await supabaseAdmin().storage.from(BUCKET).upload(ruta, buffer, { contentType: tipo, upsert: true })
+    if (error) return null
+    return `${supabaseAdmin().storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl}?v=${Date.now().toString(36)}`
+  } catch {
+    return null
+  }
+}
+
+/** Ordena las laminas de la pieza en portada, contenido y cierre. */
+function laminasDe(pieza: PiezaParaDibujar, formatId: string, cierreFijo: boolean): (LaminaCompuesta & { pedido: LaminaPieza })[] {
+  const a = (l: LaminaPieza, rol: LaminaCompuesta["rol"]) => ({
+    rol,
+    titulo: (l.hook || l.title || "").trim(),
+    cuerpo: (l.body || "").trim(),
+    etiquetas: (l.etiquetas ?? []).filter(Boolean).slice(0, 4),
+    grafico: l.grafico && Array.isArray(l.grafico.items) && l.grafico.items.length ? l.grafico : null,
+    fuente: l.fuente ?? "",
+    periodo: l.periodo ?? "",
+    imagen: null,
+    pedido: l,
+  })
+
+  if (familiaDeFormato(formatId) === "laminas") {
+    const s = pieza.slides
+    // La ultima es el cierre solo si es un cierre de verdad: si el agente la
+    // escribio con foto, imagen o grafico, es contenido y se dibuja como tal
+    // (tratarla como cierre perdia su imagen). Un cierre fijo se anade aparte.
+    const ultima = s[s.length - 1]
+    const ultimaEsCierre =
+      s.length > 2 && !cierreFijo && !ultima.foto && !ultima.visual && !ultima.grafico && !(ultima.etiquetas ?? []).length
+    const salida = s.map((l, i) =>
+      a(l, i === 0 ? "portada" : i === s.length - 1 && ultimaEsCierre ? "cierre" : "contenido")
+    )
+    if (cierreFijo) salida.push(a({ n: s.length + 1, type: "cierre" }, "cierre"))
+    return salida
+  }
+  const primera = pieza.slides[0] ?? { n: 1, type: "unica", title: pieza.title, body: pieza.body }
+  return [a({ ...primera, title: primera.title || primera.hook || pieza.title, body: primera.body || pieza.body }, "unica")]
+}
+
+/** La caja aproximada que ocupa la imagen en cada estilo, para pedirla a su medida. */
+function cajaImagen(tipo: TipoEstilo, W: number, H: number, conEtiquetas: boolean) {
+  const apaisado = W > H * 1.15
+  if (tipo === "fotografico") return { w: W, h: H }
+  if (apaisado) return { w: W * 0.5, h: H * 0.85 }
+  if (tipo === "infografia") return { w: (W - 160) * (conEtiquetas ? 0.6 : 1), h: H * 0.58 }
+  return { w: W - 160, h: H * 0.5 }
 }
 
 export async function dibujarConCanva(opciones: {
-  plantilla: PlantillaUsable
+  estilo: EstiloUsable
   pieza: PiezaParaDibujar
+  formatId: string
   titulo: string
   accountId: string
   pieceId: string
   terminosRespaldo: string[]
 }): Promise<ResultadoDibujo> {
-  const { plantilla, pieza } = opciones
-  const estilo = normalizarEstilo(plantilla.estilo)
-  const familia = familiaDeFormato(plantilla.format)
-  const total = plantilla.estructura.paginas.length
+  const { estilo, pieza, formatId } = opciones
+  const fmt = formatoPorId(formatId)
+  const W = fmt?.formato.ancho || 1080
+  const H = fmt?.formato.alto || 1350
+  const laminas = laminasDe(pieza, formatId, estilo.estilo.cierre.modo === "fijo")
+  if (laminas.length === 0) return { ok: false, error: "La pieza no trae laminas." }
 
-  // ---------------------------------------------- que paginas y que texto
-  // valores[i] son los marcadores de la pagina i+1 de la copia.
-  let paginas: number[]
-  let valores: Record<string, string>[]
+  const avisos: string[] = []
+  const recursos: string[] = []
+  const conImagen = laminas.map((l, i) => ({ l, i })).filter(({ l }) => l.rol !== "cierre")
+  const carpeta = `studio/${opciones.accountId}/${opciones.pieceId}`
 
-  if (familia === "laminas") {
-    const [portada, ...resto] = pieza.slides
-    if (!portada) return { ok: false, error: "La pieza no trae laminas." }
-    // El agente cierra siempre con una lamina de CTA. Si el cierre es fijo, esa
-    // la pone la plantilla y la del agente sobra.
-    const cierre = resto.pop()
-    const maximo = laminasDeContenido(plantilla.estructura)
-    const contenido = resto.slice(0, maximo)
-    if (contenido.length === 0) return { ok: false, error: "La pieza no trae laminas de contenido." }
-
-    paginas = [1, ...contenido.map((_, i) => i + 2), total]
-    const totalCopia = paginas.length
-    valores = [
-      { hook: portada.hook || portada.title || "" },
-      ...contenido.map((l, i) => ({
-        titulo: l.title || l.hook || "",
-        cuerpo: l.body || "",
-        n: String(i + 2).padStart(2, "0") + ` / ${String(totalCopia).padStart(2, "0")}`,
-      })),
-      estilo.cierre.modo === "agente"
-        ? { titulo: cierre?.title || cierre?.hook || estilo.cierre.titulo, cuerpo: cierre?.body || estilo.cierre.texto }
-        : {},
-    ]
-  } else {
-    paginas = [1]
-    const titulo = pieza.title || pieza.slides[0]?.hook || pieza.slides[0]?.title || ""
-    valores = [{ titulo, hook: titulo, cuerpo: pieza.body || "" }]
-  }
-
-  // ------------------------------------------------------------ 1. copiar
-  const copia = await canvaMcp<{ design?: { id: string; urls?: { edit_url?: string } } }>("CANVA_MCP_COPY_DESIGN", {
-    design_id: plantilla.canva_design_id,
-    ...(paginas.length < total ? { page_numbers: paginas } : {}),
-  })
-  if (!copia.ok) return { ok: false, error: `No se pudo copiar la plantilla: ${copia.error}` }
-  const designId = copia.data.design?.id
-  if (!designId) return { ok: false, error: "Canva no devolvio la copia de la plantilla." }
-  const editUrl = copia.data.design?.urls?.edit_url ?? null
-
-  // -------------------------------------------------- 2. abrir transaccion
-  const tx = await canvaMcp<Transaccion>("CANVA_MCP_START_EDITING_TRANSACTION", { design_id: designId })
-  if (!tx.ok) return { ok: false, error: `No se pudo abrir la copia: ${tx.error}`, designId }
-  const transactionId = tx.data.transaction.transaction_id
-
-  const cancelar = () => canvaMcp("CANVA_MCP_CANCEL_EDITING_TRANSACTION", { transaction_id: transactionId })
-
-  // ---------------------------------------------------- 3. textos y fotos
-  const operaciones: Record<string, unknown>[] = [{ type: "update_title", title: opciones.titulo.slice(0, 200) }]
-
-  for (const t of tx.data.richtexts) {
-    const original = textoDe(t)
-    if (!/\{\{\w+\}\}/.test(original)) continue
-    const mapa = valores[t.page_index - 1] ?? {}
-    const nuevo = original.replace(/\{\{(\w+)\}\}/g, (_, clave: string) => mapa[clave] ?? "").trim()
-    // Un marcador sin valor no puede quedar a la vista: se borra el elemento.
-    operaciones.push(
-      nuevo ? { type: "replace_text", element_id: t.element_id, text: nuevo } : { type: "delete_element", element_id: t.element_id }
+  // ------------------------------------------------------- 1. imagenes
+  if (estilo.tipo === "fotografico") {
+    const fotos = await elegirFotos(
+      conImagen.map(({ l }) => [l.pedido.foto ?? ""].filter(Boolean)),
+      [...pieza.fotos, ...opciones.terminosRespaldo],
+      W,
+      H
     )
+    conImagen.forEach(({ l }, k) => {
+      const f = fotos[k]
+      if (f) {
+        l.imagen = f.url
+        recursos.push(`Foto de ${f.autor || "Pexels"} (Pexels)`)
+      } else avisos.push("Una lamina se quedo sin foto.")
+    })
+  } else if (estilo.tipo === "ilustracion" || estilo.tipo === "infografia") {
+    const c = estilo.estilo.colores
+    for (let i = 0; i < conImagen.length; i += 3) {
+      await Promise.all(
+        conImagen.slice(i, i + 3).map(async ({ l, i: idx }) => {
+          const caja = cajaImagen(estilo.tipo, W, H, l.etiquetas.length > 0)
+          const base = l.pedido.visual || pieza.elemento || l.titulo
+          // En la infografia el objeto tiene que verse grande: las etiquetas
+          // señalan sus partes.
+          const prompt = estilo.tipo === "infografia" ? `${base}. The subject is large and fills most of the frame.` : base
+          const r = await generarImagen({
+            prompt,
+            estiloVisual: estilo.estilo.estiloVisual,
+            colores: [c.fondo, c.acento, c.texto],
+            proporcion: proporcionPara(caja.w, caja.h),
+            ruta: `${carpeta}/imagen-${String(idx + 1).padStart(2, "0")}.png`,
+          })
+          if ("url" in r) {
+            l.imagen = r.url
+            recursos.push("Imagen generada (Gemini)")
+          } else avisos.push(`Imagen de la lamina ${idx + 1}: ${r.error}`)
+        })
+      )
+    }
   }
 
-  const huecos = tx.data.fills
-    .filter((f) => (f.alt_text?.text ?? "").trim().toLowerCase() === "foto" && f.type !== "video")
-    .sort((a, b) => a.page_index - b.page_index)
-    .map((f) => ({
-      elementId: f.element_id,
-      ancho: f.containerElement?.dimension?.width ?? 1080,
-      alto: f.containerElement?.dimension?.height ?? 1350,
-    }))
-  const { puestas, avisos } = await ponerFotos(pieza.fotos, huecos, opciones.terminosRespaldo)
-  for (const p of puestas) {
-    operaciones.push({ type: "update_fill", element_id: p.elementId, asset_type: "image", asset_id: p.assetId, alt_text: p.alt.slice(0, 200) })
-  }
+  // ------------------------------------------------------- 2. componer
+  const html = componerHTML({
+    tipo: estilo.tipo,
+    estilo: estilo.estilo,
+    ancho: W,
+    alto: H,
+    laminas,
+    logo: await logoDe(opciones.accountId),
+    titulo: opciones.titulo,
+  })
+  const supabase = supabaseAdmin()
+  const rutaHtml = `${carpeta}/pieza-${Date.now().toString(36)}.html`
+  const { error: errSubida } = await supabase.storage.from(BUCKET).upload(rutaHtml, Buffer.from(html, "utf8"), {
+    contentType: "text/html; charset=utf-8",
+    upsert: true,
+  })
+  if (errSubida) return { ok: false, error: `No se pudo dejar la pieza en el storage: ${errSubida.message}` }
+  const urlHtml = supabase.storage.from(BUCKET).getPublicUrl(rutaHtml).data.publicUrl
 
-  const edicion = await canvaMcp("CANVA_MCP_PERFORM_EDITING_OPERATIONS", {
-    transaction_id: transactionId,
-    page_index: 1,
-    pages: tx.data.pages,
-    operations: operaciones,
-  }, 120_000)
-  if (!edicion.ok) {
-    await cancelar()
-    return { ok: false, error: `Canva rechazo la edicion: ${edicion.error}`, designId }
-  }
-
-  const guardado = await canvaMcp("CANVA_MCP_COMMIT_EDITING_TRANSACTION", { transaction_id: transactionId })
-  if (!guardado.ok) return { ok: false, error: `No se pudo guardar la pieza en Canva: ${guardado.error}`, designId }
-
-  // ------------------------------------------------------------ 4. exportar
-  const fmt = formatoPorId(plantilla.format)
-  const exportacion = await canvaMcp<{ job?: { status?: string; urls?: string[] } }>(
-    "CANVA_MCP_EXPORT_DESIGN",
-    {
-      design_id: designId,
-      format: { type: "png", width: fmt?.formato.ancho || 1080, height: fmt?.formato.alto || 1350 },
-    },
+  // ------------------------------------------------------- 3. Canva
+  const tipoCanva = formatId.startsWith("ig_") ? "instagram_post" : formatId.startsWith("fb_") ? "facebook_post" : undefined
+  const imp = await canvaMcp<{ job?: { result?: { designs?: { id: string; urls?: { edit_url?: string } }[] } } }>(
+    "CANVA_MCP_IMPORT_DESIGN_FROM_URL",
+    { url: urlHtml, name: opciones.titulo.slice(0, 200), ...(tipoCanva ? { intended_design_type: tipoCanva } : {}) },
     180_000
   )
-  if (!exportacion.ok) return { ok: false, error: `No se pudo exportar: ${exportacion.error}`, designId }
+  if (!imp.ok) return { ok: false, error: `Canva no pudo importar la pieza: ${imp.error}` }
+  const diseno = imp.data.job?.result?.designs?.[0]
+  if (!diseno?.id) return { ok: false, error: "Canva no devolvio el diseno importado." }
+
+  const exportacion = await canvaMcp<{ job?: { urls?: string[] } }>(
+    "CANVA_MCP_EXPORT_DESIGN",
+    { design_id: diseno.id, format: { type: "png", width: W, height: H } },
+    180_000
+  )
+  if (!exportacion.ok) return { ok: false, error: `No se pudo exportar: ${exportacion.error}`, designId: diseno.id }
   const urls = exportacion.data.job?.urls ?? []
-  if (urls.length === 0) return { ok: false, error: "Canva no devolvio las imagenes exportadas.", designId }
+  if (urls.length === 0) return { ok: false, error: "Canva no devolvio las imagenes exportadas.", designId: diseno.id }
 
   const imagenes: string[] = []
   for (let i = 0; i < urls.length; i++) {
-    const ruta = `studio/${opciones.accountId}/${opciones.pieceId}/${String(i + 1).padStart(2, "0")}.png`
-    const publica = await guardarImagen(urls[i], ruta)
-    if (!publica) return { ok: false, error: `No se pudo guardar la lamina ${i + 1}.`, designId }
+    const publica = await guardarImagen(urls[i], `${carpeta}/${String(i + 1).padStart(2, "0")}.png`)
+    if (!publica) return { ok: false, error: `No se pudo guardar la lamina ${i + 1}.`, designId: diseno.id }
     imagenes.push(publica)
   }
 
-  return { ok: true, imagenes, designId, editUrl, fotos: puestas, avisos }
+  return { ok: true, imagenes, designId: diseno.id, editUrl: diseno.urls?.edit_url ?? null, avisos, recursos: [...new Set(recursos)] }
 }

@@ -36,7 +36,7 @@ export default async function RecetasPage() {
             <EditorRecetas
               recetas={recetas}
               pilares={pilares}
-              plantillas={plantillas.map((t) => ({ id: t.id, name: t.name, format: t.format, lista: t.status === "lista" }))}
+              plantillas={plantillas.map((t) => ({ id: t.id, name: t.name, tipo: t.tipo }))}
             />
           </TabsContent>
           <TabsContent value="config">

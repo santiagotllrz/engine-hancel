@@ -38,8 +38,8 @@ import {
 const HORAS = Array.from({ length: 18 }, (_, i) => i + 5) // 5:00 a 22:00
 
 type Pilar = { id: string; name: string }
-/** Lo que el formulario necesita de una plantilla para ofrecerla. */
-export type PlantillaOpcion = { id: string; name: string; format: string; lista: boolean }
+/** Lo que el formulario necesita de un estilo grafico para ofrecerlo. */
+export type PlantillaOpcion = { id: string; name: string; tipo: string }
 
 /**
  * Las recetas del bloque 2: cada una le dice al agente de contenido que producir.
@@ -202,7 +202,7 @@ function FilaReceta({
               {receta.generator === "canva"
                 ? receta.templateName
                   ? `Canva · ${receta.templateName}`
-                  : "Canva · sin plantilla"
+                  : "Canva · sin estilo"
                 : "Solo texto"}
             </Badge>
             <Badge variant="outline" className="text-muted-foreground">
@@ -269,7 +269,6 @@ function FormReceta({
   const canal = canalPorId(channel) ?? CANALES[0]
   const formatoActual = formatoPorId(format)
   const admitePlantilla = formatoActual?.formato.conPlantilla ?? false
-  const plantillasDelFormato = plantillas.filter((t) => t.format === format)
 
   const cambiarCanal = (nuevo: string) => {
     setChannel(nuevo)
@@ -296,7 +295,7 @@ function FormReceta({
       generator,
       per_day: Number(perDay) || 1,
       run_at: [...runAt],
-      template_id: plantillasDelFormato.some((t) => t.id === templateId) ? templateId : null,
+      template_id: plantillas.some((t) => t.id === templateId) ? templateId : null,
     })
   }
 
@@ -405,29 +404,22 @@ function FormReceta({
 
       {generator === "canva" && admitePlantilla ? (
         <div className="flex flex-col gap-1.5">
-          <Label>Plantilla</Label>
-          {plantillasDelFormato.length === 0 ? (
-            <p className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs">
-              No hay plantillas para este formato. Créala en Capas → Plantilla; sin plantilla la pieza
-              sale solo como texto.
-            </p>
-          ) : (
-            <Select value={templateId} onValueChange={(v) => setTemplateId(v as string)}>
-              <SelectTrigger className="w-full">
-                <SelectValue>
-                  {() => plantillasDelFormato.find((t) => t.id === templateId)?.name ?? "Elegir plantilla"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {plantillasDelFormato.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                    {t.lista ? "" : " (sin construir)"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          <Label>Estilo gráfico</Label>
+          <Select value={templateId} onValueChange={(v) => setTemplateId(v as string)}>
+            <SelectTrigger className="w-full">
+              <SelectValue>{() => plantillas.find((t) => t.id === templateId)?.name ?? "Elegir estilo"}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {plantillas.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-muted-foreground text-xs">
+            Los estilos se ajustan en Capas → Plantilla. Sirven para cualquier formato.
+          </p>
         </div>
       ) : null}
 

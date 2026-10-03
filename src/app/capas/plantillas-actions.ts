@@ -4,15 +4,15 @@ import { revalidatePath } from "next/cache"
 
 import { idDeCuentaActual } from "@/lib/accounts"
 import { supabaseAdmin } from "@/engine/supabase-admin"
-import { construirEnCanva, releerDeCanva } from "@/engine/studio/plantillas"
-import { admitePlantilla, normalizarEstilo, type EstiloPlantilla } from "@/lib/plantillas-catalogo"
+import { muestraDeEstilo } from "@/engine/studio/plantillas"
+import { esTipo, normalizarEstilo, TIPOS, type EstiloPlantilla } from "@/lib/plantillas-catalogo"
 
 /**
- * CRUD de la capa Plantilla y su construccion en Canva.
+ * Los estilos graficos: editar, duplicar, borrar y ver una muestra en Canva.
  *
- * Guardar solo guarda valores. Construir es lo que habla con Canva: escribe el
- * diseno maestro y lo deja listo para las recetas. Se separan porque construir
- * tarda (unos 30 segundos) y crea un diseno nuevo en Canva cada vez.
+ * Guardar solo guarda valores. La muestra es la que habla con Canva (y con el
+ * generador de imagenes): compone una portada y una lamina con contenido de
+ * ejemplo, para ver el estilo antes de usarlo. Tarda unos 20 segundos.
  */
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string }
@@ -27,78 +27,87 @@ function refrescar() {
   revalidatePath("/recetas")
 }
 
-/** La plantilla tiene que ser de la cuenta abierta: el id llega del cliente. */
-async function esDeLaCuenta(id: string): Promise<boolean> {
-  const { count } = await supabaseAdmin()
+/** El estilo tiene que ser de la cuenta abierta: el id llega del cliente. */
+async function tipoDe(id: string): Promise<string | null> {
+  const { data } = await supabaseAdmin()
     .from("content_templates")
-    .select("id", { count: "exact", head: true })
+    .select("tipo")
     .eq("id", id)
     .eq("account_id", await idDeCuentaActual())
-  return Boolean(count)
+    .maybeSingle()
+  return (data as { tipo: string | null } | null)?.tipo ?? null
 }
 
-export async function guardarPlantilla(campos: {
-  id?: string
+export async function guardarEstilo(campos: {
+  id: string
   name: string
-  format: string
+  descripcion: string
   estilo: EstiloPlantilla
 }): Promise<ActionResult> {
   const name = campos.name.trim()
-  if (!name) return { ok: false, error: "La plantilla necesita un nombre." }
-  if (!admitePlantilla(campos.format)) return { ok: false, error: "Ese formato no admite plantilla todavia." }
-
+  if (!name) return { ok: false, error: "El estilo necesita un nombre." }
   try {
-    const accountId = await idDeCuentaActual()
-    const supabase = supabaseAdmin()
-    const fila = { name, format: campos.format, estilo: normalizarEstilo(campos.estilo), updated_at: new Date().toISOString() }
-
-    if (campos.id) {
-      if (!(await esDeLaCuenta(campos.id))) return { ok: false, error: "Esa plantilla no es de esta cuenta." }
-      const { error } = await supabase.from("content_templates").update(fila).eq("id", campos.id)
-      if (error) throw new Error(error.message)
-      refrescar()
-      return { ok: true, id: campos.id }
-    }
-
-    const { data, error } = await supabase
+    const tipo = await tipoDe(campos.id)
+    if (!esTipo(tipo)) return { ok: false, error: "Ese estilo no es de esta cuenta." }
+    const { error } = await supabaseAdmin()
       .from("content_templates")
-      .insert({ ...fila, account_id: accountId })
+      .update({
+        name,
+        // Vacia vuelve a la descripcion de serie del tipo.
+        descripcion: campos.descripcion.trim() || TIPOS[tipo].descripcion,
+        estilo: normalizarEstilo(campos.estilo, tipo),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", campos.id)
+    if (error) throw new Error(error.message)
+    refrescar()
+    return { ok: true, id: campos.id }
+  } catch (error) {
+    return fail(error, "No se pudo guardar el estilo.")
+  }
+}
+
+/** Una variante nueva de un estilo, partiendo de los valores de serie de su tipo. */
+export async function crearEstilo(tipo: string): Promise<ActionResult> {
+  if (!esTipo(tipo)) return { ok: false, error: "Tipo de estilo desconocido." }
+  try {
+    const { data, error } = await supabaseAdmin()
+      .from("content_templates")
+      .insert({
+        account_id: await idDeCuentaActual(),
+        tipo,
+        name: `${TIPOS[tipo].nombre} (variante)`,
+        descripcion: TIPOS[tipo].descripcion,
+        estilo: TIPOS[tipo].estilo,
+        status: "lista",
+      })
       .select("id")
       .single()
     if (error) throw new Error(error.message)
     refrescar()
     return { ok: true, id: (data as { id: string }).id }
   } catch (error) {
-    return fail(error, "No se pudo guardar la plantilla.")
+    return fail(error, "No se pudo crear el estilo.")
   }
 }
 
-/** Construye (o reconstruye) el diseno maestro en Canva con los valores guardados. */
-export async function construirPlantilla(id: string): Promise<ActionResult> {
+/** Compone una muestra del estilo en Canva. */
+export async function generarMuestra(id: string): Promise<ActionResult> {
   try {
-    if (!(await esDeLaCuenta(id))) return { ok: false, error: "Esa plantilla no es de esta cuenta." }
-    const r = await construirEnCanva(id)
+    if (!esTipo(await tipoDe(id))) return { ok: false, error: "Ese estilo no es de esta cuenta." }
+    const r = await muestraDeEstilo(id, await idDeCuentaActual())
     refrescar()
     return r.ok ? { ok: true, id } : r
   } catch (error) {
-    return fail(error, "No se pudo construir en Canva.")
+    return fail(error, "No se pudo generar la muestra.")
   }
 }
 
-/** Vuelve a leer el diseno de Canva, despues de retocarlo a mano. */
-export async function releerPlantilla(id: string): Promise<ActionResult> {
-  try {
-    if (!(await esDeLaCuenta(id))) return { ok: false, error: "Esa plantilla no es de esta cuenta." }
-    const r = await releerDeCanva(id)
-    refrescar()
-    return r.ok ? { ok: true, id } : r
-  } catch (error) {
-    return fail(error, "No se pudo leer el diseno de Canva.")
-  }
-}
-
-/** Borra la plantilla del sistema. El diseno se queda en Canva. */
-export async function borrarPlantilla(id: string): Promise<ActionResult> {
+/**
+ * Borra un estilo. Si una receta lo usaba se queda sin estilo, y sus piezas
+ * salen como texto hasta que se le asigne otro.
+ */
+export async function borrarEstilo(id: string): Promise<ActionResult> {
   try {
     const { error } = await supabaseAdmin()
       .from("content_templates")
@@ -109,6 +118,6 @@ export async function borrarPlantilla(id: string): Promise<ActionResult> {
     refrescar()
     return { ok: true }
   } catch (error) {
-    return fail(error, "No se pudo borrar la plantilla.")
+    return fail(error, "No se pudo borrar el estilo.")
   }
 }

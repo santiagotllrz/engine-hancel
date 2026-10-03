@@ -1,44 +1,52 @@
 import "server-only"
 
 import { supabaseAdmin } from "@/engine/supabase-admin"
+import { asegurarEstilos } from "@/engine/studio/plantillas"
 import { idDeCuentaActual } from "@/lib/accounts"
-import { normalizarEstilo, type EstiloPlantilla, type EstructuraPlantilla } from "@/lib/plantillas-catalogo"
+import { esTipo, normalizarEstilo, TIPOS, type EstiloPlantilla, type TipoEstilo } from "@/lib/plantillas-catalogo"
 
-/** Las plantillas de la cuenta abierta, para la capa Plantilla y las recetas. */
+/** Los estilos graficos de la cuenta abierta, para la capa Plantilla y las recetas. */
 
 export type PlantillaVista = {
   id: string
   name: string
-  format: string
+  tipo: TipoEstilo
+  descripcion: string
   estilo: EstiloPlantilla
-  estructura: EstructuraPlantilla | null
-  canvaDesignId: string | null
+  /** Las laminas de la ultima muestra generada en Canva. */
+  muestras: string[]
   canvaEditUrl: string | null
-  thumbnailUrl: string | null
   status: "borrador" | "creando" | "lista" | "error"
   error: string | null
-  updatedAt: string
 }
 
 export async function getPlantillas(): Promise<PlantillaVista[]> {
+  const accountId = await idDeCuentaActual()
+  // Cada cuenta parte de los cuatro estilos base: si le falta alguno, se crea.
+  await asegurarEstilos(accountId)
+
   const { data, error } = await supabaseAdmin()
     .from("content_templates")
     .select("*")
-    .eq("account_id", await idDeCuentaActual())
+    .eq("account_id", accountId)
     .order("created_at")
-  if (error) throw new Error(`No se pudieron leer las plantillas: ${error.message}`)
+  if (error) throw new Error(`No se pudieron leer los estilos: ${error.message}`)
 
-  return ((data ?? []) as Record<string, unknown>[]).map((t) => ({
-    id: t.id as string,
-    name: t.name as string,
-    format: t.format as string,
-    estilo: normalizarEstilo(t.estilo),
-    estructura: (t.estructura as EstructuraPlantilla | null) ?? null,
-    canvaDesignId: (t.canva_design_id as string | null) ?? null,
-    canvaEditUrl: (t.canva_edit_url as string | null) ?? null,
-    thumbnailUrl: (t.thumbnail_url as string | null) ?? null,
-    status: t.status as PlantillaVista["status"],
-    error: (t.error as string | null) ?? null,
-    updatedAt: t.updated_at as string,
-  }))
+  return ((data ?? []) as Record<string, unknown>[])
+    .filter((t) => esTipo(t.tipo))
+    .map((t) => {
+      const tipo = t.tipo as TipoEstilo
+      const estructura = (t.estructura ?? {}) as { muestras?: string[] }
+      return {
+        id: t.id as string,
+        name: t.name as string,
+        tipo,
+        descripcion: ((t.descripcion as string | null) ?? "").trim() || TIPOS[tipo].descripcion,
+        estilo: normalizarEstilo(t.estilo, tipo),
+        muestras: Array.isArray(estructura.muestras) ? estructura.muestras : [],
+        canvaEditUrl: (t.canva_edit_url as string | null) ?? null,
+        status: t.status as PlantillaVista["status"],
+        error: (t.error as string | null) ?? null,
+      }
+    })
 }

@@ -65,20 +65,18 @@ export async function guardarReceta(campos: CamposReceta): Promise<ActionResult>
       .eq("account_id", accountId)
     if (!count) return { ok: false, error: "Ese pilar no es de esta cuenta." }
 
-    // La plantilla tambien: de la cuenta y del mismo formato que la receta.
+    // El estilo grafico tambien tiene que ser de la cuenta. Vale para cualquier
+    // formato: el sistema compone la pieza para el tamano del formato.
     const generator = campos.generator === "canva" ? "canva" : "ninguno"
     let templateId: string | null = null
     if (generator === "canva" && campos.template_id) {
       const { data: t } = await supabase
         .from("content_templates")
-        .select("id, format")
+        .select("id, tipo")
         .eq("id", campos.template_id)
         .eq("account_id", accountId)
         .maybeSingle()
-      if (!t) return { ok: false, error: "Esa plantilla no es de esta cuenta." }
-      if ((t as { format: string }).format !== fmt.formato.id) {
-        return { ok: false, error: "La plantilla es de otro formato." }
-      }
+      if (!t || !(t as { tipo: string | null }).tipo) return { ok: false, error: "Ese estilo no es de esta cuenta." }
       templateId = (t as { id: string }).id
     }
 
