@@ -2,10 +2,11 @@
  * Remuxeador puro en TypeScript de segmentos MPEG-TS (.ts de HLS) a MP4 (.mp4
  * ISO BMFF estandar con ftyp + moov + mdat).
  *
- * No recodifica video ni audio: extrae los NALUs H.264 (AVC1) y las tramas AAC
- * (ADTS -> raw AAC) tal cual vienen en los segmentos .ts y arma las tablas del
- * contenedor MP4 (stts, ctts, stss, stsz, stsc, co64/stco) en memoria. Asi
- * funciona tanto en el navegador como en serverless sin depender de ffmpeg.
+ * No recodifica video ni audio: reensambla el flujo elemental continuo (Annex-B
+ * H.264 y ADTS AAC) a traves de todos los paquetes PES (respetando la norma
+ * ISO/IEC 13818-1 donde una NALU puede terminar en el paquete PES siguiente
+ * antes del proximo Access Unit Delimiter) y construye un contenedor MP4
+ * fast-start (ftyp + moov + mdat) compatible con todos los reproductores.
  */
 
 export type OpcionesRemux = {
@@ -89,6 +90,13 @@ type AudioConfig = {
   channelConfig: number
 }
 
+type PesTimestampMark = {
+  esOffset: number
+  pts: number
+  dts: number
+  usado?: boolean
+}
+
 function demuxarSegmentosTs(segmentos: Uint8Array[]) {
   let pmtPid = -1
   let videoPid = -1
@@ -97,130 +105,55 @@ function demuxarSegmentosTs(segmentos: Uint8Array[]) {
   const videoPesChunks: Uint8Array[] = []
   const audioPesChunks: Uint8Array[] = []
 
-  const videoSamples: VideoSample[] = []
-  const audioSamples: AudioSample[] = []
-  let sps: Uint8Array | null = null
-  let pps: Uint8Array | null = null
-  let audioConfig: AudioConfig | null = null
+  // Flujos elementales continuos (ES) y marcas de tiempo PES
+  const videoEsPayloads: Uint8Array[] = []
+  const videoPesMarks: PesTimestampMark[] = []
+  let videoEsLength = 0
 
-  const procesarVideoPes = (pes: Uint8Array) => {
-    const parsed = parsearCabeceraPes(pes)
-    if (!parsed) return
-    const { payload, pts, dts } = parsed
-    const nalus = separarNalusAnnexB(payload)
-    if (nalus.length === 0) return
+  const audioEsPayloads: Uint8Array[] = []
+  const audioPesMarks: PesTimestampMark[] = []
+  let audioEsLength = 0
 
-    let vclNalus: Uint8Array[] = []
-    let isKeyframe = false
-
-    const emitirFrame = () => {
-      if (vclNalus.length === 0) return
-      let totalBytes = 0
-      for (const n of vclNalus) totalBytes += 4 + n.byteLength
-      const avcc = new Uint8Array(totalBytes)
-      const view = new DataView(avcc.buffer)
-      let offset = 0
-      for (const n of vclNalus) {
-        view.setUint32(offset, n.byteLength, false)
-        avcc.set(n, offset + 4)
-        offset += 4 + n.byteLength
-      }
-      videoSamples.push({
-        data: avcc,
-        pts,
-        dts,
-        isKeyframe,
-      })
-      vclNalus = []
-      isKeyframe = false
-    }
-
-    let tieneVcl = false
-    for (const nalu of nalus) {
-      if (nalu.byteLength === 0) continue
-      const nalType = nalu[0] & 0x1f
-      if (nalType === 7) {
-        if (!sps) sps = nalu
-      } else if (nalType === 8) {
-        if (!pps) pps = nalu
-      } else if (nalType === 9) {
-        // Access Unit Delimiter: si ya habia un frame VCL en este PES, lo cerramos.
-        if (tieneVcl) {
-          emitirFrame()
-          tieneVcl = false
-        }
-      } else if (nalType >= 1 && nalType <= 5) {
-        if (nalType === 5) isKeyframe = true
-        tieneVcl = true
-        vclNalus.push(nalu)
-      } else if (nalType === 6) {
-        // SEI
-        vclNalus.push(nalu)
-      }
-    }
-
-    if (tieneVcl) emitirFrame()
-  }
-
-  const procesarAudioPes = (pes: Uint8Array) => {
-    const parsed = parsearCabeceraPes(pes)
-    if (!parsed) return
-    const { payload, pts } = parsed
-    let pos = 0
-    let frameIndex = 0
-    while (pos + 7 <= payload.byteLength) {
-      if (payload[pos] !== 0xff || (payload[pos + 1] & 0xf0) !== 0xf0) {
-        pos++
-        continue
-      }
-      const protectionAbsent = payload[pos + 1] & 0x01
-      const headerLen = protectionAbsent ? 7 : 9
-      const profile = ((payload[pos + 2] >> 6) & 0x03) + 1
-      const samplingFreqIndex = (payload[pos + 2] >> 2) & 0x0f
-      const channelConfig = ((payload[pos + 2] & 0x01) << 2) | ((payload[pos + 3] >> 6) & 0x03)
-      const frameLength =
-        ((payload[pos + 3] & 0x03) << 11) | (payload[pos + 4] << 3) | ((payload[pos + 5] >> 5) & 0x07)
-
-      if (frameLength <= headerLen || pos + frameLength > payload.byteLength) {
-        break
-      }
-
-      const sampleRate = FRECUENCIAS_AAC[samplingFreqIndex] ?? 48000
-      if (!audioConfig) {
-        audioConfig = {
-          profile,
-          samplingFreqIndex,
-          sampleRate,
-          channelConfig: channelConfig || 2,
-        }
-      }
-
-      const rawAac = payload.slice(pos + headerLen, pos + frameLength)
-      const framePts = pts + Math.round((frameIndex * 1024 * 90000) / sampleRate)
-      audioSamples.push({ data: rawAac, pts: framePts })
-
-      pos += frameLength
-      frameIndex++
-    }
-  }
-
-  const flushVideo = () => {
+  const flushVideoPes = () => {
     if (videoPesChunks.length === 0) return
     const unido = concatenarBuffers(videoPesChunks)
     videoPesChunks.length = 0
-    procesarVideoPes(unido)
+    const parsed = parsearCabeceraPes(unido)
+    if (!parsed) return
+    if (parsed.hasPts) {
+      videoPesMarks.push({
+        esOffset: videoEsLength,
+        pts: parsed.pts,
+        dts: parsed.dts,
+      })
+    }
+    videoEsPayloads.push(parsed.payload)
+    videoEsLength += parsed.payload.byteLength
   }
 
-  const flushAudio = () => {
+  const flushAudioPes = () => {
     if (audioPesChunks.length === 0) return
     const unido = concatenarBuffers(audioPesChunks)
     audioPesChunks.length = 0
-    procesarAudioPes(unido)
+    const parsed = parsearCabeceraPes(unido)
+    if (!parsed) return
+    if (parsed.hasPts) {
+      audioPesMarks.push({
+        esOffset: audioEsLength,
+        pts: parsed.pts,
+        dts: parsed.dts,
+      })
+    }
+    audioEsPayloads.push(parsed.payload)
+    audioEsLength += parsed.payload.byteLength
   }
 
   for (const seg of segmentos) {
+    // Cada segmento HLS es independiente; vaciar cualquier paquete PES previo antes del nuevo segmento
+    flushVideoPes()
+    flushAudioPes()
+
     let offset = 0
-    // Sincronizar al primer byte 0x47
     while (offset + 188 <= seg.byteLength && seg[offset] !== 0x47) {
       offset++
     }
@@ -235,7 +168,6 @@ function demuxarSegmentosTs(segmentos: Uint8Array[]) {
       const pid = ((seg[offset + 1] & 0x1f) << 8) | seg[offset + 2]
       const afc = (seg[offset + 3] >> 4) & 0x03
 
-      // Sin carga util
       if (afc === 0 || afc === 2) continue
 
       let pos = offset + 4
@@ -246,7 +178,6 @@ function demuxarSegmentosTs(segmentos: Uint8Array[]) {
       if (pos >= offset + 188) continue
 
       if (pid === 0) {
-        // PAT
         let patPos = pos
         if (pusi) patPos += 1 + seg[patPos]
         if (patPos + 12 <= offset + 188 && seg[patPos] === 0x00) {
@@ -264,7 +195,6 @@ function demuxarSegmentosTs(segmentos: Uint8Array[]) {
           }
         }
       } else if (pid === pmtPid && pmtPid !== -1) {
-        // PMT
         let pmtPos = pos
         if (pusi) pmtPos += 1 + seg[pmtPos]
         if (pmtPos + 12 <= offset + 188 && seg[pmtPos] === 0x02) {
@@ -282,22 +212,212 @@ function demuxarSegmentosTs(segmentos: Uint8Array[]) {
           }
         }
       } else if (pid === videoPid || (videoPid === -1 && pid === 256)) {
-        if (pusi) flushVideo()
+        if (pusi) flushVideoPes()
         videoPesChunks.push(seg.subarray(pos, offset + 188))
       } else if (pid === audioPid || (audioPid === -1 && pid === 257)) {
-        if (pusi) flushAudio()
+        if (pusi) flushAudioPes()
         audioPesChunks.push(seg.subarray(pos, offset + 188))
       }
     }
   }
 
-  flushVideo()
-  flushAudio()
+  flushVideoPes()
+  flushAudioPes()
+
+  // 1. Extraer samples H.264 del flujo elemental continuo de video
+  const { videoSamples, sps, pps } = extraerVideoSamplesDeEs(
+    concatenarBuffers(videoEsPayloads),
+    videoPesMarks
+  )
+
+  // 2. Extraer samples AAC del flujo elemental continuo de audio
+  const { audioSamples, audioConfig } = extraerAudioSamplesDeEs(
+    concatenarBuffers(audioEsPayloads),
+    audioPesMarks
+  )
 
   return { videoSamples, audioSamples, sps, pps, audioConfig }
 }
 
-function parsearCabeceraPes(pes: Uint8Array): { payload: Uint8Array; pts: number; dts: number } | null {
+/**
+ * Recorre el flujo elemental Annex-B continuo, separa todas las NALUs sin cortarlas
+ * en bordes de paquetes PES, y agrupa cada Access Unit con su PTS/DTS correspondiente.
+ */
+function extraerVideoSamplesDeEs(
+  es: Uint8Array,
+  marks: PesTimestampMark[]
+): {
+  videoSamples: VideoSample[]
+  sps: Uint8Array | null
+  pps: Uint8Array | null
+} {
+  const videoSamples: VideoSample[] = []
+  let sps: Uint8Array | null = null
+  let pps: Uint8Array | null = null
+
+  if (es.byteLength === 0) {
+    return { videoSamples, sps, pps }
+  }
+
+  const nalus = separarNalusConOffsets(es)
+  if (nalus.length === 0) {
+    return { videoSamples, sps, pps }
+  }
+
+  let vclNalus: Uint8Array[] = []
+  let isKeyframe = false
+  let tieneVcl = false
+  let auStartOffset = -1
+  let markCursor = 0
+
+  const buscarTimestampParaOffset = (offset: number): { pts: number; dts: number } => {
+    // Segun ISO/IEC 13818-1, el PTS/DTS de un paquete PES aplica al primer Access Unit
+    // cuyo codigo de inicio comienza en o despues del inicio de la carga util de ese PES.
+    while (
+      markCursor + 1 < marks.length &&
+      marks[markCursor + 1].esOffset <= offset &&
+      marks[markCursor].usado
+    ) {
+      markCursor++
+    }
+    for (let i = markCursor; i < marks.length; i++) {
+      if (!marks[i].usado && marks[i].esOffset <= offset) {
+        marks[i].usado = true
+        markCursor = i
+        return { pts: marks[i].pts, dts: marks[i].dts }
+      }
+      if (marks[i].esOffset > offset) break
+    }
+    const fallback = marks[Math.min(markCursor, marks.length - 1)]
+    return fallback ? { pts: fallback.pts, dts: fallback.dts } : { pts: 0, dts: 0 }
+  }
+
+  const emitirFrame = () => {
+    if (!tieneVcl || vclNalus.length === 0) return
+    let totalBytes = 0
+    for (const n of vclNalus) totalBytes += 4 + n.byteLength
+    const avcc = new Uint8Array(totalBytes)
+    const view = new DataView(avcc.buffer)
+    let ptr = 0
+    for (const n of vclNalus) {
+      view.setUint32(ptr, n.byteLength, false)
+      avcc.set(n, ptr + 4)
+      ptr += 4 + n.byteLength
+    }
+    const ts = buscarTimestampParaOffset(auStartOffset >= 0 ? auStartOffset : 0)
+    videoSamples.push({
+      data: avcc,
+      pts: ts.pts,
+      dts: ts.dts,
+      isKeyframe,
+    })
+    vclNalus = []
+    isKeyframe = false
+    tieneVcl = false
+    auStartOffset = -1
+  }
+
+  for (const nalu of nalus) {
+    if (nalu.data.byteLength === 0) continue
+    const nalType = nalu.data[0] & 0x1f
+
+    if (nalType === 9) {
+      // Access Unit Delimiter: cierra el frame anterior (si lo habia) e inicia uno nuevo
+      if (tieneVcl) {
+        emitirFrame()
+      }
+      if (auStartOffset === -1) {
+        auStartOffset = nalu.startCodeOffset
+      }
+    } else if (nalType === 7) {
+      if (tieneVcl) emitirFrame()
+      if (auStartOffset === -1) auStartOffset = nalu.startCodeOffset
+      if (!sps) sps = nalu.data
+    } else if (nalType === 8) {
+      if (tieneVcl) emitirFrame()
+      if (auStartOffset === -1) auStartOffset = nalu.startCodeOffset
+      if (!pps) pps = nalu.data
+    } else if (nalType === 6) {
+      // SEI: si ya habia VCL, pertenece al siguiente frame
+      if (tieneVcl) emitirFrame()
+      if (auStartOffset === -1) auStartOffset = nalu.startCodeOffset
+      vclNalus.push(nalu.data)
+    } else if (nalType >= 1 && nalType <= 5) {
+      // Detectar si este slice VCL inicia un nuevo frame cuando el stream no trae AUD (first_mb_in_slice == 0 -> bit 7 de nalu.data[1] es 1)
+      if (tieneVcl && nalu.data.byteLength > 1 && (nalu.data[1] & 0x80) !== 0) {
+        emitirFrame()
+      }
+      if (auStartOffset === -1) auStartOffset = nalu.startCodeOffset
+      if (nalType === 5) isKeyframe = true
+      tieneVcl = true
+      vclNalus.push(nalu.data)
+    }
+  }
+
+  if (tieneVcl) {
+    emitirFrame()
+  }
+
+  return { videoSamples, sps, pps }
+}
+
+function extraerAudioSamplesDeEs(
+  es: Uint8Array,
+  marks: PesTimestampMark[]
+): {
+  audioSamples: AudioSample[]
+  audioConfig: AudioConfig | null
+} {
+  const audioSamples: AudioSample[] = []
+  let audioConfig: AudioConfig | null = null
+  const basePts = marks[0]?.pts ?? 0
+
+  let pos = 0
+  let frameIndex = 0
+  while (pos + 7 <= es.byteLength) {
+    if (es[pos] !== 0xff || (es[pos + 1] & 0xf0) !== 0xf0) {
+      pos++
+      continue
+    }
+    const protectionAbsent = es[pos + 1] & 0x01
+    const headerLen = protectionAbsent ? 7 : 9
+    const profile = ((es[pos + 2] >> 6) & 0x03) + 1
+    const samplingFreqIndex = (es[pos + 2] >> 2) & 0x0f
+    const channelConfig = ((es[pos + 2] & 0x01) << 2) | ((es[pos + 3] >> 6) & 0x03)
+    const frameLength =
+      ((es[pos + 3] & 0x03) << 11) | (es[pos + 4] << 3) | ((es[pos + 5] >> 5) & 0x07)
+
+    if (frameLength <= headerLen || pos + frameLength > es.byteLength) {
+      break
+    }
+
+    const sampleRate = FRECUENCIAS_AAC[samplingFreqIndex] ?? 48000
+    if (!audioConfig) {
+      audioConfig = {
+        profile,
+        samplingFreqIndex,
+        sampleRate,
+        channelConfig: channelConfig || 2,
+      }
+    }
+
+    const rawAac = es.slice(pos + headerLen, pos + frameLength)
+    const framePts = basePts + Math.round((frameIndex * 1024 * 90000) / sampleRate)
+    audioSamples.push({ data: rawAac, pts: framePts })
+
+    pos += frameLength
+    frameIndex++
+  }
+
+  return { audioSamples, audioConfig }
+}
+
+function parsearCabeceraPes(pes: Uint8Array): {
+  payload: Uint8Array
+  hasPts: boolean
+  pts: number
+  dts: number
+} | null {
   if (pes.byteLength < 9) return null
   if (pes[0] !== 0x00 || pes[1] !== 0x00 || pes[2] !== 0x01) return null
 
@@ -307,9 +427,11 @@ function parsearCabeceraPes(pes: Uint8Array): { payload: Uint8Array; pts: number
   const payloadStart = 9 + headerDataLen
   if (payloadStart > pes.byteLength) return null
 
+  let hasPts = false
   let pts = 0
   let dts = 0
   if ((ptsDtsFlags & 0x02) !== 0 && pes.byteLength >= 14) {
+    hasPts = true
     pts = leerTimestampPes(pes, 9)
     dts = pts
   }
@@ -319,6 +441,7 @@ function parsearCabeceraPes(pes: Uint8Array): { payload: Uint8Array; pts: number
 
   return {
     payload: pes.subarray(payloadStart),
+    hasPts,
     pts,
     dts,
   }
@@ -334,31 +457,40 @@ function leerTimestampPes(buf: Uint8Array, offset: number): number {
   )
 }
 
-function separarNalusAnnexB(buf: Uint8Array): Uint8Array[] {
-  const nalus: Uint8Array[] = []
+function separarNalusConOffsets(
+  buf: Uint8Array
+): { startCodeOffset: number; data: Uint8Array }[] {
+  const nalus: { startCodeOffset: number; data: Uint8Array }[] = []
   const len = buf.byteLength
-  let nalStart = -1
+  let nalDataStart = -1
+  let nalStartCodeOffset = -1
   let i = 0
 
-  while (i < len) {
+  while (i + 3 <= len) {
     if (
-      i + 2 < len &&
       buf[i] === 0x00 &&
       buf[i + 1] === 0x00 &&
       (buf[i + 2] === 0x01 || (i + 3 < len && buf[i + 2] === 0x00 && buf[i + 3] === 0x01))
     ) {
       const startCodeLen = buf[i + 2] === 0x01 ? 3 : 4
-      if (nalStart !== -1 && i > nalStart) {
-        nalus.push(buf.subarray(nalStart, i))
+      if (nalDataStart !== -1 && i > nalDataStart) {
+        nalus.push({
+          startCodeOffset: nalStartCodeOffset,
+          data: buf.subarray(nalDataStart, i),
+        })
       }
-      nalStart = i + startCodeLen
-      i = nalStart
+      nalStartCodeOffset = i
+      nalDataStart = i + startCodeLen
+      i = nalDataStart
     } else {
       i++
     }
   }
-  if (nalStart !== -1 && nalStart < len) {
-    nalus.push(buf.subarray(nalStart, len))
+  if (nalDataStart !== -1 && nalDataStart < len) {
+    nalus.push({
+      startCodeOffset: nalStartCodeOffset,
+      data: buf.subarray(nalDataStart, len),
+    })
   }
   return nalus
 }
@@ -368,7 +500,6 @@ function separarNalusAnnexB(buf: Uint8Array): Uint8Array[] {
  */
 function parsearDimensionesSps(spsNalu: Uint8Array): { width: number; height: number } | null {
   try {
-    // Quitar bytes de prevencion de emulacion (00 00 03 -> 00 00)
     const rbsp: number[] = []
     for (let i = 1; i < spsNalu.byteLength; i++) {
       if (i >= 3 && spsNalu[i] === 0x03 && spsNalu[i - 1] === 0x00 && spsNalu[i - 2] === 0x00) {
@@ -399,8 +530,8 @@ function parsearDimensionesSps(spsNalu: Uint8Array): { width: number; height: nu
     }
 
     const profileIdc = leerBits(8)
-    leerBits(16) // constraint flags + level_idc
-    leerUE() // seq_parameter_set_id
+    leerBits(16)
+    leerUE()
 
     let chromaFormatIdc = 1
     if (
@@ -416,9 +547,9 @@ function parsearDimensionesSps(spsNalu: Uint8Array): { width: number; height: nu
     ) {
       chromaFormatIdc = leerUE()
       if (chromaFormatIdc === 3) leerBits(1)
-      leerUE() // bit_depth_luma_minus8
-      leerUE() // bit_depth_chroma_minus8
-      leerBits(1) // qpprime_y_zero_transform_bypass_flag
+      leerUE()
+      leerUE()
+      leerBits(1)
       const seqScalingMatrixPresent = leerBits(1)
       if (seqScalingMatrixPresent) {
         const count = chromaFormatIdc !== 3 ? 8 : 12
@@ -439,7 +570,7 @@ function parsearDimensionesSps(spsNalu: Uint8Array): { width: number; height: nu
       }
     }
 
-    leerUE() // log2_max_frame_num_minus4
+    leerUE()
     const picOrderCntType = leerUE()
     if (picOrderCntType === 0) {
       leerUE()
@@ -450,13 +581,13 @@ function parsearDimensionesSps(spsNalu: Uint8Array): { width: number; height: nu
       const numRefFramesInPicOrderCntCycle = leerUE()
       for (let i = 0; i < numRefFramesInPicOrderCntCycle; i++) leerSE()
     }
-    leerUE() // max_num_ref_frames
-    leerBits(1) // gaps_in_frame_num_value_allowed_flag
+    leerUE()
+    leerBits(1)
     const picWidthInMbsMinus1 = leerUE()
     const picHeightInMapUnitsMinus1 = leerUE()
     const frameMbsOnlyFlag = leerBits(1)
     if (!frameMbsOnlyFlag) leerBits(1)
-    leerBits(1) // direct_8x8_inference_flag
+    leerBits(1)
     const frameCroppingFlag = leerBits(1)
     let cropLeft = 0
     let cropRight = 0
@@ -491,24 +622,24 @@ function construirMp4(params: {
 }): Uint8Array {
   const { videoSamples, sps, pps, width, height, audioSamples, audioConfig } = params
 
-  // Calcular tamanos de payload en mdat: primero todo el chunk de video, luego todo el chunk de audio
   let videoDataSize = 0
   for (const s of videoSamples) videoDataSize += s.data.byteLength
   let audioDataSize = 0
   for (const s of audioSamples) audioDataSize += s.data.byteLength
   const mdatPayloadSize = videoDataSize + audioDataSize
 
-  const ftyp = box("ftyp", u8([
-    // major_brand: isom, minor_version: 512, compatible_brands: isom, iso2, avc1, mp41
-    0x69, 0x73, 0x6f, 0x6d,
-    0x00, 0x00, 0x02, 0x00,
-    0x69, 0x73, 0x6f, 0x6d,
-    0x69, 0x73, 0x6f, 0x32,
-    0x61, 0x76, 0x63, 0x31,
-    0x6d, 0x70, 0x34, 0x31,
-  ]))
+  const ftyp = box(
+    "ftyp",
+    u8([
+      0x69, 0x73, 0x6f, 0x6d,
+      0x00, 0x00, 0x02, 0x00,
+      0x69, 0x73, 0x6f, 0x6d,
+      0x69, 0x73, 0x6f, 0x32,
+      0x61, 0x76, 0x63, 0x31,
+      0x6d, 0x70, 0x34, 0x31,
+    ])
+  )
 
-  // Primera pasada con offsets 0 para medir el tamano exacto de moov
   const moovDummy = armarMoov({
     videoSamples,
     sps,
@@ -545,13 +676,12 @@ function construirMp4(params: {
   salida.set(moov, ptr)
   ptr += moov.byteLength
 
-  // Cabecera mdat
   const mdatView = new DataView(salida.buffer, ptr, 8)
   mdatView.setUint32(0, 8 + mdatPayloadSize, false)
-  salida[ptr + 4] = 0x6d // 'm'
-  salida[ptr + 5] = 0x64 // 'd'
-  salida[ptr + 6] = 0x61 // 'a'
-  salida[ptr + 7] = 0x74 // 't'
+  salida[ptr + 4] = 0x6d
+  salida[ptr + 5] = 0x64
+  salida[ptr + 6] = 0x61
+  salida[ptr + 7] = 0x74
   ptr += 8
 
   for (const s of videoSamples) {
@@ -577,8 +707,17 @@ function armarMoov(params: {
   videoChunkOffset: number
   audioChunkOffset: number
 }): Uint8Array {
-  const { videoSamples, sps, pps, width, height, audioSamples, audioConfig, videoChunkOffset, audioChunkOffset } =
-    params
+  const {
+    videoSamples,
+    sps,
+    pps,
+    width,
+    height,
+    audioSamples,
+    audioConfig,
+    videoChunkOffset,
+    audioChunkOffset,
+  } = params
 
   const traks: Uint8Array[] = []
   let duracionMaximaMs = 0
@@ -622,7 +761,6 @@ function armarVideoTrak(params: {
   const { videoSamples, sps, pps, width, height, chunkOffset } = params
   const n = videoSamples.length
 
-  // Duraciones por sample en escala 90000 Hz
   const deltas: number[] = new Array(n)
   let sumaValida = 0
   let conteoValido = 0
@@ -636,7 +774,7 @@ function armarVideoTrak(params: {
       deltas[i] = -1
     }
   }
-  const deltaPromedio = conteoValido > 0 ? Math.round(sumaValida / conteoValido) : 3000
+  const deltaPromedio = conteoValido > 0 ? Math.round(sumaValida / conteoValido) : 3750
   for (let i = 0; i < n - 1; i++) {
     if (deltas[i] <= 0) deltas[i] = deltaPromedio
   }
@@ -645,7 +783,6 @@ function armarVideoTrak(params: {
   let duration90k = 0
   for (const d of deltas) duration90k += d
 
-  // Composicion PTS - DTS (normalizada a >= 0 para ctts version 0)
   let minCts = 0
   const ctsRaw: number[] = new Array(n)
   for (let i = 0; i < n; i++) {
@@ -656,7 +793,6 @@ function armarVideoTrak(params: {
   }
   const ctsOffsets = ctsRaw.map((c) => c - minCts)
 
-  // stts (run-length encoded)
   const sttsEntries: { count: number; delta: number }[] = []
   for (const d of deltas) {
     const last = sttsEntries[sttsEntries.length - 1]
@@ -672,7 +808,6 @@ function armarVideoTrak(params: {
   })
   const stts = box("stts", sttsBuf)
 
-  // ctts (run-length encoded)
   const cttsEntries: { count: number; offset: number }[] = []
   for (const off of ctsOffsets) {
     const last = cttsEntries[cttsEntries.length - 1]
@@ -688,7 +823,6 @@ function armarVideoTrak(params: {
   })
   const ctts = box("ctts", cttsBuf)
 
-  // stss (keyframes 1-indexed)
   const keyframes: number[] = []
   videoSamples.forEach((s, idx) => {
     if (s.isKeyframe) keyframes.push(idx + 1)
@@ -700,30 +834,26 @@ function armarVideoTrak(params: {
   keyframes.forEach((k, idx) => stssView.setUint32(8 + idx * 4, k, false))
   const stss = box("stss", stssBuf)
 
-  // stsz
   const stszBuf = new Uint8Array(12 + n * 4)
   const stszView = new DataView(stszBuf.buffer)
   stszView.setUint32(8, n, false)
   videoSamples.forEach((s, idx) => stszView.setUint32(12 + idx * 4, s.data.byteLength, false))
   const stsz = box("stsz", stszBuf)
 
-  // stsc: 1 solo chunk con los n samples
   const stscBuf = new Uint8Array(20)
   const stscView = new DataView(stscBuf.buffer)
   stscView.setUint32(4, 1, false)
-  stscView.setUint32(8, 1, false) // first_chunk = 1
-  stscView.setUint32(12, n, false) // samples_per_chunk = n
-  stscView.setUint32(16, 1, false) // sample_description_index = 1
+  stscView.setUint32(8, 1, false)
+  stscView.setUint32(12, n, false)
+  stscView.setUint32(16, 1, false)
   const stsc = box("stsc", stscBuf)
 
-  // stco (1 chunk offset)
   const stcoBuf = new Uint8Array(12)
   const stcoView = new DataView(stcoBuf.buffer)
   stcoView.setUint32(4, 1, false)
   stcoView.setUint32(8, chunkOffset >>> 0, false)
   const stco = box("stco", stcoBuf)
 
-  // avcC + avc1 + stsd
   const profileIdc = sps.byteLength > 1 ? sps[1] : 0x64
   const profileCompat = sps.byteLength > 2 ? sps[2] : 0x00
   const levelIdc = sps.byteLength > 3 ? sps[3] : 0x2a
@@ -734,30 +864,26 @@ function armarVideoTrak(params: {
       profileIdc,
       profileCompat,
       levelIdc,
-      0xff, // lengthSizeMinusOne = 3 (4 bytes)
-      0xe1, // numOfSequenceParameterSets = 1
+      0xff,
+      0xe1,
       (sps.byteLength >> 8) & 0xff,
       sps.byteLength & 0xff,
     ]),
     sps,
-    u8([
-      0x01, // numOfPictureParameterSets = 1
-      (pps.byteLength >> 8) & 0xff,
-      pps.byteLength & 0xff,
-    ]),
+    u8([0x01, (pps.byteLength >> 8) & 0xff, pps.byteLength & 0xff]),
     pps
   )
 
   const avc1Header = new Uint8Array(78)
   const avc1View = new DataView(avc1Header.buffer)
-  avc1View.setUint16(6, 1, false) // data_reference_index = 1
+  avc1View.setUint16(6, 1, false)
   avc1View.setUint16(24, width, false)
   avc1View.setUint16(26, height, false)
-  avc1View.setUint32(28, 0x00480000, false) // horizresolution 72 dpi
-  avc1View.setUint32(32, 0x00480000, false) // vertresolution 72 dpi
-  avc1View.setUint16(40, 1, false) // frame_count = 1
-  avc1View.setUint16(74, 0x0018, false) // depth = 24
-  avc1View.setInt16(76, -1, false) // pre_defined = -1
+  avc1View.setUint32(28, 0x00480000, false)
+  avc1View.setUint32(32, 0x00480000, false)
+  avc1View.setUint16(40, 1, false)
+  avc1View.setUint16(74, 0x0018, false)
+  avc1View.setInt16(76, -1, false)
   const avc1 = box("avc1", avc1Header, avcC)
 
   const stsdHeader = new Uint8Array(8)
@@ -790,7 +916,6 @@ function armarAudioTrak(params: {
   const totalSamples = n * 1024
   const durationMs = Math.round((totalSamples * 1000) / sampleRate)
 
-  // stts: n tramas de 1024 muestras cada una
   const sttsBuf = new Uint8Array(16)
   const sttsView = new DataView(sttsBuf.buffer)
   sttsView.setUint32(4, 1, false)
@@ -798,14 +923,12 @@ function armarAudioTrak(params: {
   sttsView.setUint32(12, 1024, false)
   const stts = box("stts", sttsBuf)
 
-  // stsz
   const stszBuf = new Uint8Array(12 + n * 4)
   const stszView = new DataView(stszBuf.buffer)
   stszView.setUint32(8, n, false)
   audioSamples.forEach((s, idx) => stszView.setUint32(12 + idx * 4, s.data.byteLength, false))
   const stsz = box("stsz", stszBuf)
 
-  // stsc: 1 chunk con n samples
   const stscBuf = new Uint8Array(20)
   const stscView = new DataView(stscBuf.buffer)
   stscView.setUint32(4, 1, false)
@@ -814,42 +937,40 @@ function armarAudioTrak(params: {
   stscView.setUint32(16, 1, false)
   const stsc = box("stsc", stscBuf)
 
-  // stco
   const stcoBuf = new Uint8Array(12)
   const stcoView = new DataView(stcoBuf.buffer)
   stcoView.setUint32(4, 1, false)
   stcoView.setUint32(8, chunkOffset >>> 0, false)
   const stco = box("stco", stcoBuf)
 
-  // AudioSpecificConfig (2 bytes): audioObjectType (5 bits) + samplingFreqIndex (4 bits) + channelConfig (4 bits)
   const ascByte1 = ((audioConfig.profile & 0x1f) << 3) | ((audioConfig.samplingFreqIndex & 0x0e) >> 1)
   const ascByte2 = ((audioConfig.samplingFreqIndex & 0x01) << 7) | ((audioConfig.channelConfig & 0x0f) << 3)
 
   const esds = box(
     "esds",
     u8([
-      0x00, 0x00, 0x00, 0x00, // version + flags
-      0x03, 0x19, // ES_Descriptor tag=3, len=25
-      0x00, 0x02, // ES_ID = 2
-      0x00, // flags
-      0x04, 0x11, // DecoderConfigDescriptor tag=4, len=17
-      0x40, // objectTypeIndication = 0x40 (Audio ISO/IEC 14496-3)
-      0x15, // streamType = 5 (AudioStream) << 2 | 1
-      0x00, 0x00, 0x00, // bufferSizeDB
-      0x00, 0x01, 0xf4, 0x00, // maxBitrate (128kbps)
-      0x00, 0x01, 0xf4, 0x00, // avgBitrate
-      0x05, 0x02, // DecoderSpecificInfo tag=5, len=2
+      0x00, 0x00, 0x00, 0x00,
+      0x03, 0x19,
+      0x00, 0x02,
+      0x00,
+      0x04, 0x11,
+      0x40,
+      0x15,
+      0x00, 0x00, 0x00,
+      0x00, 0x01, 0xf4, 0x00,
+      0x00, 0x01, 0xf4, 0x00,
+      0x05, 0x02,
       ascByte1,
       ascByte2,
-      0x06, 0x01, 0x02, // SLConfigDescriptor tag=6, len=1, predefined=2
+      0x06, 0x01, 0x02,
     ])
   )
 
   const mp4aHeader = new Uint8Array(28)
   const mp4aView = new DataView(mp4aHeader.buffer)
-  mp4aView.setUint16(6, 1, false) // data_reference_index = 1
+  mp4aView.setUint16(6, 1, false)
   mp4aView.setUint16(16, audioConfig.channelConfig, false)
-  mp4aView.setUint16(18, 16, false) // sampleSize = 16
+  mp4aView.setUint16(18, 16, false)
   mp4aView.setUint32(24, (sampleRate << 16) >>> 0, false)
   const mp4a = box("mp4a", mp4aHeader, esds)
 
@@ -873,11 +994,10 @@ function armarAudioTrak(params: {
 function armarMvhd(durationMs: number, nextTrackId: number): Uint8Array {
   const buf = new Uint8Array(100)
   const view = new DataView(buf.buffer)
-  view.setUint32(12, 1000, false) // timescale = 1000 ms
+  view.setUint32(12, 1000, false)
   view.setUint32(16, durationMs, false)
-  view.setUint32(20, 0x00010000, false) // rate = 1.0
-  view.setUint16(24, 0x0100, false) // volume = 1.0
-  // Matriz identidad
+  view.setUint32(20, 0x00010000, false)
+  view.setUint16(24, 0x0100, false)
   view.setUint32(36, 0x00010000, false)
   view.setUint32(52, 0x00010000, false)
   view.setUint32(68, 0x40000000, false)
@@ -894,11 +1014,10 @@ function armarTkhd(params: {
 }): Uint8Array {
   const buf = new Uint8Array(84)
   const view = new DataView(buf.buffer)
-  view.setUint32(0, 0x00000007, false) // flags: track_enabled | track_in_movie | track_in_preview
+  view.setUint32(0, 0x00000007, false)
   view.setUint32(12, params.trackId, false)
   view.setUint32(20, params.durationMs, false)
-  view.setUint16(36, params.isAudio ? 0x0100 : 0, false) // volume
-  // Matriz identidad
+  view.setUint16(36, params.isAudio ? 0x0100 : 0, false)
   view.setUint32(40, 0x00010000, false)
   view.setUint32(56, 0x00010000, false)
   view.setUint32(72, 0x40000000, false)
@@ -912,7 +1031,7 @@ function armarMdhd(timescale: number, duration: number): Uint8Array {
   const view = new DataView(buf.buffer)
   view.setUint32(12, timescale, false)
   view.setUint32(16, duration, false)
-  view.setUint16(20, 0x55c4, false) // lang = 'und'
+  view.setUint16(20, 0x55c4, false)
   return box("mdhd", buf)
 }
 
