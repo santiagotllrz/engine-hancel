@@ -1,6 +1,7 @@
 import { DashboardShell } from "@/components/dashboard-shell"
 import { exigirAdvance } from "@/lib/accounts"
 import { ConfigVideos } from "@/components/videos/config-videos"
+import { DescargadorVideos } from "@/components/videos/descargador-videos"
 import { TableroVideos } from "@/components/videos/tablero-videos"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getVideoStudio } from "@/lib/videos-data"
@@ -25,10 +26,14 @@ export default async function VideosPage() {
       <Tabs defaultValue="tablero" className="flex flex-col gap-4">
         <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="tablero">Tablero</TabsTrigger>
+          <TabsTrigger value="descargar">Descargar videos</TabsTrigger>
           <TabsTrigger value="config">Configuración</TabsTrigger>
         </TabsList>
         <TabsContent value="tablero">
           <TableroVideos videos={vista.videos} ajustes={vista.ajustes} />
+        </TabsContent>
+        <TabsContent value="descargar">
+          <DescargadorVideos />
         </TabsContent>
         <TabsContent value="config">
           <ConfigVideos ajustes={vista.ajustes} opciones={vista.opciones} />

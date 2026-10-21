@@ -17,7 +17,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { BotIcon, ChefHatIcon, ClapperboardIcon, GalleryHorizontalEndIcon, KanbanIcon, LayersIcon, LightbulbIcon, SendIcon, SettingsIcon } from "lucide-react"
+import { BotIcon, ChefHatIcon, ClapperboardIcon, DownloadIcon, GalleryHorizontalEndIcon, KanbanIcon, LayersIcon, LightbulbIcon, SendIcon, SettingsIcon } from "lucide-react"
 
 import { AGENTES } from "@/lib/agentes-catalogo"
 
@@ -92,6 +92,13 @@ export function AppSidebar({
       url: "/videos",
       icon: <ClapperboardIcon />,
       isActive: pathname.startsWith("/videos"),
+      items: [],
+    },
+    {
+      title: "Descargar videos",
+      url: "/descargar-videos",
+      icon: <DownloadIcon />,
+      isActive: pathname.startsWith("/descargar-videos"),
       items: [],
     },
     {
