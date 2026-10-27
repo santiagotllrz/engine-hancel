@@ -4,6 +4,7 @@ import { esAdvance, todasLasCuentas } from "@/engine/accounts"
 import { publicarPendientes } from "@/engine/studio/publicar"
 import { publicarVideosPendientes } from "@/engine/videos/publicar"
 import { authorizeEngineRequest } from "@/lib/api-auth"
+import { limpiarPublicados } from "@/engine/limpieza"
 
 export const dynamic = "force-dynamic"
 
@@ -37,7 +38,13 @@ async function handle(request: Request) {
       corridas.push({ cuenta: cuenta.slug, error: error instanceof Error ? error.message : String(error) })
     }
   }
-  return NextResponse.json({ at: now.toISOString(), corridas })
+  // Con lo que sobre de tiempo: borrar las imagenes de lo ya publicado, para
+  // que el almacenamiento no se llene (ver engine/limpieza.ts).
+  let limpieza: unknown = null
+  if (!soloCuenta && Date.now() - inicio < 120_000) {
+    limpieza = await limpiarPublicados().catch((e) => ({ error: e instanceof Error ? e.message : String(e) }))
+  }
+  return NextResponse.json({ at: now.toISOString(), corridas, limpieza })
 }
 
 export async function POST(request: Request) {
