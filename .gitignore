@@ -59,3 +59,7 @@ next-env.d.ts
 .roo
 .trae
 .windsurf
+
+# Respaldos de base de datos: traen datos y llaves, nunca se versionan.
+db_cluster-*
+*.backup
