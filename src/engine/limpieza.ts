@@ -1,8 +1,10 @@
 import { supabaseAdmin } from "./supabase-admin"
 
 const BUCKET = "carousels"
-/** Dias que se conservan las imagenes despues de publicar (por si hay que revisar algo). */
-const DIAS = 2
+/** Nada se guarda: las imagenes se borran en cuanto lo publicado salio en todas sus redes. */
+const DIAS = 0
+/** Lo que nunca se publico (descartado, fallido): se borra pasado un dia. */
+const DIAS_SIN_PUBLICAR = 1
 /** Carpetas por pasada: la limpieza no debe comerse el tiempo del tick. */
 const POR_PASADA = 25
 
@@ -15,8 +17,8 @@ const POR_PASADA = 25
  * queda sin espacio (paso en Supabase y en InsForge). Las fotos de las noticias
  * redactadas no se tocan: el portal las sigue mostrando.
  *
- * Un carrusel de noticias se limpia cuando todas sus piezas (una por red) ya
- * salieron. Cada pieza limpia queda marcada en su payload (`archivos_borrados`)
+ * Un carrusel de noticias se limpia en cuanto todas sus piezas (una por red)
+ * salieron; lo descartado o fallido, al dia siguiente. Cada pieza limpia queda marcada en su payload (`archivos_borrados`)
  * para no volver a mirarla.
  */
 export async function limpiarPublicados(): Promise<{ carpetas: number; archivos: number; errores: string[] }> {
@@ -84,6 +86,46 @@ export async function limpiarPublicados(): Promise<{ carpetas: number; archivos:
       carpetas++
     } catch (e) {
       errores.push(`estudio ${p.id}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  // Lo que no se va a publicar: piezas descartadas o fallidas, y sus archivos.
+  const viejo = new Date(Date.now() - DIAS_SIN_PUBLICAR * 86400_000).toISOString()
+  const { data: muertas } = await s
+    .from("content_pieces")
+    .select("id, job_instagram_id, payload")
+    .in("status", ["discarded", "rejected", "failed"])
+    .lt("created_at", viejo)
+    .not("job_instagram_id", "is", null)
+    .is("payload->archivos_borrados", null)
+    .limit(POR_PASADA)
+  for (const p of (muertas ?? []) as { id: string; job_instagram_id: string; payload: Record<string, unknown> }[]) {
+    try {
+      const { count } = await s.from("content_pieces").select("id", { count: "exact", head: true }).eq("job_instagram_id", p.job_instagram_id).in("status", ["generated", "approved", "publishing"])
+      if ((count ?? 0) === 0) {
+        await vaciar(p.job_instagram_id)
+        await vaciar(`jpeg/${p.job_instagram_id}`)
+        carpetas++
+      }
+      await s.from("content_pieces").update({ payload: { ...p.payload, archivos_borrados: new Date().toISOString() } }).eq("id", p.id)
+    } catch (e) {
+      errores.push(`descartada ${p.id}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+  const { data: fallidas } = await s
+    .from("studio_pieces")
+    .select("id, account_id, payload")
+    .in("status", ["failed", "discarded"])
+    .lt("created_at", viejo)
+    .is("payload->archivos_borrados", null)
+    .limit(POR_PASADA)
+  for (const p of (fallidas ?? []) as { id: string; account_id: string; payload: Record<string, unknown> | null }[]) {
+    try {
+      await vaciar(`studio/${p.account_id}/${p.id}`)
+      await s.from("studio_pieces").update({ payload: { ...(p.payload ?? {}), archivos_borrados: new Date().toISOString() } }).eq("id", p.id)
+      carpetas++
+    } catch (e) {
+      errores.push(`estudio fallida ${p.id}: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
