@@ -348,19 +348,16 @@ function Cabecera({ logo, acento, alto = 96 }: { logo: string | null; acento: st
 }
 
 /**
- * El elemento clave de la portada, con los criterios de la plantilla clasica:
- * circulo o cuadrado redondeado (a suertes), recortado para llenar si la imagen
- * es casi cuadrada o encajado entero con aire si es apaisada (un logo recortado
- * deja de leerse), fondo blanco y aro del color de acento. Va sobre la foto, en
- * una de sus cuatro esquinas, sin tocar el titular.
+ * El elemento clave de la portada: circulo o cuadrado redondeado (a suertes),
+ * con aro del color de acento, sobre la foto en una de sus cuatro esquinas y
+ * sin tocar el titular. La imagen llena siempre la forma entera (se recorta si
+ * hace falta): nada de margen ni fondo blanco alrededor.
  */
 function InsertoFoto({ l, acento, arriba, altoFoto }: { l: LaminaNoticia; acento: string; arriba: number; altoFoto: number }) {
   if (!l.inserto) return null
   const lado = 330
   const forma = l.insertoForma ?? "circulo"
-  const ajuste = l.insertoAjuste ?? "llenar"
   const redondeo = forma === "circulo" ? lado : 48
-  const aire = ajuste === "encajar" ? (forma === "circulo" ? 48 : 30) : 0
   const margen = 48
   const sitios = [
     { top: arriba + margen, left: margen },
@@ -378,11 +375,7 @@ function InsertoFoto({ l, acento, arriba, altoFoto }: { l: LaminaNoticia; acento
         width: lado,
         height: lado,
         borderRadius: redondeo,
-        padding: aire,
-        alignItems: "center",
-        justifyContent: "center",
         border: `8px solid ${acento}`,
-        background: "#FFFFFF",
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -391,7 +384,7 @@ function InsertoFoto({ l, acento, arriba, altoFoto }: { l: LaminaNoticia; acento
         alt=""
         width={lado}
         height={lado}
-        style={{ width: "100%", height: "100%", objectFit: ajuste === "llenar" ? "cover" : "contain", borderRadius: ajuste === "llenar" ? redondeo : 0 }}
+        style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: redondeo }}
       />
     </div>
   )
