@@ -150,6 +150,16 @@ export const FUENTES = {
       bold: "SpaceGrotesk-700.ttf",
     },
   },
+  /** La condensada de los titulares del estilo "impacto" (libre, Google Fonts). */
+  Oswald: {
+    nombre: "Oswald",
+    archivos: {
+      light: "Oswald-400.ttf",
+      regular: "Oswald-500.ttf",
+      semibold: "Oswald-600.ttf",
+      bold: "Oswald-700.ttf",
+    },
+  },
 } as const
 
 export type NombreFuente = keyof typeof FUENTES
@@ -263,6 +273,10 @@ export const CIERRE_POR_DEFECTO: Cierre = {
   texto: "para no perderte ningún hecho importante del agro colombiano",
 }
 
+/** Las familias de laminas de los carruseles de noticias. */
+export const PLANTILLAS = ["clasica", "editorial", "impacto", "plogy"] as const
+export type Plantilla = (typeof PLANTILLAS)[number]
+
 /** Lo que el usuario puede cambiar desde la interfaz. */
 export type Estilo = {
   paleta: Paleta
@@ -307,9 +321,11 @@ export type Estilo = {
   /**
    * La familia de laminas. "clasica" es la de siempre; "plogy" es la estructura
    * propia de Plogy (tinta y papel alternados, titulares con resaltado, fotos
-   * en blanco y negro sobre bloque naranja, listas numeradas).
+   * en blanco y negro sobre bloque naranja, listas numeradas). "editorial" y
+   * "impacto" son los dos estilos alternativos de noticias (ver
+   * `estilos-noticia.tsx`).
    */
-  plantilla: "clasica" | "plogy"
+  plantilla: Plantilla
 }
 
 export const ESTILO_POR_DEFECTO: Estilo = {
@@ -362,7 +378,7 @@ export function estiloDesdeConfig(valor: unknown): Estilo {
     perfil: url(logos.perfil),
     fotosLiterales: raw.fotosLiterales === true,
     cierre: cierreDesdeConfig(raw.cierre),
-    plantilla: raw.plantilla === "plogy" ? "plogy" : "clasica",
+    plantilla: (PLANTILLAS as readonly string[]).includes(String(raw.plantilla)) ? (raw.plantilla as Plantilla) : "clasica",
   }
 }
 

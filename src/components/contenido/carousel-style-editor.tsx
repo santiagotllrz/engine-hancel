@@ -8,7 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { FUENTES, PALETAS, type Estilo } from "@/engine/render/theme"
+import { FUENTES, PALETAS, type Estilo, type Plantilla } from "@/engine/render/theme"
+
+/** Los estilos de noticia que se pueden elegir, con lo que los distingue. */
+const ESTILOS: { valor: Plantilla; nombre: string; pista: string }[] = [
+  { valor: "clasica", nombre: "Clásico", pista: "Foto a sangre con el titular abajo y el nicho encima. El de siempre." },
+  { valor: "editorial", nombre: "Editorial", pista: "Limpio sobre blanco: la foto en un bloque, el nicho y un botón, el titular muy grande y el logo en el pie." },
+  { valor: "impacto", nombre: "Impacto", pista: "De medio informativo: foto a sangre, el sello de la marca, una barra verde y el titular en mayúsculas." },
+]
 
 /**
  * El aspecto de las imagenes del carrusel.
@@ -26,6 +33,9 @@ export function CarouselStyleEditor({
   pexelsConfigurado: boolean
 }) {
   const [paleta, setPaleta] = React.useState(paletaActual)
+  const [plantilla, setPlantilla] = React.useState<Plantilla>(estilo.plantilla)
+  // Plogy tiene su plantilla propia: solo se ofrece a la cuenta que ya la usa.
+  const estilos = estilo.plantilla === "plogy" ? [...ESTILOS, { valor: "plogy" as const, nombre: "Plogy", pista: "La estructura propia de Plogy." }] : ESTILOS
   const [fuente, setFuente] = React.useState(estilo.fuente)
   const [marca, setMarca] = React.useState(estilo.marca)
   const [paginacion, setPaginacion] = React.useState(estilo.mostrarPaginacion)
@@ -38,6 +48,7 @@ export function CarouselStyleEditor({
   const [result, setResult] = React.useState<ActionResult | null>(null)
 
   const dirty =
+    plantilla !== estilo.plantilla ||
     paleta !== paletaActual ||
     fuente !== estilo.fuente ||
     marca !== estilo.marca ||
@@ -50,6 +61,7 @@ export function CarouselStyleEditor({
 
   const save = () => {
     const form = new FormData()
+    form.set("plantilla", plantilla)
     form.set("paleta", paleta)
     form.set("fuente", fuente)
     form.set("marca", marca)
@@ -78,6 +90,46 @@ export function CarouselStyleEditor({
       </CardHeader>
 
       <CardContent className="space-y-5">
+        <div className="grid gap-2">
+          <Label>Estilo de las noticias</Label>
+          <p className="text-muted-foreground text-xs">
+            Cómo se ven los carruseles de noticias. La vista previa usa la noticia más reciente de la cuenta, con el logo y la
+            configuración guardados.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {estilos.map((e) => (
+              <button
+                key={e.valor}
+                type="button"
+                title={e.pista}
+                onClick={() => {
+                  setResult(null)
+                  setPlantilla(e.valor)
+                }}
+                aria-pressed={plantilla === e.valor}
+                className={`flex flex-col gap-2 rounded-lg border p-2 text-left transition-colors ${
+                  plantilla === e.valor ? "border-primary ring-primary ring-2" : "border-input hover:bg-accent"
+                }`}
+              >
+                <div className="grid grid-cols-2 gap-1">
+                  {(["portada", "interior"] as const).map((lamina) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={lamina}
+                      src={`/api/render/estilo?plantilla=${e.valor}&lamina=${lamina}`}
+                      alt={`${e.nombre}: ${lamina}`}
+                      loading="lazy"
+                      className="bg-muted aspect-[4/5] w-full rounded object-cover"
+                    />
+                  ))}
+                </div>
+                <span className="text-sm font-medium">{e.nombre}</span>
+                <span className="text-muted-foreground text-xs leading-snug">{e.pista}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid gap-1.5">
           <Label>Paleta</Label>
           <div className="flex flex-wrap gap-2">

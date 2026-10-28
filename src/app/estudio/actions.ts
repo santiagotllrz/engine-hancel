@@ -19,7 +19,7 @@ import type { ContentAngle, ContentPiece, Red, Variables } from "@/engine/conten
 import { parseVariables, validateVariables } from "@/engine/content/variables"
 import { disconnectLinkedin } from "@/engine/publish/linkedin"
 import { publishPiece } from "@/engine/publish/publish-piece"
-import { FUENTES, PALETAS } from "@/engine/render/theme"
+import { FUENTES, PALETAS, PLANTILLAS } from "@/engine/render/theme"
 import { supabaseAdmin } from "@/engine/supabase-admin"
 import type { RawNews } from "@/lib/types"
 
@@ -616,6 +616,8 @@ export async function updateCarouselStyle(form: FormData): Promise<ActionResult>
   if (!(fuente in FUENTES)) return { ok: false, error: "Esa tipografia no existe." }
 
   const marca = text(form, "marca").slice(0, 40)
+  const plantillaPedida = text(form, "plantilla")
+  if (plantillaPedida && !(PLANTILLAS as readonly string[]).includes(plantillaPedida)) return { ok: false, error: "Ese estilo no existe." }
 
   try {
     const accountId = await idDeCuentaActual()
@@ -628,12 +630,17 @@ export async function updateCarouselStyle(form: FormData): Promise<ActionResult>
       .select("carousel")
       .eq("account_id", accountId)
       .maybeSingle()
-    const logos = ((previa as { carousel?: { logos?: unknown } } | null)?.carousel ?? {}).logos ?? {}
+    const anterior = ((previa as { carousel?: { logos?: unknown; plantilla?: string } } | null)?.carousel ?? {}) as { logos?: unknown; plantilla?: string }
+    const logos = anterior.logos ?? {}
+    // El estilo tambien se arrastra si el formulario no lo trae: antes guardar
+    // el aspecto borraba la plantilla (Plogy volvia a la clasica).
+    const plantilla = plantillaPedida || anterior.plantilla || "clasica"
 
     const { error } = await supabaseAdmin()
       .from("generation_config")
       .update({
         carousel: {
+          plantilla,
           paleta,
           fuente,
           marca,

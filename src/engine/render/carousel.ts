@@ -269,6 +269,9 @@ export async function generarCarrusel(
   if (estilo.plantilla === "plogy") {
     return generarCarruselPlogy(pieceKey, { caption, hashtags, slides, fotos, elemento }, news, estilo, nichos, conPortadaFacebook)
   }
+  if (estilo.plantilla === "editorial" || estilo.plantilla === "impacto") {
+    return generarCarruselAlterno(pieceKey, { caption, hashtags, slides, fotos, elemento }, news, estilo, nichos, conPortadaFacebook)
+  }
 
   // El cierre es una lamina de marca, no del guion: se añade aqui y no se le
   // pide al agente. Va siempre, porque la llamada a seguir la cuenta es lo
@@ -593,6 +596,85 @@ async function generarCarruselPlogy(
       logoClaro,
       logoOscuro,
     })
+    portadaFacebook = await subirImagenSuelta(pieceKey, "facebook", png)
+  }
+
+  return {
+    caption,
+    hashtags,
+    images,
+    ...(portadaFacebook ? { portadaFacebook } : {}),
+    slideCount: total,
+    portadaSinFoto: fotoPortada === null,
+    terminosFoto: terminos.slice(0, 6),
+    creditos,
+  }
+}
+
+// --------------------------------------------------------- editorial / impacto
+
+/**
+ * El carrusel en uno de los dos estilos alternativos (ver `estilos-noticia.tsx`):
+ * la portada con el titular y el nicho, las laminas del guion alternando foto
+ * y tipografia, y el cierre de marca.
+ */
+async function generarCarruselAlterno(
+  pieceKey: string,
+  guion: ReturnType<typeof parseInstagramResponse>,
+  news: RawNews | null,
+  estilo: Estilo,
+  nichos: string[],
+  conPortadaFacebook: boolean
+): Promise<CarouselPayload> {
+  const { renderNoticia, repartirNoticia } = await import("./estilos-noticia")
+  const plantilla = estilo.plantilla === "impacto" ? "impacto" : "editorial"
+  const { caption, hashtags, fotos, elemento } = guion
+  const slides = guion.slides.slice(0, MAX_SLIDES - 1)
+
+  const terminos = fotos.length > 0 ? fotos : terminosDeBusqueda(news, nichos, estilo.fotosLiterales)
+  const banco = new BancoDeFotos(terminos)
+  const creditos: { autor: string; url: string }[] = []
+  const delBanco = async (): Promise<string | null> => {
+    if (!estilo.usarFotos || !pexelsConfigurado()) return null
+    const elegida = await banco.siguiente()
+    if (!elegida) return null
+    const descargada = await descargarFotoPexels(elegida)
+    if (descargada && elegida.autor) creditos.push({ autor: elegida.autor, url: elegida.autorUrl })
+    return descargada
+  }
+
+  const [logoClaro, logoOscuro] = await Promise.all([descargarFoto(estilo.logoClaro), descargarFoto(estilo.logoOscuro)])
+  // El elemento recortado solo lo usa la portada de "impacto".
+  const hallado = plantilla === "impacto" && news?.account_id ? await buscarInserto(elemento, news.account_id) : null
+  // El indicador del nicho, igual que en la clasica: el tema del segmento.
+  const nicho = (news?.tema ?? news?.niche ?? "").trim()
+  const total = slides.length + 1
+  const titularDe = (s: Slide) => (s.type === "photo_hook" ? (s.hook ?? "") : (s.title ?? ""))
+  const reparto = repartirNoticia(Math.max(0, slides.length - 1), estilo.usarFotos && pexelsConfigurado())
+
+  const fotoPortada = (await delBanco()) ?? (await descargarFoto(news?.image_url))
+  const comun = { plantilla, nicho, total, logoClaro, logoOscuro, estilo } as const
+  const imagenes: Buffer[] = []
+  for (const [i, slide] of slides.entries()) {
+    const composicion = i === 0 ? "portada" : reparto[i - 1]
+    imagenes.push(
+      await renderNoticia({
+        ...comun,
+        composicion,
+        titular: titularDe(slide),
+        cuerpo: slide.type === "text" ? slide.body : null,
+        foto: i === 0 ? fotoPortada : composicion === "foto" ? await delBanco() : null,
+        inserto: i === 0 ? (hallado?.imagen ?? null) : null,
+        n: i + 1,
+      })
+    )
+  }
+  imagenes.push(await renderNoticia({ ...comun, composicion: "cierre", titular: estilo.cierre.titulo, cuerpo: estilo.cierre.texto, n: total }))
+
+  const images = await subirCarrusel(pieceKey, imagenes)
+  let portadaFacebook: string | undefined
+  if (conPortadaFacebook && slides[0]) {
+    const png = await renderNoticia({ ...comun, composicion: "portada", titular: titularDe(slides[0]), foto: fotoPortada, inserto: hallado?.imagen ?? null, n: 1, total: 1 })
     portadaFacebook = await subirImagenSuelta(pieceKey, "facebook", png)
   }
 
