@@ -269,7 +269,7 @@ export async function generarCarrusel(
   if (estilo.plantilla === "plogy") {
     return generarCarruselPlogy(pieceKey, { caption, hashtags, slides, fotos, elemento }, news, estilo, nichos, conPortadaFacebook)
   }
-  if (estilo.plantilla === "editorial" || estilo.plantilla === "impacto") {
+  if (estilo.plantilla === "editorial" || estilo.plantilla === "impacto" || estilo.plantilla === "periodico") {
     return generarCarruselAlterno(pieceKey, { caption, hashtags, slides, fotos, elemento }, news, estilo, nichos, conPortadaFacebook)
   }
 
@@ -627,7 +627,7 @@ async function generarCarruselAlterno(
   conPortadaFacebook: boolean
 ): Promise<CarouselPayload> {
   const { renderNoticia, repartirNoticia } = await import("./estilos-noticia")
-  const plantilla = estilo.plantilla === "impacto" ? "impacto" : "editorial"
+  const plantilla = estilo.plantilla === "impacto" || estilo.plantilla === "periodico" ? estilo.plantilla : "editorial"
   const { caption, hashtags, fotos, elemento } = guion
   const slides = guion.slides.slice(0, MAX_SLIDES - 1)
 
@@ -653,7 +653,9 @@ async function generarCarruselAlterno(
   const reparto = repartirNoticia(Math.max(0, slides.length - 1), estilo.usarFotos && pexelsConfigurado())
 
   const fotoPortada = (await delBanco()) ?? (await descargarFoto(news?.image_url))
-  const comun = { plantilla, nicho, total, logoClaro, logoOscuro, estilo } as const
+  // La fecha de la noticia, para el pie del estilo periodico ("28 de octubre de 2026").
+  const fecha = new Date(news?.created_at ?? Date.now()).toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric", timeZone: "America/Bogota" })
+  const comun = { plantilla, nicho, fecha, total, logoClaro, logoOscuro, estilo } as const
   const imagenes: Buffer[] = []
   for (const [i, slide] of slides.entries()) {
     const composicion = i === 0 ? "portada" : reparto[i - 1]

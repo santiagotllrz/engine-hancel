@@ -28,15 +28,16 @@ export async function GET(request: Request) {
     s.from("generation_config").select("carousel").eq("account_id", accountId).maybeSingle(),
     s
       .from("raw_news")
-      .select("title, snippet, tema, niche, image_url")
+      .select("title, snippet, tema, niche, image_url, created_at")
       .eq("account_id", accountId)
       .not("image_url", "is", null)
       .order("created_at", { ascending: false })
       .limit(5),
   ])
   const estilo = { ...estiloDesdeConfig((cfg as { carousel?: unknown } | null)?.carousel), plantilla }
-  const lista = (noticias ?? []) as { title: string; snippet: string | null; tema: string | null; niche: string | null; image_url: string | null }[]
+  const lista = (noticias ?? []) as { title: string; snippet: string | null; tema: string | null; niche: string | null; image_url: string | null; created_at?: string }[]
   const n = lista[0] ?? { title: "El precio del café sube por tercera semana seguida", snippet: null, tema: "café", niche: null, image_url: null }
+  const fecha = new Date(n.created_at ?? Date.now()).toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric", timeZone: "America/Bogota" })
 
   // La foto de la noticia: si no se deja bajar, prueba con la siguiente.
   let foto: string | null = null
@@ -49,7 +50,7 @@ export async function GET(request: Request) {
   const cuerpo = (n.snippet ?? "").trim() || "Lo que cambia para los productores y qué mirar en los próximos días."
 
   let png: Buffer
-  if (plantilla === "editorial" || plantilla === "impacto") {
+  if (plantilla === "editorial" || plantilla === "impacto" || plantilla === "periodico") {
     const [logoClaro, logoOscuro] = await Promise.all([descargarFoto(estilo.logoClaro), descargarFoto(estilo.logoOscuro)])
     png = await renderNoticia({
       plantilla,
@@ -57,6 +58,7 @@ export async function GET(request: Request) {
       titular: interior ? "Lo que hay detrás del dato" : titular,
       cuerpo: interior ? cuerpo : null,
       nicho,
+      fecha,
       foto,
       n: interior ? 2 : 1,
       total: 6,

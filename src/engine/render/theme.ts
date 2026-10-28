@@ -150,6 +150,16 @@ export const FUENTES = {
       bold: "SpaceGrotesk-700.ttf",
     },
   },
+  /** La serif de los titulares del estilo "periodico" (libre, Google Fonts). */
+  SourceSerif: {
+    nombre: "Source Serif 4",
+    archivos: {
+      light: "SourceSerif4-400.ttf",
+      regular: "SourceSerif4-500.ttf",
+      semibold: "SourceSerif4-600.ttf",
+      bold: "SourceSerif4-700.ttf",
+    },
+  },
   /** La condensada de los titulares del estilo "impacto" (libre, Google Fonts). */
   Oswald: {
     nombre: "Oswald",
@@ -274,7 +284,7 @@ export const CIERRE_POR_DEFECTO: Cierre = {
 }
 
 /** Las familias de laminas de los carruseles de noticias. */
-export const PLANTILLAS = ["clasica", "editorial", "impacto", "plogy"] as const
+export const PLANTILLAS = ["clasica", "editorial", "impacto", "periodico", "plogy"] as const
 export type Plantilla = (typeof PLANTILLAS)[number]
 
 /** Lo que el usuario puede cambiar desde la interfaz. */

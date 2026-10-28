@@ -11,14 +11,18 @@ import { ALTO, ANCHO, type Estilo } from "./theme"
  *     el titular muy grande y el logo en el pie.
  *   - `impacto`: de medio informativo, con la estructura de las portadas de
  *     UHN. Foto a sangre, el sello de la marca al centro, una barra de color y
- *     el titular en mayusculas condensadas. El color secundario es verde.
+ *     el titular en mayusculas condensadas. El color secundario es verde y el
+ *     logo va en blanco, nunca en verde.
+ *   - `periodico`: la portada de un diario (El Espectador). El logo en negro
+ *     arriba bajo una raya verde, la foto a todo lo ancho, el titular serif
+ *     centrado, otra raya verde y el nicho con la fecha.
  *
  * De la plantilla clasica se conserva lo que no se negocia: el titular de la
  * noticia y el indicador de su nicho. Satori solo entiende flexbox: todo div
  * con hijos lleva `display: flex`.
  */
 
-export type PlantillaNoticia = "editorial" | "impacto"
+export type PlantillaNoticia = "editorial" | "impacto" | "periodico"
 export type ComposicionNoticia = "portada" | "texto" | "foto" | "cierre"
 
 export type LaminaNoticia = {
@@ -28,6 +32,8 @@ export type LaminaNoticia = {
   cuerpo?: string | null
   /** El nicho de la noticia (tema o nicho del segmento). */
   nicho: string
+  /** La fecha de la noticia, ya escrita ("28 de octubre de 2026"). Solo la usa "periodico". */
+  fecha?: string
   foto?: string | null
   /** El elemento recortado de la portada (un logo, una cara), si lo hay. */
   inserto?: string | null
@@ -189,13 +195,16 @@ function Editorial(l: LaminaNoticia) {
 
 const IM = { fondo: "#0B0B0B", texto: "#FFFFFF", suave: "#CFCFCF", titulo: "Oswald" }
 
-/** El sello de la marca: el logo claro sobre un bloque del color de acento (apaisado: casi todos los logos lo son). */
-function Sello({ logo, acento, lado }: { logo: string | null; acento: string; lado: number }) {
+/**
+ * El sello de la marca: el logo en blanco, sin bloque de color detras (el verde
+ * es solo de la barra y el nicho). Apaisado, porque casi todos los logos lo son.
+ */
+function Sello({ logo, lado }: { logo: string | null; acento?: string; lado: number }) {
   if (!logo) return null
   const ancho = lado * 2.3
   return (
-    <div style={{ display: "flex", width: ancho, height: lado, borderRadius: lado * 0.2, background: acento, alignItems: "center", justifyContent: "center" }}>
-      <Img src={logo} style={{ width: ancho * 0.8, height: lado * 0.62, objectFit: "contain" }} />
+    <div style={{ display: "flex", width: ancho, height: lado, alignItems: "center", justifyContent: "center" }}>
+      <Img src={logo} style={{ width: ancho, height: lado * 0.8, objectFit: "contain" }} />
     </div>
   )
 }
@@ -320,12 +329,107 @@ function Impacto(l: LaminaNoticia) {
   )
 }
 
+// ---------------------------------------------------------------- periodico
+
+const PE = { fondo: "#FFFFFF", texto: "#111111", suave: "#555555", serif: "Source Serif 4" }
+
+/** La cabecera del diario: raya verde y el logo en negro, centrados. */
+function Cabecera({ logo, acento, alto = 96 }: { logo: string | null; acento: string; alto?: number }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 52, paddingBottom: 40 }}>
+      <div style={{ display: "flex", width: 560, height: 8, background: acento, marginBottom: 22 }} />
+      {logo ? <Img src={logo} style={{ width: 620, height: alto, objectFit: "contain" }} /> : <div style={{ display: "flex", height: alto }} />}
+    </div>
+  )
+}
+
+function Periodico(l: LaminaNoticia) {
+  const acento = acentoDe(l.estilo)
+  const logo = l.logoOscuro ?? l.logoClaro ?? null
+  const titular = limpio(l.titular)
+  const base: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    position: "relative",
+    width: ANCHO,
+    height: ALTO,
+    background: PE.fondo,
+    color: PE.texto,
+    fontFamily: l.estilo.fuente,
+  }
+  const pie = [l.nicho, l.fecha].filter(Boolean).join(" · ")
+  const paginaPie =
+    l.estilo.mostrarPaginacion && l.total > 1 ? (
+      <div style={{ display: "flex", position: "absolute", bottom: 44, right: 60, fontSize: 24, color: PE.suave }}>{pagina(l.n, l.total)}</div>
+    ) : null
+
+  if (l.composicion === "portada") {
+    const t = cortar(titular, 120)
+    return (
+      <div style={base}>
+        <Cabecera logo={logo} acento={acento} />
+        {l.foto ? <Img src={l.foto} style={{ width: ANCHO, height: 640 }} /> : <div style={{ display: "flex", width: ANCHO, height: 640, background: "#EFEFEF" }} />}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, justifyContent: "center", padding: "0 70px 40px" }}>
+          <div
+            style={{
+              display: "flex",
+              textAlign: "center",
+              justifyContent: "center",
+              fontFamily: PE.serif,
+              fontWeight: 500,
+              fontSize: tamano(t, [[45, 76], [70, 66], [95, 58], [999, 52]]),
+              lineHeight: 1.1,
+              letterSpacing: -1,
+            }}
+          >
+            {t}
+          </div>
+          <div style={{ display: "flex", width: 300, height: 6, background: acento, marginTop: 28, marginBottom: 22 }} />
+          {pie ? <div style={{ display: "flex", fontSize: 30, color: PE.texto, textAlign: "center" }}>{cortar(pie, 60)}</div> : null}
+        </div>
+        {paginaPie}
+      </div>
+    )
+  }
+
+  if (l.composicion === "cierre") {
+    return (
+      <div style={{ ...base, alignItems: "center", justifyContent: "center", padding: 90 }}>
+        <div style={{ display: "flex", width: 560, height: 8, background: acento, marginBottom: 30 }} />
+        {logo ? <Img src={logo} style={{ width: 700, height: 150, objectFit: "contain" }} /> : null}
+        <div style={{ display: "flex", marginTop: 64, fontFamily: PE.serif, fontWeight: 500, fontSize: 96, lineHeight: 1.05, textAlign: "center" }}>{cortar(titular, 40)}</div>
+        <div style={{ display: "flex", width: 300, height: 6, background: acento, marginTop: 32, marginBottom: 28 }} />
+        {l.cuerpo ? <div style={{ display: "flex", fontSize: 38, lineHeight: 1.35, color: PE.suave, textAlign: "center", maxWidth: 820 }}>{cortar(limpio(l.cuerpo), 160)}</div> : null}
+      </div>
+    )
+  }
+
+  // Interior: la cabecera pequena arriba, foto a lo ancho si toca y el texto.
+  const conFoto = l.composicion === "foto" && l.foto
+  const t = cortar(titular, 110)
+  const cuerpo = cortar(limpio(l.cuerpo), conFoto ? 230 : 420)
+  return (
+    <div style={base}>
+      <Cabecera logo={logo} acento={acento} alto={64} />
+      {conFoto ? <Img src={l.foto!} style={{ width: ANCHO, height: 520 }} /> : null}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, justifyContent: "center", padding: "0 84px 70px" }}>
+        {l.nicho ? <div style={{ display: "flex", fontSize: 26, letterSpacing: 4, textTransform: "uppercase", color: acento, fontWeight: 600, marginBottom: 22 }}>{cortar(l.nicho, 34)}</div> : null}
+        <div style={{ display: "flex", textAlign: "center", justifyContent: "center", fontFamily: PE.serif, fontWeight: 500, fontSize: conFoto ? tamano(t, [[45, 66], [75, 58], [999, 50]]) : tamano(t, [[45, 80], [75, 70], [999, 60]]), lineHeight: 1.12 }}>{t}</div>
+        <div style={{ display: "flex", width: 200, height: 5, background: acento, marginTop: 26, marginBottom: 26 }} />
+        {cuerpo ? <div style={{ display: "flex", textAlign: "center", fontSize: conFoto ? 34 : 40, lineHeight: 1.4, color: PE.suave }}>{cuerpo}</div> : null}
+      </div>
+      {paginaPie}
+    </div>
+  )
+}
+
 // ------------------------------------------------------------------- render
 
 export async function renderNoticia(l: LaminaNoticia): Promise<Buffer> {
   const fuentes = await cargarFuente(l.estilo.fuente)
-  const extra = l.plantilla === "impacto" ? await cargarFuente("Oswald") : []
-  const respuesta = new ImageResponse(l.plantilla === "editorial" ? <Editorial {...l} /> : <Impacto {...l} />, {
+  const extra = l.plantilla === "impacto" ? await cargarFuente("Oswald") : l.plantilla === "periodico" ? await cargarFuente("SourceSerif") : []
+  const vista = l.plantilla === "editorial" ? <Editorial {...l} /> : l.plantilla === "periodico" ? <Periodico {...l} /> : <Impacto {...l} />
+  const respuesta = new ImageResponse(vista, {
     width: ANCHO,
     height: ALTO,
     fonts: [...fuentes, ...extra],

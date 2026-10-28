@@ -14,7 +14,8 @@ import { FUENTES, PALETAS, type Estilo, type Plantilla } from "@/engine/render/t
 const ESTILOS: { valor: Plantilla; nombre: string; pista: string }[] = [
   { valor: "clasica", nombre: "Clásico", pista: "Foto a sangre con el titular abajo y el nicho encima. El de siempre." },
   { valor: "editorial", nombre: "Editorial", pista: "Limpio sobre blanco: la foto en un bloque, el nicho y un botón, el titular muy grande y el logo en el pie." },
-  { valor: "impacto", nombre: "Impacto", pista: "De medio informativo: foto a sangre, el sello de la marca, una barra verde y el titular en mayúsculas." },
+  { valor: "impacto", nombre: "Impacto", pista: "De medio informativo: foto a sangre, el logo en blanco, una barra verde y el titular en mayúsculas." },
+  { valor: "periodico", nombre: "Periódico", pista: "La portada de un diario: el logo en negro bajo una raya verde, la foto a lo ancho y el titular serif centrado con el nicho y la fecha." },
 ]
 
 /**
@@ -96,7 +97,7 @@ export function CarouselStyleEditor({
             Cómo se ven los carruseles de noticias. La vista previa usa la noticia más reciente de la cuenta, con el logo y la
             configuración guardados.
           </p>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             {estilos.map((e) => (
               <button
                 key={e.valor}
