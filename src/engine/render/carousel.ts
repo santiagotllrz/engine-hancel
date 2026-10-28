@@ -644,8 +644,13 @@ async function generarCarruselAlterno(
   }
 
   const [logoClaro, logoOscuro] = await Promise.all([descargarFoto(estilo.logoClaro), descargarFoto(estilo.logoOscuro)])
-  // El elemento recortado solo lo usa la portada de "impacto".
-  const hallado = plantilla === "impacto" && news?.account_id ? await buscarInserto(elemento, news.account_id) : null
+  // El elemento recortado de la portada ("impacto" y "periodico"), con los
+  // mismos criterios que la clasica: forma y esquina a suertes, y llenar solo
+  // si la imagen es casi cuadrada.
+  const hallado = plantilla !== "editorial" && news?.account_id ? await buscarInserto(elemento, news.account_id) : null
+  const insertoForma = Math.random() < 0.5 ? ("circulo" as const) : ("cuadrado" as const)
+  const insertoAjuste = hallado && hallado.proporcion > 0.62 && hallado.proporcion < 1.6 ? ("llenar" as const) : ("encajar" as const)
+  const insertoPos = Math.floor(Math.random() * 4)
   // El indicador del nicho, igual que en la clasica: el tema del segmento.
   const nicho = (news?.tema ?? news?.niche ?? "").trim()
   const total = slides.length + 1
@@ -655,7 +660,7 @@ async function generarCarruselAlterno(
   const fotoPortada = (await delBanco()) ?? (await descargarFoto(news?.image_url))
   // La fecha de la noticia, para el pie del estilo periodico ("28 de octubre de 2026").
   const fecha = new Date(news?.created_at ?? Date.now()).toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric", timeZone: "America/Bogota" })
-  const comun = { plantilla, nicho, fecha, total, logoClaro, logoOscuro, estilo } as const
+  const comun = { plantilla, nicho, fecha, total, logoClaro, logoOscuro, estilo, insertoForma, insertoAjuste, insertoPos } as const
   const imagenes: Buffer[] = []
   for (const [i, slide] of slides.entries()) {
     const composicion = i === 0 ? "portada" : reparto[i - 1]

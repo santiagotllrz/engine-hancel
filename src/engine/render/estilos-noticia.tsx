@@ -37,6 +37,10 @@ export type LaminaNoticia = {
   foto?: string | null
   /** El elemento recortado de la portada (un logo, una cara), si lo hay. */
   inserto?: string | null
+  /** Como en la clasica: circulo o cuadrado, llenar o encajar, y en que esquina (0-3). Se sortean al generar. */
+  insertoForma?: "circulo" | "cuadrado"
+  insertoAjuste?: "llenar" | "encajar"
+  insertoPos?: number
   n: number
   total: number
   logoClaro?: string | null
@@ -343,6 +347,56 @@ function Cabecera({ logo, acento, alto = 96 }: { logo: string | null; acento: st
   )
 }
 
+/**
+ * El elemento clave de la portada, con los criterios de la plantilla clasica:
+ * circulo o cuadrado redondeado (a suertes), recortado para llenar si la imagen
+ * es casi cuadrada o encajado entero con aire si es apaisada (un logo recortado
+ * deja de leerse), fondo blanco y aro del color de acento. Va sobre la foto, en
+ * una de sus cuatro esquinas, sin tocar el titular.
+ */
+function InsertoFoto({ l, acento, arriba, altoFoto }: { l: LaminaNoticia; acento: string; arriba: number; altoFoto: number }) {
+  if (!l.inserto) return null
+  const lado = 330
+  const forma = l.insertoForma ?? "circulo"
+  const ajuste = l.insertoAjuste ?? "llenar"
+  const redondeo = forma === "circulo" ? lado : 48
+  const aire = ajuste === "encajar" ? (forma === "circulo" ? 48 : 30) : 0
+  const margen = 48
+  const sitios = [
+    { top: arriba + margen, left: margen },
+    { top: arriba + margen, right: margen },
+    { top: arriba + altoFoto - lado - margen, right: margen },
+    { top: arriba + altoFoto - lado - margen, left: margen },
+  ]
+  const sitio = sitios[(l.insertoPos ?? 0) % sitios.length]
+  return (
+    <div
+      style={{
+        display: "flex",
+        position: "absolute",
+        ...sitio,
+        width: lado,
+        height: lado,
+        borderRadius: redondeo,
+        padding: aire,
+        alignItems: "center",
+        justifyContent: "center",
+        border: `8px solid ${acento}`,
+        background: "#FFFFFF",
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={l.inserto}
+        alt=""
+        width={lado}
+        height={lado}
+        style={{ width: "100%", height: "100%", objectFit: ajuste === "llenar" ? "cover" : "contain", borderRadius: ajuste === "llenar" ? redondeo : 0 }}
+      />
+    </div>
+  )
+}
+
 function Periodico(l: LaminaNoticia) {
   const acento = acentoDe(l.estilo)
   const logo = l.logoOscuro ?? l.logoClaro ?? null
@@ -387,6 +441,8 @@ function Periodico(l: LaminaNoticia) {
           <div style={{ display: "flex", width: 300, height: 6, background: acento, marginTop: 28, marginBottom: 22 }} />
           {pie ? <div style={{ display: "flex", fontSize: 30, color: PE.texto, textAlign: "center" }}>{cortar(pie, 60)}</div> : null}
         </div>
+        {/* La cabecera mide 216 (52 + 8 + 22 + 96 + 40): ahi empieza la foto. */}
+        <InsertoFoto l={l} acento={acento} arriba={218} altoFoto={640} />
         {paginaPie}
       </div>
     )
